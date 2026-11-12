@@ -8,6 +8,11 @@
 // un link para aprobarla o rechazarla (/op/<token>, sin usuario). Aprobada,
 // el dueño la marca pagada y recién ahí se generan las operaciones y los
 // cheques. El PDF sale de la ventana de imprimir.
+//
+// 12/11 (migración 186): 📋 Resumen para el CFO junta varias órdenes, con el
+// comprobante de cada una (foto, opcional) y la suma de lo inmediato
+// (efectivo y transferencia) y de los cheques. Se lo invita al CFO por
+// WhatsApp (/op/resumen/<token>) o se exporta en PDF.
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -20,6 +25,10 @@ import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 import ElegirProveedor from "./FinanzasElegirProveedor";
 import { saldosPorOc } from "../lib/finanzasProveedores";
+import {
+  ESTADOS_RESUMEN, imprimirResumenPago, puedeEntrar, renglonesResumen, textoWhatsappResumen, totalesResumen,
+} from "../lib/finanzasResumenPago";
+import { fotoBase64, subirImagen } from "../lib/foto";
 
 const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
@@ -35,6 +44,39 @@ function mandarWhatsapp(orden, url, datos) {
   const texto = textoWhatsappCfo(orden, url, { empresa: datos.empresa?.nombre || "", cfo: datos.cfo?.nombre || "" });
   const tel = numeroWhatsapp(datos.cfo?.telefono);
   window.open(`https://wa.me/${tel || ""}?text=${encodeURIComponent(texto)}`, "_blank", "noopener");
+}
+
+/** Abre WhatsApp invitando al CFO a ver el resumen. */
+function mandarWhatsappResumen(resumen, ordenes, url, datos) {
+  const texto = textoWhatsappResumen(resumen, ordenes, url, { empresa: datos.empresa?.nombre || "", cfo: datos.cfo?.nombre || "" });
+  const tel = numeroWhatsapp(datos.cfo?.telefono);
+  window.open(`https://wa.me/${tel || ""}?text=${encodeURIComponent(texto)}`, "_blank", "noopener");
+}
+
+/** Subir (o cambiar) la foto del comprobante: de la cámara o de la galería. */
+function BotonComprobante({ url, etiqueta = "📎 Comprobante", onSubido, disabled }) {
+  const [subiendo, setSubiendo] = useState(false);
+  const [error, setError] = useState(null);
+  async function elegir(file) {
+    if (!file) return;
+    setSubiendo(true);
+    setError(null);
+    try {
+      onSubido(await subirImagen(await fotoBase64(file)));
+    } catch (e) {
+      setError(e.message);
+    }
+    setSubiendo(false);
+  }
+  return (
+    <span className="inline-flex flex-col gap-0.5">
+      <label className={`g-btn g-btn-secondary text-[13px] cursor-pointer ${disabled ? "opacity-50" : ""}`}>
+        {subiendo ? "Subiendo…" : url ? "📎 Cambiar comprobante" : etiqueta}
+        <input type="file" accept="image/*" className="hidden" aria-label={url ? "Cambiar comprobante" : "Cargar comprobante"} disabled={disabled || subiendo} onChange={(e) => elegir(e.target.files?.[0])} />
+      </label>
+      {error && <span role="alert" className="text-[12px] text-gypi-red">{error}</span>}
+    </span>
+  );
 }
 
 function campo(label, input) {
@@ -190,6 +232,7 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
 /* ─── Detalle de una orden ───────────────────────────────────────────── */
 
 function Detalle({ orden, datos, url, onCerrar, onCambio }) {
+  const resumen = orden.resumen_id ? (datos.resumenes || []).find((r) => r.id === orden.resumen_id) : null;
   const toast = useToast();
   const [fecha, setFecha] = useState(hoyAr());
   const [haciendo, setHaciendo] = useState(null);
@@ -204,7 +247,7 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
     try {
       const d = await postPagos({ accion, id: orden.id, ...extra });
       if (accion === "mandar" && d.url) mandarWhatsapp(d.orden, d.url, datos);
-      toast.success({ mandar: "Abrimos WhatsApp con el link para el CFO", pagar: "Orden pagada: se generaron las operaciones y los cheques", anular: "Orden anulada" }[accion]);
+      toast.success({ mandar: "Abrimos WhatsApp con el link para el CFO", pagar: "Orden pagada: se generaron las operaciones y los cheques", anular: "Orden anulada", comprobante: extra.url ? "Comprobante guardado" : "Comprobante quitado" }[accion]);
       onCambio();
     } catch (e) {
       setError(e.message);
@@ -254,6 +297,14 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
         {orden.estado === "para_aprobar" && url && (
           <p className="m-0 text-[12px] text-gypi-dim break-all">Link para el CFO: {url}</p>
         )}
+        {resumen && <p className="m-0 text-[13px] text-gypi-dim">📋 Está en el resumen N° {resumen.numero}</p>}
+        {orden.estado !== "anulada" && !datos.falta_186 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {orden.comprobante_url && <a className="text-[13px] font-semibold text-gypi-amber-ink" href={orden.comprobante_url} target="_blank" rel="noopener noreferrer">📎 Ver comprobante</a>}
+            <BotonComprobante url={orden.comprobante_url} etiqueta="📎 Cargar comprobante (opcional)" disabled={!!haciendo} onSubido={(u) => hacer("comprobante", { url: u })} />
+            {orden.comprobante_url && <button type="button" className="g-btn g-btn-secondary text-[13px]" disabled={!!haciendo} onClick={() => hacer("comprobante", { url: null })}>Quitar</button>}
+          </div>
+        )}
 
         {acciones.includes("pagar") && (
           <div className="flex flex-wrap items-end gap-2 p-2 rounded-lg border border-gypi-border">
@@ -285,6 +336,206 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
               </button>
             )}
             {acciones.includes("anular") && <button type="button" className="g-btn g-btn-secondary flex-1" onClick={() => setConfirmarAnular(true)}>🚫 Anular</button>}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/* ─── Resumen de órdenes de pago (186) ───────────────────────────────── */
+
+function Totales({ ordenes }) {
+  const t = totalesResumen(ordenes);
+  return (
+    <div className="flex flex-col gap-1 p-3 rounded-lg border border-gypi-border bg-gypi-surface text-[14px]" aria-label="Totales del resumen">
+      <div className="flex items-baseline gap-2"><span className="flex-1">⚡ Transferencia, efectivo o inmediato</span><b className="font-mono">{plata(t.inmediato, "ARS")}</b></div>
+      <div className="flex items-baseline gap-2"><span className="flex-1">🧾 Cheques (e-cheq y de terceros)</span><b className="font-mono">{plata(t.cheques, "ARS")}</b></div>
+      <div className="flex items-baseline gap-2 border-t border-gypi-border pt-1 text-[16px]"><span className="flex-1 font-bold">Total · {t.ordenes} {t.ordenes === 1 ? "orden" : "órdenes"}</span><b className="font-mono">{plata(t.total, "ARS")}</b></div>
+    </div>
+  );
+}
+
+/** Tabla del resumen: fecha, proveedor, medio de pago, importe y comprobante. */
+function TablaResumen({ ordenes }) {
+  const filas = renglonesResumen(ordenes);
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[13px] border-collapse" aria-label="Pagos del resumen">
+        <thead>
+          <tr className="text-gypi-dim text-left">
+            <th className="font-semibold py-1 px-1.5">Fecha</th>
+            <th className="font-semibold py-1 px-1.5">Proveedor</th>
+            <th className="font-semibold py-1 px-1.5">Medio de pago</th>
+            <th className="font-semibold py-1 px-1.5 text-right">Importe</th>
+            <th className="font-semibold py-1 px-1.5">Comprobante</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filas.map((r, i) => (
+            <tr key={`${r.orden_id}-${i}`} className="border-t border-gypi-border align-top">
+              <td className="py-1 px-1.5 font-mono whitespace-nowrap">{fechaCorta(r.fecha)}</td>
+              <td className="py-1 px-1.5">{r.proveedor} <span className="block text-[12px] text-gypi-dim">OP N° {r.numero}</span></td>
+              <td className="py-1 px-1.5">{r.clase === "cheque" ? "🧾" : "⚡"} {r.medio}</td>
+              <td className="py-1 px-1.5 text-right font-mono whitespace-nowrap">{plata(r.importe, "ARS")}</td>
+              <td className="py-1 px-1.5">{r.comprobante ? <a className="font-semibold text-gypi-amber-ink" href={r.comprobante} target="_blank" rel="noopener noreferrer">📎 Ver</a> : ""}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function NuevoResumen({ datos, onCerrar, onGuardado }) {
+  const toast = useToast();
+  const libres = useMemo(() => (datos.ordenes || []).filter(puedeEntrar), [datos.ordenes]);
+  const [elegidas, setElegidas] = useState(() => new Set());
+  const [comprobantes, setComprobantes] = useState({});
+  const [fecha, setFecha] = useState(hoyAr());
+  const [notas, setNotas] = useState("");
+  const [error, setError] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+
+  const elegir = (id) => setElegidas((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const todas = elegidas.size === libres.length && libres.length > 0;
+  const seleccion = libres.filter((o) => elegidas.has(o.id)).map((o) => ({ ...o, comprobante_url: comprobantes[o.id] || o.comprobante_url || null }));
+
+  async function guardar(mandar) {
+    setError(null);
+    setGuardando(true);
+    try {
+      const d = await postPagos({
+        accion: "resumen_crear", mandar,
+        resumen: { ordenes: [...elegidas], fecha, notas },
+        comprobantes: Object.fromEntries(Object.entries(comprobantes).filter(([id]) => elegidas.has(Number(id)))),
+      });
+      if (mandar && d.url) mandarWhatsappResumen(d.resumen, seleccion, d.url, datos);
+      toast.success(mandar ? `Resumen N° ${d.resumen.numero} listo: mandáselo al CFO por WhatsApp` : `Resumen N° ${d.resumen.numero} guardado`);
+      if (d.afuera) toast.error(`${d.afuera} ${d.afuera === 1 ? "orden quedó" : "órdenes quedaron"} afuera: ya estaban en otro resumen`);
+      onGuardado(d.resumen);
+    } catch (e) {
+      setError(e.message);
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={onCerrar} title="Resumen de órdenes de pago" maxWidth={720}>
+      <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
+        <p className="m-0 text-[13px] text-gypi-dim">Elegí las órdenes que van juntas. A cada una le podés cargar la foto del comprobante (no es obligatorio).</p>
+        {libres.length ? (
+          <fieldset className="border border-gypi-border rounded-lg p-2 m-0">
+            <legend className="text-[13px] font-semibold px-1">Órdenes de pago</legend>
+            <label className="flex items-center gap-2 text-[13px] min-h-[36px] cursor-pointer font-semibold">
+              <input type="checkbox" checked={todas} onChange={() => setElegidas(todas ? new Set() : new Set(libres.map((o) => o.id)))} aria-label="Tildar todas" /> Tildar todas
+            </label>
+            <ul className="list-none m-0 p-0 flex flex-col gap-1 max-h-[38vh] overflow-y-auto">
+              {libres.map((o) => {
+                const est = ESTADOS_ORDEN[o.estado] || { nombre: o.estado, icono: "" };
+                const comp = comprobantes[o.id] || o.comprobante_url;
+                return (
+                  <li key={o.id} className="flex flex-wrap items-center gap-2 border-t border-gypi-border pt-1">
+                    <label className="flex items-baseline gap-2 text-[13px] min-h-[40px] cursor-pointer flex-1 min-w-[220px]">
+                      <input type="checkbox" checked={elegidas.has(o.id)} onChange={() => elegir(o.id)} aria-label={`Sumar la orden N° ${o.numero}`} />
+                      <span className="font-mono text-[12px] text-gypi-dim">N° {o.numero} · {fechaCorta(o.fecha)}</span>
+                      <span className="flex-1 min-w-0 truncate font-semibold">{o.proveedor_nombre}</span>
+                      <span className="font-mono font-semibold">{plata(o.total, "ARS")}</span>
+                      <span className="text-[12px] text-gypi-dim">{est.icono}</span>
+                    </label>
+                    {elegidas.has(o.id) && (
+                      <span className="flex items-center gap-2">
+                        {comp && <a className="text-[13px] font-semibold text-gypi-green" href={comp} target="_blank" rel="noopener noreferrer">✓ Comprobante</a>}
+                        <BotonComprobante url={comp} onSubido={(u) => setComprobantes((c) => ({ ...c, [o.id]: u }))} />
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </fieldset>
+        ) : (
+          <p className="m-0 text-[13px] text-gypi-dim">No hay órdenes para juntar: las que no están pagadas ni anuladas ya están en otro resumen. Armá órdenes con &quot;+ Orden de pago&quot;.</p>
+        )}
+        {seleccion.length > 0 && <Totales ordenes={seleccion} />}
+        <div className="flex flex-wrap gap-2">
+          {campo("Fecha del resumen", <input type="date" className="g-input" aria-label="Fecha del resumen" value={fecha} onChange={(e) => e.target.value && setFecha(e.target.value)} />)}
+          <div className="flex-1 min-w-[220px]">{campo("Nota para el CFO (opcional)", <input className="g-input w-full" aria-label="Nota del resumen" value={notas} maxLength={500} onChange={(e) => setNotas(e.target.value)} />)}</div>
+        </div>
+        {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+        <div className="flex flex-wrap justify-end gap-2">
+          <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
+          <button type="button" className="g-btn g-btn-secondary" disabled={guardando || !elegidas.size} onClick={() => guardar(false)}>Guardar</button>
+          <button type="button" className="g-btn g-btn-primary" disabled={guardando || !elegidas.size} onClick={() => guardar(true)}>
+            {guardando ? "Guardando…" : "Guardar e invitar al CFO"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function DetalleResumen({ resumen, datos, url, onCerrar, onCambio, onAbrirOrden }) {
+  const toast = useToast();
+  const [haciendo, setHaciendo] = useState(null);
+  const [confirmarAnular, setConfirmarAnular] = useState(false);
+  const [error, setError] = useState(null);
+  const ordenes = (datos.ordenes || []).filter((o) => o.resumen_id === resumen.id);
+  const est = ESTADOS_RESUMEN[resumen.estado] || { nombre: resumen.estado, icono: "" };
+  const t = totalesResumen(ordenes);
+
+  async function hacer(accion) {
+    setError(null);
+    setHaciendo(accion);
+    try {
+      const d = await postPagos({ accion, id: resumen.id });
+      if (accion === "resumen_mandar" && d.url) mandarWhatsappResumen(d.resumen, ordenes, d.url, datos);
+      toast.success(accion === "resumen_mandar" ? "Abrimos WhatsApp con el link para el CFO" : "Resumen anulado: las órdenes siguen como estaban");
+      onCambio();
+      if (accion === "resumen_anular") onCerrar();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setHaciendo(null);
+    }
+  }
+
+  function pdf() {
+    setError(null);
+    try { imprimirResumenPago({ empresa: datos.empresa, resumen, ordenes }); } catch (e) { setError(e.message); }
+  }
+
+  return (
+    <Modal open onClose={onCerrar} title={`Resumen de órdenes de pago N° ${resumen.numero}`} maxWidth={760}>
+      <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
+        <div className="text-[13px] text-gypi-dim">
+          {est.icono} {est.nombre} · {fechaCorta(resumen.fecha)}{resumen.cargado_por_nombre ? ` · ${resumen.cargado_por_nombre}` : ""} · {t.aprobadas} de {t.ordenes} aprobadas
+        </div>
+        <TablaResumen ordenes={ordenes} />
+        <Totales ordenes={ordenes} />
+        {resumen.notas && <p className="m-0 text-[13px]">📝 {resumen.notas}</p>}
+        {url && <p className="m-0 text-[12px] text-gypi-dim break-all">Link para el CFO: {url}</p>}
+        <div className="flex flex-wrap gap-1">
+          {ordenes.filter((o) => o.estado !== "anulada").map((o) => (
+            <button key={o.id} type="button" className="g-btn g-btn-secondary text-[12px]" onClick={() => onAbrirOrden(o.id)}>OP N° {o.numero} {o.comprobante_url ? "📎" : ""}</button>
+          ))}
+        </div>
+        {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+        {confirmarAnular ? (
+          <div className="flex flex-col gap-2 p-2 rounded-lg border border-gypi-red">
+            <p className="m-0 text-[13px]">¿Anular el resumen? Las órdenes no cambian y quedan libres para otro resumen. El link del resumen deja de servir.</p>
+            <div className="flex gap-2">
+              <button type="button" className="g-btn g-btn-secondary flex-1" onClick={() => setConfirmarAnular(false)}>No</button>
+              <button type="button" className="g-btn g-btn-danger flex-1" disabled={!!haciendo} onClick={() => hacer("resumen_anular")}>{haciendo === "resumen_anular" ? "Anulando…" : "Sí, anular"}</button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="g-btn g-btn-secondary flex-1" onClick={pdf}>📄 PDF</button>
+            <button type="button" className="g-btn g-btn-primary flex-1" disabled={!!haciendo || !t.ordenes} onClick={() => hacer("resumen_mandar")}>
+              {haciendo === "resumen_mandar" ? "Abriendo…" : resumen.estado === "enviado" ? "📲 Mandar el link de nuevo" : "📲 Invitar al CFO"}
+            </button>
+            <button type="button" className="g-btn g-btn-secondary flex-1" onClick={() => setConfirmarAnular(true)}>🚫 Anular</button>
           </div>
         )}
       </div>
@@ -413,6 +664,9 @@ export default function FinanzasPagos() {
   const [abierta, setAbierta] = useState(null);
   const [cfo, setCfo] = useState(false);
   const [porOc, setPorOc] = useState(false);
+  const [verResumenes, setVerResumenes] = useState(false);
+  const [nuevoResumen, setNuevoResumen] = useState(false);
+  const [resumenAbierto, setResumenAbierto] = useState(null);
 
   const cargar = useCallback(async () => {
     try {
@@ -434,6 +688,9 @@ export default function FinanzasPagos() {
   if (!datos) return <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div>;
   const cuantas = (f) => (datos.ordenes || []).filter((o) => !FILTROS[f].estados || FILTROS[f].estados.includes(o.estado)).length;
   const orden = abierta ? datos.ordenes.find((o) => o.id === abierta) : null;
+  const resumenes = datos.resumenes || [];
+  const resumen = resumenAbierto ? resumenes.find((r) => r.id === resumenAbierto) : null;
+  const otraVista = porOc || verResumenes;
 
   return (
     <div className="flex-1 overflow-y-auto px-[18px] pb-6">
@@ -442,19 +699,45 @@ export default function FinanzasPagos() {
           Aprueba: <b className="text-gypi-text">{datos.cfo?.nombre || "sin cargar"}</b>{datos.cfo?.telefono ? ` · ${datos.cfo.telefono}` : ""}{" "}
           <button type="button" className="bg-transparent border-none p-0 text-gypi-amber-ink font-semibold cursor-pointer" onClick={() => setCfo(true)}>Cambiar</button>
         </p>
+        {!datos.falta_186 && <button type="button" className="g-btn g-btn-secondary" onClick={() => setNuevoResumen(true)}>📋 Resumen para el CFO</button>}
         <button type="button" className="g-btn g-btn-primary" onClick={() => setNueva(true)}>+ Orden de pago</button>
       </div>
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        {Object.entries(FILTROS).map(([k, f]) => <Chip key={k} active={!porOc && filtro === k} onClick={() => { setPorOc(false); setFiltro(k); }}>{f.nombre} ({cuantas(k)})</Chip>)}
-        <Chip active={porOc} onClick={() => setPorOc(true)}>📄 Saldo por orden de compra</Chip>
+        {Object.entries(FILTROS).map(([k, f]) => <Chip key={k} active={!otraVista && filtro === k} onClick={() => { setPorOc(false); setVerResumenes(false); setFiltro(k); }}>{f.nombre} ({cuantas(k)})</Chip>)}
+        {!datos.falta_186 && <Chip active={verResumenes} onClick={() => { setPorOc(false); setVerResumenes(true); }}>📋 Resúmenes ({resumenes.length})</Chip>}
+        <Chip active={porOc} onClick={() => { setVerResumenes(false); setPorOc(true); }}>📄 Saldo por orden de compra</Chip>
         <input className="g-input flex-1 min-w-[160px]" aria-label="Buscar orden" placeholder="Buscar proveedor o N°" value={buscar} onChange={(e) => setBuscar(e.target.value)} />
-        {!porOc && (
+        {!otraVista && (
           <label className="flex items-center gap-1 text-[13px] text-gypi-dim">
             <input type="checkbox" checked={anuladas} onChange={(e) => setAnuladas(e.target.checked)} /> Ver anuladas
           </label>
         )}
       </div>
-      {porOc ? <SaldoPorOc buscar={buscar} /> : (<>
+      {porOc ? <SaldoPorOc buscar={buscar} /> : verResumenes ? (
+        <ul className="list-none m-0 p-0 flex flex-col gap-1.5" aria-label="Resúmenes de órdenes de pago">
+          {resumenes.map((r) => {
+            const de = (datos.ordenes || []).filter((o) => o.resumen_id === r.id);
+            const t = totalesResumen(de);
+            const est = ESTADOS_RESUMEN[r.estado] || { nombre: r.estado, icono: "" };
+            return (
+              <li key={r.id}>
+                <button type="button" onClick={() => setResumenAbierto(r.id)}
+                  className="w-full text-left min-h-[48px] px-3 py-2 rounded-lg border border-gypi-border bg-gypi-surface cursor-pointer">
+                  <span className="flex items-baseline gap-2 text-[14px] text-gypi-text">
+                    <span className="font-mono text-[12px] text-gypi-dim">N° {r.numero}</span>
+                    <span className="font-semibold flex-1 min-w-0 truncate">Resumen · {t.ordenes} {t.ordenes === 1 ? "orden" : "órdenes"}</span>
+                    <span className="font-mono font-semibold">{plata(t.total, "ARS")}</span>
+                  </span>
+                  <span className="block text-[12px] text-gypi-dim">
+                    {est.icono} {est.nombre} · {fechaCorta(r.fecha)} · ⚡ {plata(t.inmediato, "ARS")} · 🧾 {plata(t.cheques, "ARS")} · {t.aprobadas} de {t.ordenes} aprobadas
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+          {!resumenes.length && <li className="text-[13px] text-gypi-dim">Todavía no hay resúmenes. Armá uno con &quot;📋 Resumen para el CFO&quot;.</li>}
+        </ul>
+      ) : (<>
       <ul className="list-none m-0 p-0 flex flex-col gap-1.5" aria-label="Órdenes de pago">
         {lista.map((o) => {
           const est = ESTADOS_ORDEN[o.estado] || { nombre: o.estado, icono: "" };
@@ -484,6 +767,8 @@ export default function FinanzasPagos() {
 
       {nueva && <NuevaOrden datos={datos} onCerrar={() => setNueva(false)} onGuardada={(o) => { setNueva(false); setAbierta(o.id); cargar(); }} />}
       {orden && <Detalle orden={orden} datos={datos} url={datos.links?.[orden.id]} onCerrar={() => setAbierta(null)} onCambio={cargar} />}
+      {nuevoResumen && <NuevoResumen datos={datos} onCerrar={() => setNuevoResumen(false)} onGuardado={(r) => { setNuevoResumen(false); setVerResumenes(true); setPorOc(false); setResumenAbierto(r.id); cargar(); }} />}
+      {resumen && !orden && <DetalleResumen resumen={resumen} datos={datos} url={datos.links_resumen?.[resumen.id]} onCerrar={() => setResumenAbierto(null)} onCambio={cargar} onAbrirOrden={setAbierta} />}
       {cfo && <DatosCfo cfo={datos.cfo} onCerrar={() => setCfo(false)} onGuardado={() => { setCfo(false); cargar(); }} />}
     </div>
   );
