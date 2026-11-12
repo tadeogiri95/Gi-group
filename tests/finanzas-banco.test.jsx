@@ -23,7 +23,7 @@ afterEach(() => cleanup());
 
 const { signAccessToken } = await import("../app/lib/jwt.ts");
 const api = await import("../app/api/finanzas/banco/route.js");
-const { default: SubirExtracto, contraDeTipo, codigoDe } = await import("../app/components/FinanzasExtracto.jsx");
+const { default: SubirExtracto, contraDeTipo, codigoDe, problemaDelLibro, LIBRO_ILEGIBLE } = await import("../app/components/FinanzasExtracto.jsx");
 
 const E = "66666666-6666-6666-6666-666666666666";
 const EMP = "77777777-7777-7777-7777-777777777777";
@@ -305,4 +305,20 @@ test("CSV de Credicoop — fecha AAAAMMDD, del más nuevo al más viejo, saldo d
   assert.deepEqual(r.movimientos.map((m) => [m.fecha, m.importe]), [["2026-09-01", 5869149.01], ["2026-09-30", -62406.23]], "queda en orden de fecha");
   assert.deepEqual([r.saldo_anterior, r.saldo_final, r.desde, r.hasta], [-4211345.59, 1595397.19, "2026-09-01", "2026-09-30"]);
   assert.equal(r.movimientos[0].comprobante, "415171");
+});
+
+test("SubirExtracto — el archivo del banco en 📘 Aprender del libro da un aviso claro, no \"invalid zip data\"", async () => {
+  assert.equal(problemaDelLibro(new Uint8Array([0x50, 0x4b, 0x03, 0x04])), null, "un .xlsx pasa");
+  assert.match(problemaDelLibro(new TextEncoder().encode("%PDF-1.4 resumen")), /Archivo del extracto/);
+  assert.match(problemaDelLibro(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0])), /contraseña/);
+  let pedidos = 0;
+  global.fetch = async () => { pedidos += 1; return new Response("{}", { status: 200 }); };
+  render(<SubirExtracto caja={{ cuenta: BANCO, nombre: "Credicoop" }} datos={{ cuentas: [], tipos: [] }} onCerrar={() => {}} onCargado={() => {}} />);
+  fireEvent.change(screen.getByLabelText("Libro contable"), { target: { files: [new File(["FECHA;DESCRIPCION\n20260901;x"], "MOVCTA.csv")] } });
+  await waitFor(() => assert.match(screen.getByRole("alert").textContent, /no es el libro contable/));
+  assert.ok(!/zip/i.test(screen.getByRole("alert").textContent));
+  // Un .xlsx cortado (empieza como zip pero no termina) tampoco muestra el error en inglés
+  fireEvent.change(screen.getByLabelText("Libro contable"), { target: { files: [new File([new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3])], "libro.xlsx")] } });
+  await waitFor(() => assert.equal(screen.getByRole("alert").textContent, `⚠ ${LIBRO_ILEGIBLE}`));
+  assert.equal(pedidos, 0, "no manda nada al servidor");
 });

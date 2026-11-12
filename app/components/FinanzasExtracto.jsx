@@ -12,6 +12,7 @@ import { useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { plata } from "../lib/finanzasOperaciones";
 import { reglasDelLibro } from "../lib/finanzasBanco";
+import { claseDeArchivo } from "../lib/finanzasExtracto";
 import { Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
@@ -35,6 +36,20 @@ export function contraDeTipo(tipo, importe, cuentaBanco) {
   const c = importe < 0 ? tipo.cuenta_debe : tipo.cuenta_haber;
   return c && c !== cuentaBanco ? c : "";
 }
+
+/**
+ * Por qué no se pudo leer el libro, en castellano: el error de la librería
+ * ("invalid zip data") no le dice nada a nadie. Lo más común es haber elegido
+ * acá el archivo del banco en vez del libro.
+ */
+export function problemaDelLibro(bytes) {
+  const clase = claseDeArchivo(bytes);
+  if (clase === "xlsx") return null;
+  if (clase === "xls") return "Ese archivo no es el libro contable en .xlsx: es un Excel viejo (.xls) o tiene contraseña. Si es el extracto del banco, subilo arriba en \"Archivo del extracto\". Si es el libro, guardalo como .xlsx sin contraseña.";
+  return "Ese archivo no es el libro contable (.xlsx). Si es el extracto del banco, subilo arriba en \"Archivo del extracto\".";
+}
+
+export const LIBRO_ILEGIBLE = "No pude abrir el libro: puede estar incompleto o con contraseña. Bajalo de nuevo como .xlsx (sin contraseña) y probá otra vez.";
 
 export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
   const toast = useToast();
@@ -83,7 +98,11 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
     try {
       const { hojasXlsx, leerHojaXlsx } = await import("../lib/leerXlsx");
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const hoja = hojasXlsx(bytes).find((n) => normal(n) === "TOPERACIONES");
+      const problema = problemaDelLibro(bytes);
+      if (problema) throw new Error(problema);
+      let hojas;
+      try { hojas = hojasXlsx(bytes); } catch { throw new Error(LIBRO_ILEGIBLE); }
+      const hoja = hojas.find((n) => normal(n) === "TOPERACIONES");
       if (!hoja) throw new Error("Ese archivo no tiene la hoja T-OPERACIONES");
       const { reglas, usadas, error: err } = reglasDelLibro(leerHojaXlsx(bytes, hoja, { maxFilas: 60000, maxCols: 60 }) || [], caja.cuenta);
       if (err) throw new Error(err);
@@ -134,9 +153,9 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
         {!res && (
           <>
             <p className="m-0">Subí el resumen del banco en PDF o los movimientos bajados en Excel o CSV. Lo que ya está en Gypi se marca solo; lo demás viene con el tipo sugerido para revisar.</p>
-            <label className="flex flex-col gap-1 text-[13px] font-semibold">
-              Archivo del extracto
-              <input type="file" accept=".pdf,.xlsx,.xls,.csv,application/pdf" aria-label="Archivo del extracto" disabled={leyendo} onChange={(e) => subir(e.target.files?.[0])} />
+            <label className={`g-btn g-btn-primary self-start text-[15px] ${leyendo ? "opacity-60" : "cursor-pointer"}`}>
+              📄 Elegir el archivo del extracto
+              <input type="file" className="sr-only" accept=".pdf,.xlsx,.xls,.csv,application/pdf" aria-label="Archivo del extracto" disabled={leyendo} onChange={(e) => subir(e.target.files?.[0])} />
             </label>
             {leyendo && <p className="m-0 flex items-center gap-2 text-gypi-dim"><Spinner /> Leyendo el extracto…</p>}
           </>
@@ -156,11 +175,15 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
             {!res.reglas && <p className="m-0 text-[13px] text-gypi-amber-ink">Todavía no aprendí cómo cargás este banco: subí el libro con &quot;📘 Aprender del libro&quot; y las sugerencias salen solas.</p>}
           </>
         )}
-        <label className="flex flex-wrap items-center gap-2 text-[13px] text-gypi-dim">
-          📘 Aprender del libro (T-OPERACIONES):
-          <input type="file" accept=".xlsx,.xlsm" aria-label="Libro contable" disabled={aprendiendo} onChange={(e) => aprenderDelLibro(e.target.files?.[0])} />
-          {aprendiendo && <Spinner />}
-        </label>
+        <details className="rounded-lg border border-gypi-border p-2 text-[13px] text-gypi-dim">
+          <summary className="cursor-pointer font-semibold">📘 Aprender del libro contable (opcional)</summary>
+          <p className="m-0 mt-2">Esto NO es para el extracto: acá va el libro contable (.xlsx con la hoja T-OPERACIONES), para que Gypi aprenda cómo cargás cada movimiento del banco.</p>
+          <label className="flex flex-wrap items-center gap-2 mt-2">
+            Libro contable:
+            <input type="file" accept=".xlsx,.xlsm" aria-label="Libro contable" disabled={aprendiendo} onChange={(e) => aprenderDelLibro(e.target.files?.[0])} />
+            {aprendiendo && <Spinner />}
+          </label>
+        </details>
 
         {res && pendientes.length > 0 && (
           <div className="overflow-x-auto">
