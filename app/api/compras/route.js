@@ -62,6 +62,8 @@ import { puedePedir, puedeComprar, puedeAnularPedido, puedeEditarPedido, cambios
 import { ESTADOS_OC_CERRABLE, ESTADOS_OC_RECIBIBLE, NOMBRE_A_COTIZAR, ocACotizar, pedidosAlCerrar, precioEnPesos, precioEnStock } from "../../lib/ordenesCompra";
 import { logger } from "../../lib/logger";
 import { sincronizarCompra } from "../../lib/finanzasCompras";
+import { buscarFacturaRepetida } from "../../lib/facturaUnicaServidor";
+import { avisoFacturaRepetida } from "../../lib/facturaUnica";
 
 function faltaMigracion(err) {
   const m = String(err?.message);
@@ -674,6 +676,12 @@ async function facturaOrden(sesion, d) {
     }
     if (Object.keys(patch).length) renglones.push({ item_id: it.id, ...patch });
   }
+  // Una factura, una sola vez (auditoría 12/11, parte 1): si el número cambió
+  // y ya está cargado en otro lado, avisa; con forzar se guarda igual
+  if (d.factura_numero && !d.forzar && String(d.factura_numero).trim() !== String(oc.factura_numero || "").trim()) {
+    const repetida = await buscarFacturaRepetida(e, { numero: d.factura_numero, proveedor_id: oc.proveedor_id, proveedor_nombre: oc.proveedor_nombre }, { oc: oc.id });
+    if (repetida) return NextResponse.json({ error: avisoFacturaRepetida(repetida), repetida: true }, { status: 409 });
+  }
   const cabecera = { factura_numero: d.factura_numero, factura_fecha: d.factura_fecha, tipo_cambio: oc.moneda === "USD" ? d.tipo_cambio : null };
   if (d.otros_impuestos !== undefined && numeroO(oc.factura_otros_impuestos) !== d.otros_impuestos) cabecera.factura_otros_impuestos = d.otros_impuestos;
 
@@ -719,6 +727,13 @@ async function guardarOtraFactura(sesion, d) {
   ]);
   const proveedor = (provs || [])[0];
   if (!proveedor) return NextResponse.json({ error: "Ese proveedor no está en la lista" }, { status: 400 });
+  // Una factura, una sola vez (auditoría 12/11, parte 1)
+  if (d.numero && !d.forzar) {
+    const [antes] = d.factura_id ? (await sbGet(`ordenes_compra_facturas?id=eq.${d.factura_id}&empresa_id=eq.${e}&select=numero,proveedor_id&limit=1`, opts)) || [] : [];
+    const cambio = !antes || String(antes.numero || "").trim() !== String(d.numero).trim() || Number(antes.proveedor_id) !== Number(proveedor.id);
+    const repetida = cambio ? await buscarFacturaRepetida(e, { numero: d.numero, proveedor_id: proveedor.id, proveedor_nombre: proveedor.nombre }, { oc_otra: d.factura_id || undefined }) : null;
+    if (repetida) return NextResponse.json({ error: avisoFacturaRepetida(repetida), repetida: true }, { status: 409 });
+  }
   const porId = new Map((items || []).map((it) => [it.id, it]));
   const renglones = [];
   for (const r of d.renglones) {

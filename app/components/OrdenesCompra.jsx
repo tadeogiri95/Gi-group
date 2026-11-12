@@ -20,6 +20,7 @@ import {
 import { AVISO_MIGRACION_114 } from "./AComprar";
 import UnidadCompra from "./UnidadCompra";
 import { OPCION_NUEVA, VentanaAltaPersona } from "./AltaPersona";
+import AvisoFacturaRepetida from "./AvisoFacturaRepetida";
 import { useOts } from "../hooks/useOts";
 import { otCompleta, textoOt } from "../lib/nombreOt";
 
@@ -29,7 +30,7 @@ const fechaCorta = (iso) => (iso ? String(iso).slice(0, 10).split("-").reverse()
 async function postCompras(body) {
   const res = await apiFetch("/api/compras", { method: "POST", body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo guardar");
+  if (!res.ok || !data.ok) throw Object.assign(new Error(data.error || "No se pudo guardar"), { repetida: !!data.repetida });
   return data;
 }
 
@@ -51,6 +52,7 @@ function FacturaOrden({ oc, items, onGuardada }) {
   }])));
   const [error, setError] = useState(null);
   const [aviso, setAviso] = useState(null);
+  const [repetida, setRepetida] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const usd = oc.moneda === "USD";
   const plata = (n) => importeTexto(n, oc.moneda);
@@ -63,9 +65,10 @@ function FacturaOrden({ oc, items, onGuardada }) {
   });
   const totales = totalesFactura(leidos, leerImporte(otros) || 0);
 
-  const guardar = async () => {
+  const guardar = async (forzar = false) => {
     setError(null);
     setAviso(null);
+    setRepetida(null);
     const cambios = [];
     const numeroO = (v) => (v === null || v === undefined ? null : Number(v));
     for (const { it, cantidad, precio, iva } of leidos) {
@@ -84,12 +87,13 @@ function FacturaOrden({ oc, items, onGuardada }) {
     try {
       const data = await postCompras({
         accion: "oc_factura", id: oc.id, factura_numero: numero.trim() || null, factura_fecha: fecha || null,
-        tipo_cambio: tipoCambio, otros_impuestos: otrosImp, ...(cambios.length ? { renglones: cambios } : {}),
+        tipo_cambio: tipoCambio, otros_impuestos: otrosImp, ...(cambios.length ? { renglones: cambios } : {}), ...(forzar ? { forzar: true } : {}),
       });
       setAviso(`Factura guardada${data.reemplazados ? `. Corregí ${data.reemplazados} ingreso${data.reemplazados === 1 ? "" : "s"} de stock con el precio nuevo` : ""}.`);
       await onGuardada();
     } catch (e) {
-      setError(e.message);
+      if (e.repetida) setRepetida(e.message);
+      else setError(e.message);
     }
     setEnviando(false);
   };
@@ -156,7 +160,9 @@ function FacturaOrden({ oc, items, onGuardada }) {
         <div className="flex justify-between font-bold text-[14px]"><span>Total de la factura</span><span>{plata(totales.total)}</span></div>
         <div className="text-[12px] text-gypi-dim mt-1">Comparalo con el total del papel. Al stock entra el precio sin IVA.</div>
       </div>
-      <button onClick={guardar} disabled={enviando} className="g-btn g-btn-secondary w-full mt-2">{enviando ? "Guardando…" : "Guardar factura"}</button>
+      <button onClick={() => guardar()} disabled={enviando} className="g-btn g-btn-secondary w-full mt-2">{enviando ? "Guardando…" : "Guardar factura"}</button>
+      <AvisoFacturaRepetida mensaje={repetida} enviando={enviando} onCargarIgual={() => guardar(true)}
+        onRevisar={() => { setRepetida(null); document.getElementById("fac-numero")?.focus(); }} />
       {aviso && <div role="status" className="text-[13px] mt-2">✅ {aviso}</div>}
       {error && <div role="alert" className="text-[13px] text-gypi-red mt-2">{error}</div>}
     </div>
@@ -188,6 +194,7 @@ function OtraFacturaForm({ oc, items, otras, factura, proveedores, onCerrar, onG
       : { va: false, cantidad: numTexto(faltaFacturar(it, oc, otras, factura?.id ?? null)), precio: numTexto(it.precio_unitario), iva: String(it.iva_alicuota ?? IVA_POR_DEFECTO) }];
   })));
   const [error, setError] = useState(null);
+  const [repetida, setRepetida] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const cambiar = (id, campo, valor) => setRenglones((r) => ({ ...r, [id]: { ...r[id], [campo]: valor } }));
   const leidos = items.filter((it) => renglones[it.id].va).map((it) => {
@@ -196,8 +203,9 @@ function OtraFacturaForm({ oc, items, otras, factura, proveedores, onCerrar, onG
   });
   const totales = totalesFactura(leidos, leerImporte(otros) || 0);
 
-  const guardar = async () => {
+  const guardar = async (forzar = false) => {
     setError(null);
+    setRepetida(null);
     if (!proveedorId) { setError("Elegí el proveedor que facturó"); return; }
     if (!fecha) { setError("Falta la fecha de la factura"); return; }
     if (!leidos.length) { setError("Marcá al menos un renglón que vaya en esta factura"); return; }
@@ -215,10 +223,12 @@ function OtraFacturaForm({ oc, items, otras, factura, proveedores, onCerrar, onG
         accion: "oc_otra_factura_guardar", id: oc.id, factura_id: factura?.id ?? null, proveedor_id: Number(proveedorId),
         numero: numero.trim() || null, fecha, tipo_cambio: tipoCambio, otros_impuestos: otrosImp,
         renglones: leidos.map(({ it, cantidad, precio, iva }) => ({ item_id: it.id, cantidad, precio, iva })),
+        ...(forzar ? { forzar: true } : {}),
       });
       await onGuardada(factura ? "Factura corregida." : "Factura guardada.");
     } catch (e) {
-      setError(e.message);
+      if (e.repetida) setRepetida(e.message);
+      else setError(e.message);
       setEnviando(false);
     }
   };
@@ -299,8 +309,10 @@ function OtraFacturaForm({ oc, items, otras, factura, proveedores, onCerrar, onG
       </div>
       <div className="flex gap-2 mt-2">
         <button onClick={onCerrar} disabled={enviando} className="g-btn g-btn-secondary flex-1">Cancelar</button>
-        <button onClick={guardar} disabled={enviando} className="g-btn g-btn-primary flex-1">{enviando ? "Guardando…" : "Guardar factura"}</button>
+        <button onClick={() => guardar()} disabled={enviando} className="g-btn g-btn-primary flex-1">{enviando ? "Guardando…" : "Guardar factura"}</button>
       </div>
+      <AvisoFacturaRepetida mensaje={repetida} enviando={enviando} onCargarIgual={() => guardar(true)}
+        onRevisar={() => { setRepetida(null); document.getElementById("otra-numero")?.focus(); }} />
       {error && <div role="alert" className="text-[13px] text-gypi-red mt-2">{error}</div>}
     </div>
   );

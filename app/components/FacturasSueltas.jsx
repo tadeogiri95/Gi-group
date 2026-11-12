@@ -17,6 +17,7 @@ import { COMO_ASOCIADO, MAX_ARCHIVO_B64, TIPOS_DOCUMENTO, netoFactura } from "..
 import { detectarColumnas, letraColumna, parsearCsv, proveedorDeArchivo, renglonesDeGrilla, sacarIva, sugerirParecidos } from "../lib/listasPrecios";
 import { useToast } from "./ui/Toast";
 import ArticuloNuevo from "./ArticuloNuevo";
+import AvisoFacturaRepetida from "./AvisoFacturaRepetida";
 
 const hoy = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
 const fechaCorta = (f) => (f ? String(f).split("-").reverse().join("/") : "");
@@ -135,6 +136,7 @@ function Editor({ inicial, articulos, onGuardada, onCancelar }) {
   const toast = useToast();
   const [f, setF] = useState(inicial);
   const [guardando, setGuardando] = useState(false);
+  const [repetida, setRepetida] = useState(null);
   const nombres = useMemo(() => new Map(articulos.map((a) => [a.sku, a.nombre])), [articulos]);
   const esLista = f.tipo === "lista";
   const cambiar = (campo) => (e) => setF((x) => ({ ...x, [campo]: e.target.value }));
@@ -151,14 +153,17 @@ function Editor({ inicial, articulos, onGuardada, onCancelar }) {
     return { ...x, renglones, planilla: { ...p, indice: hojaIndice, cols: nuevas, salteados, demas } };
   });
 
-  const guardar = async () => {
+  const guardar = async (forzar = false) => {
     setGuardando(true);
+    setRepetida(null);
     try {
       const datos = { ...f };
       delete datos.planilla;
       delete datos.precios_con_iva;
-      const res = await apiFetch("/api/facturas-sueltas", { method: "POST", body: JSON.stringify({ accion: "guardar", ...datos }) });
+      const res = await apiFetch("/api/facturas-sueltas", { method: "POST", body: JSON.stringify({ accion: "guardar", ...datos, ...(forzar ? { forzar: true } : {}) }) });
       const d = await res.json().catch(() => ({}));
+      // Una factura, una sola vez (auditoría 12/11, parte 1)
+      if (res.status === 409 && d.repetida) { setRepetida(d.error); setGuardando(false); return; }
       if (!res.ok || d.error) throw new Error(d.error || "No se pudo guardar");
       const que = esLista ? "Lista guardada" : "Factura guardada";
       toast.success(d.sinAsociar ? `✅ ${que}: ${d.asociados} artículo(s) reconocidos y ${d.sinAsociar} en Sin asociar.` : `✅ ${que} con todos los artículos`);
@@ -195,7 +200,7 @@ function Editor({ inicial, articulos, onGuardada, onCancelar }) {
           <input className="g-input w-full" value={f.proveedor} onChange={cambiar("proveedor")} />
         </label>
         <label className="text-xs text-gypi-dim">{esLista ? "N° o nombre de la lista" : "N° de factura"}
-          <input className="g-input w-full" value={f.numero} onChange={cambiar("numero")} placeholder={esLista ? "Lista noviembre" : "0003-00012345"} />
+          <input id="fs-numero" className="g-input w-full" value={f.numero} onChange={cambiar("numero")} placeholder={esLista ? "Lista noviembre" : "0003-00012345"} />
         </label>
         <label className="text-xs text-gypi-dim">{esLista ? "Fecha de la lista" : "Fecha"}
           <input type="date" className="g-input w-full" value={f.fecha} onChange={cambiar("fecha")} />
@@ -291,9 +296,11 @@ function Editor({ inicial, articulos, onGuardada, onCancelar }) {
         </>
       )}
       <div className="flex gap-2 mt-2">
-        <button type="button" onClick={guardar} disabled={guardando || !f.renglones.length} className="g-btn g-btn-primary flex-1">{guardando ? "Guardando…" : esLista ? "💾 Guardar lista" : "💾 Guardar factura"}</button>
+        <button type="button" onClick={() => guardar()} disabled={guardando || !f.renglones.length} className="g-btn g-btn-primary flex-1">{guardando ? "Guardando…" : esLista ? "💾 Guardar lista" : "💾 Guardar factura"}</button>
         <button type="button" onClick={onCancelar} className="g-btn g-btn-secondary">Cancelar</button>
       </div>
+      <AvisoFacturaRepetida mensaje={repetida} enviando={guardando} onCargarIgual={() => guardar(true)}
+        onRevisar={() => { setRepetida(null); document.getElementById("fs-numero")?.focus(); }} />
     </section>
   );
 }
