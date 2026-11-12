@@ -10,6 +10,7 @@ import { hoyArg } from "../lib/dates";
 import { DONDE, PRIORIDADES, TIPOS_MANTENIMIENTO, nombrePrioridad, textoCosto } from "../lib/arreglosFlota";
 import { Chip } from "./ui";
 import BotonFoto from "./BotonFoto";
+import ElegirTaller from "./ElegirTaller";
 
 async function postFlota(body) {
   const res = await apiFetch("/api/flota", { method: "POST", body: JSON.stringify(body) });
@@ -171,7 +172,7 @@ export function FormMantenimiento({ vehiculo, arreglo = null, tipoInicial = "ser
   const [fecha, setFecha] = useState(hoyArg());
   const [km, setKm] = useState(vehiculo.km != null ? String(vehiculo.km) : "");
   const [donde, setDonde] = useState("taller");
-  const [taller, setTaller] = useState("");
+  const [taller, setTaller] = useState({ taller: "", proveedor_id: null });
   const [detalle, setDetalle] = useState(arreglo ? arreglo.descripcion : "");
   const [repuestos, setRepuestos] = useState("");
   const [costo, setCosto] = useState("");
@@ -191,7 +192,8 @@ export function FormMantenimiento({ vehiculo, arreglo = null, tipoInicial = "ser
     try {
       await postFlota({
         accion: "mantenimiento_crear", vehiculo_id: vehiculo.id, arreglo_id: arreglo?.id ?? null, tipo, fecha, km: kmNum,
-        donde, taller: donde === "taller" ? taller.trim() || null : null, detalle: detalle.trim(), repuestos: repuestos.trim() || null,
+        donde, taller: donde === "taller" ? taller.taller.trim() || null : null,
+        proveedor_id: donde === "taller" ? taller.proveedor_id : null, detalle: detalle.trim(), repuestos: repuestos.trim() || null,
         costo: costoNum, factura_url: factura, fotos,
       });
       await onGuardado();
@@ -223,7 +225,7 @@ export function FormMantenimiento({ vehiculo, arreglo = null, tipoInicial = "ser
           </div>
         </div>
         {donde === "taller" && (
-          <Campo id="man-taller" label="Taller"><input id="man-taller" className="g-input w-full" maxLength={120} value={taller} onChange={(e) => setTaller(e.target.value)} /></Campo>
+          <ElegirTaller id="man-taller" valor={taller.taller} onCambio={setTaller} />
         )}
         <Campo id="man-detalle" label="Qué se hizo">
           <textarea id="man-detalle" className="g-input w-full" rows={3} maxLength={1000} value={detalle} onChange={(e) => setDetalle(e.target.value)} />

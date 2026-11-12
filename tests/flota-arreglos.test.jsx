@@ -265,6 +265,8 @@ const EMPLEADOS = [{ id: CHOFER, nombre: "Juan Pérez" }, { id: OTRO, nombre: "A
 test("Ficha — 🔴 no puede circular arriba; resolver un arreglo; historial", async () => {
   const enviados = [];
   global.fetch = async (url, opts = {}) => {
+    // El taller se elige de la lista de proveedores (183)
+    if (String(url).includes("/api/data") && String(opts.body).includes("proveedores")) return new Response(JSON.stringify({ data: [{ id: 4, nombre: "GOMERÍA SUR SRL" }] }), { status: 200 });
     enviados.push(JSON.parse(opts.body));
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
   };
@@ -285,12 +287,14 @@ test("Ficha — 🔴 no puede circular arriba; resolver un arreglo; historial", 
   assert.match(hist.textContent, /Checklist/);
 
   fireEvent.click(screen.getAllByText("✔ Resolver")[0]);
+  await waitFor(() => assert.ok(screen.getByLabelText("Taller").getAttribute("list")));
   fireEvent.change(screen.getByLabelText("Taller"), { target: { value: "Gomería Sur" } });
+  assert.match(screen.getByText(/de la lista de proveedores/).textContent, /GOMERÍA SUR SRL/);
   fireEvent.change(screen.getByLabelText("Costo total ($)"), { target: { value: "45.000,50" } });
   fireEvent.click(screen.getByText("Guardar"));
   await waitFor(() => assert.equal(enviados.length, 1));
   const b = enviados[0];
-  assert.deepEqual([b.accion, b.arreglo_id, b.tipo, b.taller, b.costo, b.detalle, b.fecha], ["mantenimiento_crear", 5, "arreglo", "Gomería Sur", 45000.5, "Delantera izquierda: Lisa", hoyArg()]);
+  assert.deepEqual([b.accion, b.arreglo_id, b.tipo, b.taller, b.proveedor_id, b.costo, b.detalle, b.fecha], ["mantenimiento_crear", 5, "arreglo", "Gomería Sur", 4, 45000.5, "Delantera izquierda: Lisa", hoyArg()]);
   await waitFor(() => assert.equal(cambios, 1));
 });
 

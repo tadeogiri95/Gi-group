@@ -4,9 +4,13 @@
 // cada proveedor (CUIT, contacto, WhatsApp, email, plazo, condición de pago).
 // Para no arrancar de cero se pega la lista de TABLAS → PROVEEDORES de la
 // planilla MRP. Un proveedor que ya no se usa se da de baja, no se borra.
+// Una sola lista (auditoría del 12/11, parte 5; migración 183): no deja cargar
+// otro con el mismo CUIT o nombre, pregunta si hay uno parecido, y los que ya
+// quedaron repetidos se unen (Dueño o Supervisor) con todo lo suyo.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sbGetAll, apiFetch } from "../lib/supabase";
 import { faltaTabla, leerListaProveedores, numeroWhatsapp } from "../lib/compras";
+import ProveedoresRepetidos from "./ProveedoresRepetidos";
 
 const VACIO = { id: null, nombre: "", cuit: "", contacto: "", whatsapp: "", email: "", plazo_dias: "", condicion_pago: "", notas: "" };
 const MOSTRAR = 100;
@@ -14,7 +18,7 @@ const MOSTRAR = 100;
 async function postCompras(body) {
   const res = await apiFetch("/api/compras", { method: "POST", body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo guardar");
+  if (!res.ok || !data.ok) throw Object.assign(new Error(data.error || "No se pudo guardar"), { data });
   return data;
 }
 
@@ -27,6 +31,8 @@ export default function ProveedoresCompras({ empresaId }) {
   const [error, setError] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [enviando, setEnviando] = useState(false);
+  const [parecidos, setParecidos] = useState(null);
+  const [repetidoDe, setRepetidoDe] = useState(null);
 
   const cargar = useCallback(async () => {
     if (!empresaId) return;
@@ -48,16 +54,19 @@ export default function ProveedoresCompras({ empresaId }) {
   const nombresImportar = useMemo(() => (importar === null ? [] : leerListaProveedores(importar)), [importar]);
   const cambiar = (campo) => (e) => setForm((f) => ({ ...f, [campo]: e.target.value }));
 
-  const guardar = async () => {
+  const guardar = async (esOtro = false) => {
     if (!form.nombre.trim()) { setError("Poné el nombre del proveedor"); return; }
     const plazo = form.plazo_dias === "" || form.plazo_dias === null ? null : Number(form.plazo_dias);
     if (plazo !== null && !(Number.isInteger(plazo) && plazo >= 0 && plazo <= 365)) { setError("El plazo va en días, de 0 a 365"); return; }
     const vacioANull = (v) => (String(v ?? "").trim() ? String(v).trim() : null);
     setEnviando(true);
     setError(null);
+    setParecidos(null);
+    setRepetidoDe(null);
     try {
       await postCompras({
         accion: "proveedor_guardar",
+        ...(esOtro ? { es_otro: true } : {}),
         ...(form.id ? { id: form.id } : {}),
         nombre: form.nombre.trim(),
         cuit: vacioANull(form.cuit),
@@ -71,9 +80,23 @@ export default function ProveedoresCompras({ empresaId }) {
       setForm(null);
       await cargar();
     } catch (e) {
-      setError(e.message);
+      if (e.data?.tipo === "parecidos") setParecidos(e.data.parecidos || []);
+      else {
+        setError(e.message);
+        if (e.data?.tipo === "repetido") setRepetidoDe(e.data.igual || null);
+      }
     }
     setEnviando(false);
+  };
+
+  /** Ir al proveedor que ya estaba (en vez de crear otro). */
+  const irA = (p) => {
+    setForm(null);
+    setParecidos(null);
+    setRepetidoDe(null);
+    setError(null);
+    setVerBajas(p.activo === false);
+    setTexto(p.nombre);
   };
 
   const darDeBaja = async (p, activo) => {
@@ -140,9 +163,26 @@ export default function ProveedoresCompras({ empresaId }) {
         <label className="g-label" htmlFor="prov-notas">Notas</label>
         <input id="prov-notas" className="g-input w-full mb-3" value={form.notas} onChange={cambiar("notas")} maxLength={300} />
         {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
+        {repetidoDe && (
+          <button onClick={() => irA(repetidoDe)} className="g-btn g-btn-secondary w-full mb-2">Ver {repetidoDe.nombre}</button>
+        )}
+        {parecidos && (
+          <div role="alert" className="p-2.5 mb-2 rounded-[10px] border border-gypi-amber bg-gypi-amber/10">
+            <div className="text-[14px] font-semibold mb-1">¿Es alguno de estos?</div>
+            <div className="text-[13px] text-gypi-dim mb-2">Ya hay proveedores con un nombre parecido. Si es uno de ellos, usá ese y no cargues otro.</div>
+            <div className="flex flex-col gap-1.5">
+              {parecidos.map((p) => (
+                <button key={p.id} onClick={() => irA(p)} className="g-btn g-btn-secondary w-full text-left">
+                  Sí, es {p.nombre}{p.cuit ? ` · CUIT ${p.cuit}` : ""}{p.activo ? "" : " (dado de baja)"}
+                </button>
+              ))}
+              <button onClick={() => guardar(true)} disabled={enviando} className="g-btn g-btn-primary w-full">No, es otro proveedor: guardar</button>
+            </div>
+          </div>
+        )}
         <div className="flex gap-2">
-          <button onClick={() => { setForm(null); setError(null); }} className="g-btn g-btn-secondary flex-1">Cancelar</button>
-          <button onClick={guardar} disabled={enviando} className="g-btn g-btn-primary flex-1">{enviando ? "Guardando…" : "Guardar"}</button>
+          <button onClick={() => { setForm(null); setError(null); setParecidos(null); setRepetidoDe(null); }} className="g-btn g-btn-secondary flex-1">Cancelar</button>
+          <button onClick={() => guardar()} disabled={enviando} className="g-btn g-btn-primary flex-1">{enviando ? "Guardando…" : "Guardar"}</button>
         </div>
       </div>
     );
@@ -171,6 +211,7 @@ export default function ProveedoresCompras({ empresaId }) {
         <button onClick={() => { setImportar(""); setError(null); setAviso(null); }} className="g-btn g-btn-secondary flex-1">📋 Traer de la planilla</button>
       </div>
       {aviso && <div role="status" className="text-[13px] mb-2">✅ {aviso}</div>}
+      {lista?.length > 1 && <ProveedoresRepetidos version={lista} onUnidos={async (msg) => { setAviso(msg); await cargar(); }} />}
       <div className="flex gap-2 mb-2 items-center">
         <input aria-label="Buscar proveedor" className="g-input flex-1 min-w-0" value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Buscar nombre, CUIT o contacto" />
         <label className="flex items-center gap-1 text-[13px] text-gypi-dim min-h-[44px]">

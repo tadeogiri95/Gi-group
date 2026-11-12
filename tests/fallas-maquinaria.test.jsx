@@ -287,6 +287,8 @@ test("avisar una falla — con el QR la máquina ya viene elegida; pide qué le 
 test("lista de fallas — la parada arriba, cargar el arreglo con costo", async () => {
   const enviados = [];
   global.fetch = async (url, opts = {}) => {
+    // Quién la arregló afuera sale de la lista de proveedores (183)
+    if (String(url).includes("/api/data") && String(opts.body).includes("proveedores")) return new Response(JSON.stringify({ data: [{ id: 8, nombre: "Taller Ruiz" }] }), { status: 200 });
     enviados.push(JSON.parse(opts.body));
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
   };
@@ -303,9 +305,11 @@ test("lista de fallas — la parada arriba, cargar el arreglo con costo", async 
   fireEvent.change(screen.getByLabelText("Qué se hizo"), { target: { value: "Cambio de capacitor" } });
   fireEvent.change(screen.getByLabelText("Costo ($)"), { target: { value: "12.500,50" } });
   fireEvent.click(screen.getByRole("button", { name: /Servicio externo/ }));
+  await waitFor(() => assert.ok(screen.getByLabelText("Qué servicio externo").getAttribute("list")));
+  fireEvent.change(screen.getByLabelText("Qué servicio externo"), { target: { value: "taller ruiz" } });
   fireEvent.click(screen.getByRole("button", { name: "Guardar arreglo" }));
   await waitFor(() => assert.equal(cambios, 1));
-  assert.deepEqual(enviados[0], { accion: "falla_resolver", id: 2, detalle: "Cambio de capacitor", donde: "externo", repuestos: null, costo: 12500.5, factura_url: null, fotos: [] });
+  assert.deepEqual(enviados[0], { accion: "falla_resolver", id: 2, detalle: "Cambio de capacitor · por taller ruiz", donde: "externo", proveedor_id: 8, repuestos: null, costo: 12500.5, factura_url: null, fotos: [] });
 });
 
 test("pantallas — Inicio del operario, QR que abre el aviso, etiqueta en la ficha e indicadores", () => {

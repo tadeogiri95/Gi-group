@@ -10,6 +10,7 @@ import { apiFetch } from "../lib/supabase";
 import { fallasPendientes, textoHoras } from "../lib/fallasMaquinaria";
 import { Chip } from "./ui";
 import BotonFoto from "./BotonFoto";
+import ElegirTaller from "./ElegirTaller";
 
 async function postFalla(body) {
   const res = await apiFetch("/api/maquinaria", { method: "POST", body: JSON.stringify(body) });
@@ -99,10 +100,17 @@ export function ListaFallas({ fallas = [], maquinas = [], empleados = [], editab
   );
 }
 
+/** El servicio externo queda escrito en el detalle, para el historial. */
+const conTaller = (detalle, taller) => {
+  const t = String(taller || "").replace(/\s+/g, " ").trim();
+  return t ? `${detalle} · por ${t}`.slice(0, 1000) : detalle;
+};
+
 /** Cargar el arreglo de una falla. */
 export function FormArreglo({ falla, maquina, onCancelar, onGuardado }) {
   const [detalle, setDetalle] = useState("");
   const [donde, setDonde] = useState("interno");
+  const [taller, setTaller] = useState({ taller: "", proveedor_id: null });
   const [repuestos, setRepuestos] = useState("");
   const [costo, setCosto] = useState("");
   const [factura, setFactura] = useState(null);
@@ -117,7 +125,7 @@ export function FormArreglo({ falla, maquina, onCancelar, onGuardado }) {
     setEnviando(true);
     setError(null);
     try {
-      await postFalla({ accion: "falla_resolver", id: falla.id, detalle: detalle.trim(), donde, repuestos: repuestos.trim() || null, costo: costoNum, factura_url: factura, fotos });
+      await postFalla({ accion: "falla_resolver", id: falla.id, detalle: conTaller(detalle.trim(), donde === "externo" ? taller.taller : ""), donde, ...(donde === "externo" && taller.proveedor_id ? { proveedor_id: taller.proveedor_id } : {}), repuestos: repuestos.trim() || null, costo: costoNum, factura_url: factura, fotos });
       await onGuardado();
     } catch (e) {
       setError(e.message);
@@ -136,6 +144,7 @@ export function FormArreglo({ falla, maquina, onCancelar, onGuardado }) {
         <Chip active={donde === "interno"} onClick={() => setDonde("interno")}>🔧 Nosotros</Chip>
         <Chip active={donde === "externo"} onClick={() => setDonde("externo")}>🏭 Servicio externo</Chip>
       </div>
+      {donde === "externo" && <div className="mb-2"><ElegirTaller id="fa-taller" label="Qué servicio externo" valor={taller.taller} onCambio={setTaller} /></div>}
       <label className="g-label" htmlFor="fa-repuestos">Repuestos o insumos</label>
       <input id="fa-repuestos" className="g-input w-full mb-2" maxLength={1000} value={repuestos} onChange={(e) => setRepuestos(e.target.value)} placeholder="Ej: correa A-42, 1 L de aceite" />
       <label className="g-label" htmlFor="fa-costo">Costo ($)</label>

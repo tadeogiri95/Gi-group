@@ -27,6 +27,7 @@ import { NextResponse } from "next/server";
 import { sbGet, sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
+import { datosAgendaDeCliente } from "../../../lib/proveedoresUnicos";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { FECHA } from "../../../lib/finanzasOperaciones";
 import { CUENTA_AJUSTE_CAPITAL, ORIGEN_SALDO_INICIAL } from "../../../lib/finanzasProveedores";
@@ -92,6 +93,9 @@ async function guardarCliente(sesion, d) {
   const cambios = { ...cliente, updated_at: ahora };
   if (typeof d.activo === "boolean") cambios.activo = d.activo;
   const [fila] = (await sbPatch(`fin_clientes?id=eq.${id}&empresa_id=eq.${e}`, cambios, { sesion })) || [];
+  // La agenda (fin_personas) sigue al cliente corregido; sin la 180 no hace nada (183)
+  const agenda = datosAgendaDeCliente(cliente);
+  if (Object.keys(agenda).length) await sbPatch(`fin_personas?empresa_id=eq.${e}&cliente_id=eq.${id}`, { ...agenda, updated_at: ahora }, { sesion, silent: true });
   return NextResponse.json({ ok: true, cliente: fila });
 }
 
