@@ -11,8 +11,10 @@
 import { useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { plata } from "../lib/finanzasOperaciones";
-import { reglasDelLibro } from "../lib/finanzasBanco";
+import { movimientoEnCuenta, reglasDelLibro } from "../lib/finanzasBanco";
 import { claseDeArchivo } from "../lib/finanzasExtracto";
+import { puedeAnular, puedeCorregir } from "../lib/finanzasCorregir";
+import { Detalle } from "./FinanzasMovimientos";
 import { Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
@@ -51,6 +53,91 @@ export function problemaDelLibro(bytes) {
 
 export const LIBRO_ILEGIBLE = "No pude abrir el libro: puede estar incompleto o con contraseña. Bajalo de nuevo como .xlsx (sin contraseña) y probá otra vez.";
 
+const ORIGEN_CORTO = { libro: "del libro", banco: "del extracto", manual: "a mano", plazo_fijo: "plazo fijo", saldo_inicial: "apertura", mi_caja: "Mi caja" };
+const origenCorto = (o) => ORIGEN_CORTO[o?.origen || "manual"] || o?.origen || "";
+
+/** Cómo se arma el saldo de Gypi y la diferencia con el banco (12/11). */
+function SaldoGypi({ saldo, banco, hasta }) {
+  if (!saldo) return null;
+  const dif = banco == null ? null : Math.round((saldo.saldo - banco) * 100) / 100;
+  const mal = dif != null && Math.abs(dif) >= 0.01;
+  return (
+    <details className={`rounded-lg border p-2 text-[13px] ${mal ? "border-gypi-red/40 bg-gypi-red/5" : "border-gypi-border"}`} open={mal}>
+      <summary className="cursor-pointer font-semibold">
+        🔎 Saldo de Gypi al {fechaCorta(hasta)}: {plata(saldo.saldo, "ARS")}
+        {banco != null && (mal ? <span className="text-gypi-red"> · el banco dice {plata(banco, "ARS")} (diferencia {plata(dif, "ARS")})</span> : <span className="text-gypi-green"> · igual que el banco ✓</span>)}
+      </summary>
+      <p className="m-0 mt-2 text-gypi-dim">De dónde sale el saldo de Gypi (todas las operaciones de esta cuenta hasta esa fecha):</p>
+      <table className="mt-1 text-[13px] border-collapse" aria-label="Saldo por origen">
+        <tbody>
+          {saldo.origenes.map((o) => (
+            <tr key={o.origen} className="border-t border-gypi-border">
+              <td className="py-0.5 pr-3">{o.nombre}</td>
+              <td className="py-0.5 pr-3 text-gypi-dim text-right">{o.n} mov.</td>
+              <td className={`py-0.5 text-right font-mono ${o.saldo < 0 ? "text-gypi-red" : "text-gypi-text"}`}>{plata(o.saldo, "ARS")}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {mal && <p className="m-0 mt-1 text-gypi-dim">Si un origen suma mucho más de lo que debería, suele ser lo mismo cargado dos veces: mirá abajo &quot;Posibles repetidos&quot;.</p>}
+    </details>
+  );
+}
+
+/** Operaciones de la cuenta que parecen cargadas dos veces: se elige cuáles anular. */
+function Repetidos({ grupos, onVer, onAnuladas }) {
+  const toast = useToast();
+  const [elegidas, setElegidas] = useState(() => new Set());
+  const [anulando, setAnulando] = useState(false);
+  if (!grupos?.length) return null;
+  const alternar = (id) => setElegidas((x) => { const n = new Set(x); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const sugerir = () => setElegidas(new Set(grupos.flatMap((g) => g.ops.filter((o) => o.id !== g.queda && puedeAnular(o)).map((o) => o.id))));
+  const anular = async () => {
+    if (!window.confirm(`Se anulan ${elegidas.size} operaciones: quedan tachadas y dejan de sumar (si estaban en el libro, el libro las borra). ¿Seguimos?`)) return;
+    setAnulando(true);
+    try {
+      const r = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "anular_varias", ids: [...elegidas] }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "No se pudieron anular");
+      toast.success(`Se anularon ${d.anuladas} operaciones`);
+      setElegidas(new Set());
+      onAnuladas();
+    } catch (e) {
+      toast.error(e.message);
+    }
+    setAnulando(false);
+  };
+  return (
+    <details className="rounded-lg border border-gypi-amber/40 bg-gypi-amber/10 p-2 text-[13px]">
+      <summary className="cursor-pointer font-semibold text-gypi-amber-ink">🔁 Posibles repetidos en Gypi ({grupos.length})</summary>
+      <p className="m-0 mt-2 text-gypi-dim">Mismo importe y hasta 3 días de diferencia en esta cuenta. Tildá las que sobran: se anulan. ⭐ = la que conviene dejar: la copiada del libro si la hay (al anular la otra, el libro también queda bien), si no la del extracto o la más vieja.</p>
+      <ul className="list-none m-0 mt-1 p-0 flex flex-col gap-2">
+        {grupos.map((g) => (
+          <li key={g.ops.map((o) => o.id).join("-")} className="border-t border-gypi-border pt-1">
+            <b className="font-mono">{plata(g.importe, "ARS")}</b> · {g.ops.length} veces
+            <ul className="list-none m-0 p-0">
+              {g.ops.map((o) => (
+                <li key={o.id} className="flex items-start gap-2">
+                  <input type="checkbox" className="mt-0.5" aria-label={`Anular la operación ${o.id}`} checked={elegidas.has(o.id)} disabled={!puedeAnular(o)} onChange={() => alternar(o.id)} />
+                  <span className="flex-1 min-w-0">
+                    {o.id === g.queda ? "⭐ " : ""}<span className="font-mono">{fechaCorta(o.fecha)}</span> {o.tipo} · {origenCorto(o)}{o.descripcion ? ` · ${o.descripcion}` : ""}
+                    {!puedeAnular(o) && <span className="text-gypi-dim"> (se borra en el libro y volvés a pasar el histórico)</span>}
+                  </span>
+                  <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[12px]" onClick={() => onVer(o)} aria-label={`Ver la operación ${o.id}`}>Ver</button>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+      <div className="flex flex-wrap gap-2 mt-2">
+        <button type="button" className="g-btn g-btn-secondary" onClick={sugerir}>Tildar las que sobran</button>
+        <button type="button" className="g-btn g-btn-primary disabled:opacity-50" disabled={!elegidas.size || anulando} onClick={anular}>{anulando ? "Anulando…" : `🗑 Anular ${elegidas.size} elegidas`}</button>
+      </div>
+    </details>
+  );
+}
+
 export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
   const toast = useToast();
   const [leyendo, setLeyendo] = useState(false);
@@ -60,12 +147,17 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
   const [error, setError] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [verYa, setVerYa] = useState(false);
+  // El archivo subido: después de corregir o anular algo se vuelve a leer, así se ve cómo quedó
+  const [archivo, setArchivo] = useState(null);
+  const [detalle, setDetalle] = useState(null);
+  const [corrigiendo, setCorrigiendo] = useState(null);
   const nombreCuenta = useMemo(() => new Map((datos.cuentas || []).map((c) => [c.codigo, c.nombre])), [datos.cuentas]);
   const tipos = useMemo(() => (datos.tipos || []).filter((t) => t.activo !== false), [datos.tipos]);
   const etiquetaCuenta = (c) => (c ? `${c} · ${nombreCuenta.get(c) || ""}` : "");
 
   async function subir(file) {
     if (!file) return;
+    setArchivo(file);
     setError(null);
     setLeyendo(true);
     try {
@@ -123,10 +215,29 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
     cambiar(f.i, { tipo: codigo, contra: etiquetaCuenta(contra), elegida: Boolean(codigo) });
   };
 
+  const repetidas = useMemo(() => new Set((res?.repetidos || []).flatMap((g) => g.ops.filter((o) => o.id !== g.queda).map((o) => o.id))), [res]);
   const pendientes = filas.filter((f) => !f.op);
   const ya = filas.filter((f) => f.op);
   const elegidas = pendientes.filter((f) => f.elegida);
   const incompletas = elegidas.filter((f) => !f.tipo || !nombreCuenta.has(codigoDe(f.contra)));
+
+  const releer = () => { if (archivo) subir(archivo); };
+
+  // "Dejar como dice el banco": la de Gypi toma la fecha y el importe del extracto
+  async function comoElBanco(op, f) {
+    setError(null);
+    setCorrigiendo(op.id);
+    try {
+      const r = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "corregir", id: op.id, cambios: { fecha: f.fecha, total: Math.abs(f.importe) } }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "No se pudo corregir");
+      toast.success("✅ Quedó como dice el banco");
+      releer();
+    } catch (e) {
+      setError(e.message);
+    }
+    setCorrigiendo(null);
+  }
 
   async function cargar() {
     setError(null);
@@ -172,6 +283,8 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
                   : `⚠ El saldo no cierra: el banco dice ${plata(res.control.final, "ARS")} y los movimientos leídos dan ${plata(res.control.calculado, "ARS")}. Revisá que el archivo esté completo.`}
               </p>
             )}
+            <SaldoGypi saldo={res.saldo_gypi} banco={res.control?.final ?? null} hasta={res.hasta} />
+            <Repetidos grupos={res.repetidos} onVer={setDetalle} onAnuladas={releer} />
             {!res.reglas && <p className="m-0 text-[13px] text-gypi-amber-ink">Todavía no aprendí cómo cargás este banco: subí el libro con &quot;📘 Aprender del libro&quot; y las sugerencias salen solas.</p>}
           </>
         )}
@@ -206,6 +319,19 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
                     <td className="py-1 min-w-[220px]">
                       <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(f.fecha)}</span> {f.descripcion}
                       {f.entidad && <span className="block text-[12px] text-gypi-dim">{f.entidad}{f.sugerencia?.por === "cuit" ? " · por CUIT" : ""}</span>}
+                      {f.parecido && (
+                        <span className="block mt-1 p-1.5 rounded bg-gypi-amber/10 text-[12px] text-gypi-text">
+                          ¿Es esta de Gypi? {plata(movimientoEnCuenta(f.parecido, caja.cuenta), "ARS")} el {fechaCorta(f.parecido.fecha)} · {f.parecido.tipo} ({origenCorto(f.parecido)})
+                          <span className="flex flex-wrap gap-1.5 mt-1">
+                            {puedeCorregir(f.parecido) && (
+                              <button type="button" className="g-btn g-btn-primary !py-0.5 !px-2 text-[12px]" disabled={corrigiendo === f.parecido.id} onClick={() => comoElBanco(f.parecido, f)}>
+                                {corrigiendo === f.parecido.id ? "Corrigiendo…" : "Dejar como dice el banco"}
+                              </button>
+                            )}
+                            <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[12px]" onClick={() => setDetalle(f.parecido)}>Ver</button>
+                          </span>
+                        </span>
+                      )}
                     </td>
                     <td className={`py-1 text-right font-mono whitespace-nowrap ${f.importe < 0 ? "text-gypi-red" : "text-gypi-green"}`}>{plata(f.importe, "ARS")}</td>
                     <td className="py-1">
@@ -228,8 +354,15 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
             {verYa && (
               <ul className="list-none m-0 mt-2 p-0 flex flex-col gap-1 text-[13px]" aria-label="Ya en Gypi">
                 {ya.map((f) => (
-                  <li key={f.i} className="text-gypi-dim">
-                    ✓ <span className="font-mono">{fechaCorta(f.fecha)}</span> {plata(f.importe, "ARS")} · {f.descripcion} → <b className="text-gypi-text">{f.op.tipo}</b>{f.op.entidad ? ` (${f.op.entidad})` : ""}{f.ya ? " · de un extracto anterior" : ""}
+                  <li key={f.i} className="text-gypi-dim flex flex-wrap items-start gap-x-2 gap-y-1">
+                    <span className="flex-1 min-w-[200px]">
+                      ✓ <span className="font-mono">{fechaCorta(f.fecha)}</span> {plata(f.importe, "ARS")} · {f.descripcion} → <b className="text-gypi-text">{f.op.tipo}</b>{f.op.entidad ? ` (${f.op.entidad})` : ""} · {origenCorto(f.op)}{f.ya ? " · de un extracto anterior" : ""}
+                      {f.op.fecha !== f.fecha && <span className="text-gypi-amber-ink"> · en Gypi dice {fechaCorta(f.op.fecha)}</span>}
+                    </span>
+                    {f.op.fecha !== f.fecha && puedeCorregir(f.op) && (
+                      <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[12px]" disabled={corrigiendo === f.op.id} onClick={() => comoElBanco(f.op, f)}>📅 Poner la fecha del banco</button>
+                    )}
+                    <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[12px]" onClick={() => setDetalle(f.op)}>✏ Corregir o anular</button>
                   </li>
                 ))}
               </ul>
@@ -240,12 +373,22 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
         {res?.sin_banco?.length > 0 && (
           <div className="p-3 rounded-lg border border-gypi-amber/40 bg-gypi-amber/10 text-[13px]">
             <b className="text-gypi-amber-ink">En Gypi pero no en el banco ({res.sin_banco.length}):</b>
+            <p className="m-0 mt-0.5 text-gypi-dim">El extracto suele estar bien: si alguna de estas está mal o sobra, corregila o anulala acá.</p>
             <ul className="list-none m-0 mt-1 p-0 flex flex-col gap-0.5" aria-label="No están en el banco">
-              {res.sin_banco.slice(0, 50).map((o) => <li key={o.id}><span className="font-mono">{fechaCorta(o.fecha)}</span> {o.tipo}{o.entidad ? ` · ${o.entidad}` : ""}{o.descripcion ? ` · ${o.descripcion}` : ""}</li>)}
+              {res.sin_banco.slice(0, 100).map((o) => (
+                <li key={o.id} className="flex flex-wrap items-start gap-x-2 gap-y-1">
+                  <span className="flex-1 min-w-[200px]">
+                    <span className="font-mono">{fechaCorta(o.fecha)}</span> <b className="font-mono">{plata(movimientoEnCuenta(o, caja.cuenta), "ARS")}</b> {o.tipo}{o.entidad ? ` · ${o.entidad}` : ""}{o.descripcion ? ` · ${o.descripcion}` : ""} · {origenCorto(o)}
+                    {repetidas.has(o.id) && <span className="text-gypi-red font-semibold"> · 🔁 parece repetida</span>}
+                  </span>
+                  <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[12px]" onClick={() => setDetalle(o)}>✏ Corregir o anular</button>
+                </li>
+              ))}
             </ul>
           </div>
         )}
 
+        {detalle && <Detalle op={detalle} datos={datos} onCerrar={() => setDetalle(null)} onAnulada={() => { setDetalle(null); releer(); }} />}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         <div className="flex flex-wrap justify-end gap-2">
           {res && <button type="button" className="g-btn g-btn-secondary" onClick={() => { setRes(null); setFilas([]); }}>Subir otro</button>}
