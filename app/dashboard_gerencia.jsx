@@ -61,6 +61,8 @@ import NombreOt from "./components/NombreOt";
 import { mapaOts, otCompleta, textoOt } from "./lib/nombreOt";
 import MisPlanillas, { detalleMisPlanillas, useMisPlanillas } from "./components/MisPlanillas";
 import MiCaja, { detalleMiCaja, useMiCaja } from "./components/MiCaja";
+import TarjetaPlata from "./components/TarjetaPlata";
+import { esDuenoFinanzas } from "./lib/finanzas";
 
 /* ─── Helpers ─── */
 const fmtMin = (min) => {
@@ -752,6 +754,8 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
 
       {/* ─── 📐 Mis planillas (parte 50): solo si quien entra es arquitecta de Diseño y Técnica ─── */}
       {!isDemo && conOt && <TarjetaMisPlanillas />}
+      {/* ─── 💰 La plata (auditoría 12/11, parte 12): solo el Dueño con Finanzas ─── */}
+      {!isDemo && tieneModulo(empresa, "finanzas") && esDuenoFinanzas(usuario) && <TarjetaPlata goto={goto} />}
       {!isDemo && tieneModulo(empresa, "finanzas") && <TarjetaMiCaja />}
 
       {/* ─── Minuta de Buenos Días (parte M5): solo gerencia con el módulo ─── */}
