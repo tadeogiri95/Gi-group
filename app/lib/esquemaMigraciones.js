@@ -100,6 +100,7 @@ export const MIGRACIONES = [
   { n: 181, archivo: "181_accesos_personas.sql", nombre: "Accesos por persona", tablas: { accesos_personas: [] } },
   { n: 182, archivo: "182_remitos_stock.sql", nombre: "Stock: ingreso por foto del remito", tablas: { remitos_stock: [] } },
   { n: 183, archivo: "183_proveedor_unico.sql", nombre: "Una sola lista de proveedores", tablas: { proveedores: ["unido_a"], vehiculo_mantenimientos: ["proveedor_id"], maquina_fallas: ["proveedor_id"] }, funciones: ["compras_unir_proveedores"] },
+  { n: 184, archivo: "184_cliente_ot.sql", nombre: "Cada OT unida a su cliente de Finanzas", tablas: { proyectos: ["cliente_id"] } },
 ];
 
 /** Lo que pide una migración, como lista de { tabla, columnas } y funciones. */

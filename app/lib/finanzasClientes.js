@@ -138,6 +138,19 @@ export function emparejarCliente(nombre, clientes = []) {
     || null;
 }
 
+/**
+ * El cliente de una OT (auditoría del 12/11, parte 6; migración 184): manda el
+ * de la OT. Si la OT ya quedó unida a un cliente (proyectos.cliente_id), ese
+ * (o al que se unió); si no, el que corresponde al nombre del Plan de trabajo.
+ * @returns {number|null} id de fin_clientes
+ */
+export function clienteDeOt(p, clientes = [], indice = indiceClientes(clientes)) {
+  const id = Number(p?.cliente_id);
+  if (id && clientes.some((c) => Number(c.id) === id)) return indice.destino(id);
+  const c = emparejarCliente(p?.cliente, clientes);
+  return c ? indice.destino(c.id) : null;
+}
+
 /** Saldo de cada cliente en el libro hasta la fecha de corte (lo que nos debe; negativo = a favor). */
 export function saldosClientesDelLibro(grilla, hasta, cuentasDeu) {
   // Misma cuenta que proveedores pero al revés: al debe sube lo que nos deben
@@ -205,7 +218,7 @@ export function unirClientes(a, b) {
  * @returns {{ errores: string[], ops?: object[], cheques?: { cheque: object, op: object }[], total?: number }}
  *   cheques: el cheque a dar de alta y su operación (le falta el id del cheque)
  */
-export function armarCobro(f = {}, { cliente, cuentas = [], tesoreria = [], proyectos = [], grupo }) {
+export function armarCobro(f = {}, { cliente, cuentas = [], tesoreria = [], proyectos = [], clientes = [], grupo }) {
   const errores = [];
   if (!cliente || cliente.activo === false) errores.push("Elegí el cliente");
   if (!FECHA.test(String(f.fecha || ""))) errores.push("Falta la fecha");
@@ -213,7 +226,17 @@ export function armarCobro(f = {}, { cliente, cuentas = [], tesoreria = [], proy
   const ajuste = cuentas.find((c) => CUENTA_AJUSTE_CAPITAL.test(String(c.nombre || "").trim()))?.codigo;
   if (!deudores) errores.push("Falta la cuenta \"Deudores por Ventas\" en el plan de cuentas");
   const proyectoId = f.proyecto_id ? Number(f.proyecto_id) : null;
-  if (proyectoId && !proyectos.some((p) => Number(p.id) === proyectoId)) errores.push("Esa OT no está en la lista");
+  const proyecto = proyectoId ? proyectos.find((p) => Number(p.id) === proyectoId) : null;
+  if (proyectoId && !proyecto) errores.push("Esa OT no está en la lista");
+  // Manda el cliente de la OT (parte 6): el cobro de una OT va a su cliente
+  if (proyecto && cliente && clientes.length) {
+    const indice = indiceClientes(clientes);
+    const deOt = clienteDeOt(proyecto, clientes, indice);
+    if (deOt && deOt !== indice.destino(cliente.id)) {
+      const nombre = clientes.find((c) => Number(c.id) === deOt)?.nombre || "otro cliente";
+      errores.push(`La OT ${proyecto.ot} es de ${nombre}: cargá el cobro a ese cliente o sacá la OT`);
+    }
+  }
   const formas = Array.isArray(f.formas) ? f.formas.slice(0, 10) : [];
   if (!formas.length) errores.push("Falta cómo pagó");
   const vivas = tesoreria.filter((t) => t.activa !== false);
