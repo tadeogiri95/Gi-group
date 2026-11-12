@@ -18,6 +18,7 @@ const PARA_TEXTO = 6;
 export function aEditor(r) {
   return {
     id: r.id || null,
+    origen: r.origen === "ticket" ? "ticket" : "remito",
     foto_url: r.foto_url || null,
     proveedor: r.proveedor || "",
     numero: r.numero || "",
@@ -47,7 +48,7 @@ export function cuerpoRemito(ed) {
 }
 
 const fechaCorta = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T12:00:00`).toLocaleDateString("es-AR", { dateStyle: "short" }) : "");
-const titulo = (r) => [r.proveedor || "Sin proveedor", r.numero ? `N° ${r.numero}` : null].filter(Boolean).join(" · ");
+const titulo = (r) => [r.origen === "ticket" ? "🧾 Ticket de Mi caja" : null, r.proveedor || "Sin proveedor", r.numero ? `N° ${r.numero}` : null].filter(Boolean).join(" · ");
 const cuantos = (n) => (n === 1 ? "1 artículo" : `${n} artículos`);
 
 export default function RemitosFoto({ articulos = [], onIngreso, onAbierto }) {
@@ -183,7 +184,7 @@ export default function RemitosFoto({ articulos = [], onIngreso, onAbierto }) {
   return (
     <section aria-label="Remito por foto" className="p-3 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface">
       <div className="flex items-center gap-2 mb-2">
-        <div className="flex-1 text-[15px] font-bold">{ed.id ? "🕓 Remito para revisar" : "📷 Remito leído"}</div>
+        <div className="flex-1 text-[15px] font-bold">{ed.id ? (ed.origen === "ticket" ? "🕓 Ticket de Mi caja para revisar" : "🕓 Remito para revisar") : "📷 Remito leído"}</div>
         {ed.foto_url && <a href={ed.foto_url} target="_blank" rel="noopener noreferrer" className="text-[13px] font-semibold text-gypi-amber-ink">Ver foto</a>}
       </div>
       {ed.id && ed.cargado_por_nombre && <div className="text-[12px] text-gypi-dim mb-2">Lo cargó {ed.cargado_por_nombre}.</div>}

@@ -55,7 +55,7 @@ import { MAX_ARCHIVO_B64 } from "../../lib/facturasSueltas";
 import { checkRateLimit } from "../../lib/rateLimitMemory";
 import { logAudit } from "../../lib/audit";
 import { ipCliente } from "../../lib/ip";
-import { accesoSesion } from "../../lib/accesosServidor";
+import { accesoSesion, requireModuloSesion } from "../../lib/accesosServidor";
 import { CLAVE_PASES, ORIGEN_PASE, destinosPase, guardarPases, leerPases, operacionDePase, pasesDe, validarPase } from "../../lib/finanzasPases";
 
 const COLUMNAS = "id,fecha,tipo,total,moneda,total_ars,cuenta_debe,cuenta_haber,descripcion,origen,estado,anulada_at";
@@ -152,6 +152,8 @@ export async function GET(request) {
     return NextResponse.json({
       cajas: cajas.map((c) => ({ ...resumenMiCaja(ops, c, nombres), propia: c.propia !== false, destinos: c.propia !== false ? destinosPase(c, tesoreria, personal) : [] })),
       titular: cajas.some((c) => c.propia === false),
+      // Con Stock, el ticket de materiales se puede mandar al stock (11/11)
+      con_stock: !(await requireModuloSesion(sesion, "stock").catch(() => true)),
       conceptos: lista, hoy: hoyAr(), ...deCadaUno,
     });
   } catch (err) {

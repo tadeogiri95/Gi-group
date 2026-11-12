@@ -14,6 +14,8 @@
 //         revisa (con lo que haya corregido) y entra al stock.
 //   POST { accion: "descartar", id } → la oficina, o quien lo cargó mientras
 //         sigue para revisar.
+//   POST { accion: "ticket", foto_url, proveedor?, numero?, fecha? } → el
+//         ticket de materiales de Mi caja: la IA lo lee y queda para revisar.
 //
 // Cualquiera de la empresa con el módulo Stock carga; confirman el Dueño y
 // Administración. Lee y escribe con la clave del servidor, siempre filtrando
@@ -93,25 +95,25 @@ async function avisosDe(e, remito) {
   return { avisos, orden, repetido };
 }
 
-async function leer(request, sesion, d) {
+/** La IA lee la foto y Gypi reconoce los artículos: { borrador } o { response } con el error. */
+async function lectura(request, sesion, url, proveedor = null) {
   const e = sesion.empresa_id;
-  const url = String(d?.foto_url || "");
   const tipo = TIPO_FOTO[(url.match(/\.([a-z]+)$/i)?.[1] || "").toLowerCase()];
   if (!url || !tipo || !comprobanteValido(url, { supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL, empresaId: e })) {
-    return NextResponse.json({ error: "Sacá la foto del remito de nuevo" }, { status: 400 });
+    return { response: NextResponse.json({ error: "Sacá la foto del remito de nuevo" }, { status: 400 }) };
   }
   if (checkRateLimit(`remito-foto:${sesion.empleado_id || sesion.legajo}`, 30, 60 * 60 * 1000).limited) {
-    return NextResponse.json({ error: "Leíste muchos remitos seguidos: cargá este a mano." }, { status: 429 });
+    return { response: NextResponse.json({ error: "Leíste muchos remitos seguidos: cargá este a mano." }, { status: 429 }) };
   }
   const res = await fetch(url).catch(() => null);
-  if (!res?.ok) return NextResponse.json({ error: "No se pudo bajar la foto del remito" }, { status: 400 });
+  if (!res?.ok) return { response: NextResponse.json({ error: "No se pudo bajar la foto del remito" }, { status: 400 }) };
   const archivo = Buffer.from(await res.arrayBuffer()).toString("base64");
-  if (archivo.length > MAX_ARCHIVO_B64) return NextResponse.json({ error: "La foto es muy grande para leerla" }, { status: 400 });
+  if (archivo.length > MAX_ARCHIVO_B64) return { response: NextResponse.json({ error: "La foto es muy grande para leerla" }, { status: 400 }) };
   let r;
   try {
     r = await leerDocumentoIa({ base64: archivo, tipo, sistema: PROMPT_REMITO, esquema: ESQUEMA_REMITO, maxTokens: 6000 });
   } catch (err) {
-    if (err instanceof ErrorIa) return NextResponse.json({ error: `${err.message} Cargá los artículos a mano.` }, { status: 502 });
+    if (err instanceof ErrorIa) return { response: NextResponse.json({ error: `${err.message} Cargá los artículos a mano.` }, { status: 502 }) };
     throw err;
   }
   logAudit({
@@ -120,14 +122,47 @@ async function leer(request, sesion, d) {
     datos_despues: { tipo: "remito_stock", tokens_input: r.uso.input_tokens, tokens_output: r.uso.output_tokens, model: r.modelo },
     ip: ipCliente(request),
   });
-  const p = claveProveedor(r.lectura?.proveedor);
+  const p = claveProveedor(proveedor || r.lectura?.proveedor);
   const [{ data: articulos }, asociaciones] = await Promise.all([
     sbGetAll(`articulos_stock?empresa_id=eq.${e}&activo=eq.true&select=sku,nombre&order=sku.asc`, { maxFilas: 20000 }),
     p ? sbGet(`asociaciones_articulos?empresa_id=eq.${e}&proveedor_clave=eq.${encodeURIComponent(p)}&select=tipo,clave,sku`, { silent: true, fallback: [] }) : Promise.resolve([]),
   ]);
-  const borrador = borradorRemito(r.lectura, { articulos: articulos || [], asociaciones: asociaciones || [] });
-  const { avisos, orden } = await avisosDe(e, borrador);
+  return { borrador: borradorRemito(r.lectura, { articulos: articulos || [], asociaciones: asociaciones || [] }) };
+}
+
+async function leer(request, sesion, d) {
+  const url = String(d?.foto_url || "");
+  const { borrador, response } = await lectura(request, sesion, url);
+  if (response) return response;
+  const { avisos, orden } = await avisosDe(sesion.empresa_id, borrador);
   return NextResponse.json({ ok: true, borrador: { ...borrador, foto_url: url }, avisos, orden });
+}
+
+/**
+ * Ticket de materiales de Mi caja (11/11, conexión del plan): la IA lee los
+ * renglones de la foto del ticket y queda para revisar en Stock, con el
+ * comercio, el número y la fecha que se cargaron en Mi caja.
+ */
+async function ticket(request, sesion, d) {
+  const e = sesion.empresa_id;
+  const url = String(d?.foto_url || "");
+  const { borrador, response } = await lectura(request, sesion, url, String(d.proveedor || "").trim() || null);
+  if (response) return response;
+  const datos = {
+    proveedor: String(d.proveedor || "").trim() || borrador.proveedor,
+    numero: String(d.numero || "").trim() || borrador.numero,
+    fecha: d.fecha || borrador.fecha,
+    notas: "Ticket de Mi caja",
+    renglones: borrador.renglones,
+  };
+  const { remito, errores } = validarRemito(datos, { skus: await skusDe(e, datos.renglones), sinCantidades: true });
+  if (errores.length) return NextResponse.json({ error: "No pude leer los materiales del ticket: cargalos en Stock → Movimientos." }, { status: 400 });
+  const [nuevo] = (await sbPost("remitos_stock", {
+    ...remito, empresa_id: e, origen: "ticket", foto_url: url, estado: "para_revisar",
+    cargado_por: sesion.empleado_id || null, cargado_por_nombre: await nombreDe(sesion),
+  })) || [];
+  broadcastRefresh(e, "remitos_stock");
+  return NextResponse.json({ ok: true, id: nuevo?.id || null, estado: "para_revisar", renglones: remito.renglones.length });
 }
 
 /** Los ingresos al stock del remito y el remito confirmado. */
@@ -261,6 +296,7 @@ export async function POST(request) {
     try {
       switch (d.accion) {
         case "leer": return await leer(request, sesion, d);
+        case "ticket": return await ticket(request, sesion, d);
         case "guardar": return await guardar(sesion, d);
         case "confirmar": return await confirmar(sesion, d);
         case "descartar": return await descartar(sesion, d);
