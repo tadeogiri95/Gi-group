@@ -20,9 +20,13 @@
 //     empleado lo ve todo lleno y lo puede corregir. El número va a
 //     referencia con el mismo formato que Cargar un gasto, así el mismo
 //     comprobante no entra dos veces (finanzasComprobantes).
+//   - 13/11: plata que entra contra Deudores por Ventas o Anticipos de
+//     clientes (el cobro a un cliente) pide el cliente y, si se quiere, la
+//     OT: queda en la cuenta corriente del cliente en ese momento.
 import { movimientoCaja, separaIva } from "./finanzasOperaciones";
 import { LETRAS, proveedorDeFactura, textoComprobante } from "./finanzasGastos";
 import { TIPOS_NUEVOS, claveTipo, leyendaTipo, lineaDeLista } from "./finanzasTipos";
+import { clienteDeOt, cuentasDeCliente, indiceClientes } from "./finanzasClientes";
 
 export const CLAVE_MI_CAJA = "finanzas_mi_caja";
 export const ORIGEN_MI_CAJA = "mi_caja";
@@ -79,12 +83,16 @@ const grupoDe = (t) => {
 };
 
 /** Lo que ve el responsable: todos los tipos de gasto y de plata que entra, menos los que escondió el dueño. */
-export function conceptosMiCaja(config, tipos = []) {
+export function conceptosMiCaja(config, tipos = [], cuentas = []) {
   const { ocultos } = leerConfigMiCaja(config);
   const sirven = tiposParaMiCaja(tipos);
+  const deCliente = cuentasDeCliente(cuentas);
   const armar = (de, lado, fuera) => de
     .filter((t) => !fuera.includes(t.codigo))
-    .map((t) => ({ codigo: t.codigo, nombre: txt(t.nombre, 80) || t.codigo, cuenta: t[lado], leyenda: leyendaTipo(t), grupo: grupoDe(t) }));
+    .map((t) => ({
+      codigo: t.codigo, nombre: txt(t.nombre, 80) || t.codigo, cuenta: t[lado], leyenda: leyendaTipo(t), grupo: grupoDe(t),
+      ...(deCliente.has(t[lado]) ? { pide_cliente: true } : {}),
+    }));
   return { gastos: armar(sirven.gastos, "cuenta_debe", ocultos.gastos), ingresos: armar(sirven.ingresos, "cuenta_haber", ocultos.ingresos) };
 }
 
@@ -103,7 +111,7 @@ export function comprobanteValido(url, { supabaseUrl, empresaId }) {
  * @param {{ caja: any, conceptos: { gastos: any[], ingresos: any[] }, confirmada?: boolean, supabaseUrl?: string, empresaId?: string, hoy?: string, proveedores?: object[] }} ctx
  * @returns {{ op?: object, errores: string[] }}
  */
-export function validarMovimientoMiCaja(f = {}, { caja, conceptos, confirmada = false, supabaseUrl, empresaId, hoy, proveedores = [] } = {}) {
+export function validarMovimientoMiCaja(f = {}, { caja, conceptos, confirmada = false, supabaseUrl, empresaId, hoy, proveedores = [], clientes = [], proyectos = [] } = {}) {
   const errores = [];
   if (!caja || caja.activa === false) errores.push("Esa caja no está a tu cargo");
   const gasto = f.clase === "gasto";
@@ -119,6 +127,20 @@ export function validarMovimientoMiCaja(f = {}, { caja, conceptos, confirmada = 
   if (usd && !(tc > 0)) errores.push("En dólares falta el tipo de cambio");
   const comprobante = txt(f.comprobante_url, 500) || null;
   if (!comprobanteValido(comprobante, { supabaseUrl, empresaId })) errores.push("La foto del ticket no es válida: sacala de nuevo");
+  // 13/11: un cobro a un cliente dice de qué cliente es (y, si se quiere, de qué OT)
+  const cliente = concepto?.pide_cliente && f.cliente_id ? clientes.find((c) => Number(c.id) === Number(f.cliente_id)) || null : null;
+  if (concepto?.pide_cliente && !cliente) errores.push(f.cliente_id ? "Ese cliente no está en la lista" : "Elegí de qué cliente es la plata");
+  const proyecto = f.proyecto_id ? proyectos.find((p) => Number(p.id) === Number(f.proyecto_id)) || null : null;
+  if (f.proyecto_id && !proyecto) errores.push("Esa OT no está en la lista");
+  // Manda el cliente de la OT, igual que en Cobrar a un cliente
+  if (proyecto && cliente) {
+    const indice = indiceClientes(clientes);
+    const deOt = clienteDeOt(proyecto, clientes, indice);
+    if (deOt && deOt !== indice.destino(cliente.id)) {
+      const nombre = clientes.find((c) => Number(c.id) === deOt)?.nombre || "otro cliente";
+      errores.push(`La OT ${proyecto.ot} es de ${nombre}: elegí ese cliente o sacá la OT`);
+    }
+  }
   const cuit = soloDigitos(f.cuit);
   if (cuit && cuit.length !== 11) errores.push("El CUIT tiene que tener 11 números");
   if (errores.length) return { errores };
@@ -134,11 +156,14 @@ export function validarMovimientoMiCaja(f = {}, { caja, conceptos, confirmada = 
   return {
     errores,
     op: {
-      fecha: f.fecha, tipo: concepto.codigo, proveedor_id: proveedor ? Number(proveedor.id) : null, entidad: proveedor ? null : comercio || null,
+      fecha: f.fecha, tipo: concepto.codigo, proveedor_id: proveedor && !cliente ? Number(proveedor.id) : null,
+      entidad: cliente ? txt(cliente.nombre, 120) : proveedor ? null : comercio || null,
+      ...(cliente ? { cliente_id: Number(cliente.id) } : {}),
+      ...(proyecto ? { proyecto_id: Number(proyecto.id) } : {}),
       neto: imp.neto, iva: imp.iva, otros_impuestos: imp.otros, total: importe, moneda: usd ? "USD" : "ARS", tipo_cambio: tc, total_ars: usd ? centavos(importe * tc) : importe,
       cuenta_debe: gasto ? concepto.cuenta : caja.cuenta,
       cuenta_haber: gasto ? caja.cuenta : concepto.cuenta,
-      descripcion: txt([concepto.nombre, caja.nombre, proveedor?.nombre || comercio, cuitTexto, referencia ? (imp.letra ? `Factura ${referencia}` : `Comprobante ${referencia}`) : "", nota].filter(Boolean).join(" · "), 500),
+      descripcion: txt([concepto.nombre, caja.nombre, cliente?.nombre || proveedor?.nombre || comercio, proyecto?.ot ? `OT ${proyecto.ot}` : "", cuitTexto, referencia ? (imp.letra ? `Factura ${referencia}` : `Comprobante ${referencia}`) : "", nota].filter(Boolean).join(" · "), 500),
       referencia,
       origen: ORIGEN_MI_CAJA, estado: confirmada ? "confirmada" : "para_revisar",
       comprobante_url: comprobante,

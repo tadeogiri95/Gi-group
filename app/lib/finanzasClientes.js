@@ -32,6 +32,34 @@ export function cuentasDeudores(cuentas = []) {
   return new Set(cuentas.filter((c) => CUENTA_DEUDORES.test(String(c.nombre || "").trim())).map((c) => c.codigo));
 }
 
+/**
+ * ¿La cuenta es la de un cliente? Deudores por Ventas o Anticipos de clientes:
+ * un cobro contra esas cuentas tiene que decir de qué cliente es, así entra a
+ * su cuenta corriente (13/11, pedido de Tadeo).
+ */
+export function cuentasDeCliente(cuentas = []) {
+  const nombre = (c) => String(c.nombre || "").trim();
+  return new Set(cuentas.filter((c) => CUENTA_DEUDORES.test(nombre(c)) || /^anticipos? (de|a) clientes?$/i.test(nombre(c))).map((c) => c.codigo));
+}
+
+/**
+ * Nueva operación a mano (13/11): si toca la cuenta de un cliente, queda con
+ * su cliente_id. Se busca por el nombre elegido o, si se eligió a alguien que
+ * es proveedor y cliente, por el nombre de ese proveedor.
+ * @returns {{ cliente_id: number, entidad: string } | null}
+ */
+export function clienteDeOperacion(op, { cuentas = [], clientes = [], proveedores = [] } = {}) {
+  if (!op || op.cliente_id) return null;
+  const deCliente = cuentasDeCliente(cuentas);
+  if (!deCliente.has(op.cuenta_debe) && !deCliente.has(op.cuenta_haber)) return null;
+  const nombre = op.entidad || (op.proveedor_id ? proveedores.find((p) => Number(p.id) === Number(op.proveedor_id))?.nombre : null);
+  const c = nombre ? emparejarCliente(nombre, clientes.filter((x) => !x.unido_a)) : null;
+  if (!c) return null;
+  const elegido = indiceClientes(clientes).destino(c.id);
+  const final = clientes.find((x) => Number(x.id) === elegido) || c;
+  return { cliente_id: Number(final.id), entidad: txt(final.nombre, 120) };
+}
+
 /** Nombre o alias → id del cliente. Los unidos a otro van al que quedó. */
 export function indiceClientes(clientes = []) {
   const porId = new Map(clientes.map((c) => [Number(c.id), c]));

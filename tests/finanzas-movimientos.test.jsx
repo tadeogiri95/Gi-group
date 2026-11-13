@@ -188,7 +188,7 @@ const pedir = async (rol, metodo, body, query = "") => api[metodo](new Request(`
 function mockApi({ anulada = false, existentes = null } = {}) {
   const escrito = [];
   const leido = [];
-  const tabla = { fin_tipos_operacion: TIPOS, fin_cuentas: CUENTAS, fin_tesoreria: TESORERIA, fin_centros_costo: CENTROS, proveedores: PROVEEDORES, proyectos: PROYECTOS };
+  const tabla = { fin_tipos_operacion: TIPOS, fin_cuentas: CUENTAS, fin_tesoreria: TESORERIA, fin_centros_costo: CENTROS, proveedores: PROVEEDORES, proyectos: PROYECTOS, fin_clientes: [{ id: 3, nombre: "Riofrio Ivan", activo: true }, { id: 4, nombre: "ACERCO S A", activo: true }] };
   global.fetch = createFetchMock([
     ...authPassHandlers(),
     { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
@@ -270,6 +270,21 @@ test("/api/finanzas/operaciones — crear: el mismo importe en la misma caja el 
   // Una compra que no toca ninguna caja no se revisa
   ({ escrito } = mockApi({ existentes: [delExtracto] }));
   assert.equal((await pedir("gerencial", "POST", { accion: "crear", operacion: base })).status, 200);
+});
+
+test("/api/finanzas/operaciones — crear: el cobro a un cliente queda en su cuenta con su id (13/11)", async () => {
+  const cobro = { fecha: "2026-11-09", tipo: "COBRO USD", entidad: "RIOFRIO IVAN", neto: "100", moneda: "USD", tipo_cambio: "1000", cuenta_debe: "01.01.01.008.001", cuenta_haber: "01.01.02.001.001" };
+  let { escrito } = mockApi({ existentes: [] });
+  assert.equal((await pedir("gerencial", "POST", { accion: "crear", operacion: cobro })).status, 200);
+  assert.deepEqual([escrito[0].body.cliente_id, escrito[0].body.entidad], [3, "Riofrio Ivan"]);
+  // Alguien que es proveedor y cliente: el cobro va al cliente
+  ({ escrito } = mockApi({ existentes: [] }));
+  assert.equal((await pedir("gerencial", "POST", { accion: "crear", operacion: { ...cobro, entidad: "", proveedor_id: "5" } })).status, 200);
+  assert.deepEqual([escrito[0].body.cliente_id, escrito[0].body.proveedor_id, escrito[0].body.entidad], [4, null, "ACERCO S A"]);
+  // Un pago a un proveedor no toca clientes
+  ({ escrito } = mockApi({ existentes: [] }));
+  assert.equal((await pedir("gerencial", "POST", { accion: "crear", operacion: base })).status, 200);
+  assert.equal(escrito[0].body.cliente_id, undefined);
 });
 
 test("/api/finanzas/operaciones — anular no borra: marca quién y cuándo", async () => {
