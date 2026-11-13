@@ -225,7 +225,9 @@ export default function FinanzasDevengamiento({ onIr = null }) {
   const sinCargar = cerrado ? { disabled: true, title: "El mes está cerrado" } : {};
 
   return (
-    <div className="p-[18px] flex flex-col gap-3 text-[14px] text-gypi-text">
+    // 13/11 (revisión de la navegación): se puede bajar hasta el final
+    <div className="flex-1 min-h-0 overflow-y-auto p-[18px] pb-6 text-[14px] text-gypi-text">
+      <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-2 font-semibold">
           Mes
@@ -317,6 +319,7 @@ export default function FinanzasDevengamiento({ onIr = null }) {
       {sos && <FinanzasSos onCerrar={() => setSos(false)} onImportado={listo} />}
       {ventas && <SubirVentas onCerrar={() => setVentas(false)} onSubido={listo} />}
       {cambiarMes && datos.cierre && <CambiarMes cierre={datos.cierre} onCerrar={() => setCambiarMes(false)} onListo={listo} />}
+      </div>
     </div>
   );
 }

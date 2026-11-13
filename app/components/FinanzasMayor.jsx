@@ -300,7 +300,10 @@ export default function FinanzasMayor() {
   const fila = elegida ? saldos.find((s) => s.codigo === elegida) : null;
 
   return (
-    <div className="flex flex-col gap-3 p-3">
+    // 13/11 (revisión de la navegación): con su propia barra para bajar; sin
+    // overflow-y-auto la lista de cuentas quedaba cortada y no se llegaba al final
+    <div className="flex-1 min-h-0 overflow-y-auto p-3 pb-6">
+      <div className="flex flex-col gap-3">
       {fila ? (
         <MayorDeCuenta fila={fila} datos={datos} periodo={periodo} setPeriodo={setPeriodo} onVolver={() => setElegida("")} onAsiento={abrirAsiento} onAbrir={setDetalle} />
       ) : (
@@ -343,6 +346,7 @@ export default function FinanzasMayor() {
         <Detalle op={detalle} datos={datos} nombres={nombres} onCerrar={() => setDetalle(null)}
           onAnulada={() => { setDetalle(null); cargar(); }} onAdjuntos={cargar} />
       )}
+      </div>
     </div>
   );
 }

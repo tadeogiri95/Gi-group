@@ -414,7 +414,10 @@ export default function HomeContent() {
             </ErrorBoundary>
           </div>
         )}
-        <ErrorBoundary name={screen}>
+        {/* key: un error en una pantalla no queda pegado en las demás (13/11,
+            revisión de la navegación; antes "Algo salió mal" seguía en todas
+            hasta recargar la app) */}
+        <ErrorBoundary key={`${screen}:${seccionMas || ""}`} name={screen}>
           {moduloFaltante ? (
             <ModuloBloqueado modulo={moduloFaltante} empresa={empresa} rol={u?.rol} onVerPlanes={() => setShowBilling(true)} />
           ) : <>
