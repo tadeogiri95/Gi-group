@@ -37,7 +37,9 @@ const manual = { id: 7, fecha: "2026-11-05", tipo: "PAGO GASTOS BANCARIOS", neto
 test("qué se corrige y qué se anula acá", () => {
   for (const origen of ["manual", "plazo_fijo", "banco", "mi_caja"]) assert.ok(puedeCorregir({ origen }), origen);
   assert.ok(puedeAnular({ origen: "gasto" }) && !puedeCorregir({ origen: "gasto" }), "el gasto se anula con su pago, no se corrige");
-  for (const origen of ["factura_oc", "cheque", "orden_pago", "venta_ot", "libro", "saldo_inicial"]) assert.ok(!puedeAnular({ origen }), origen);
+  for (const origen of ["factura_oc", "cheque", "orden_pago", "venta_ot"]) assert.ok(!puedeAnular({ origen }), origen);
+  // 13/11: lo del libro y los saldos iniciales se anulan en Gypi (no se corrigen)
+  for (const origen of ["libro", "saldo_inicial"]) assert.ok(puedeAnular({ origen }) && !puedeCorregir({ origen }), origen);
   assert.ok(!puedeCorregir({ origen: "manual", anulada_at: "2026-11-06" }), "la anulada no");
   assert.match(dondeSeCambia({ origen: "libro" }), /libro.*histórico/);
   assert.match(dondeSeCambia({ origen: "cheque" }), /Cheques/);
@@ -164,7 +166,7 @@ test("/api/finanzas/operaciones corregir — anula la vieja como corregida y car
 test("/api/finanzas/operaciones anular — ahora también plazos fijos, extracto y Mi caja; nunca lo de una factura", async () => {
   const { escrito } = mockApi();
   assert.equal((await pedir(api, "operaciones", "gerencial", "POST", { accion: "anular", id: 7 })).status, 200);
-  assert.match(escrito[0].url, /origen=in\.\(manual,plazo_fijo,banco,mi_caja,fci,titulos\)/);
+  assert.match(escrito[0].url, /origen=in\.\(manual,plazo_fijo,banco,mi_caja,fci,titulos,libro,saldo_inicial\)/);
   const varias = mockApi();
   assert.equal((await pedir(api, "operaciones", "gerencial", "POST", { accion: "anular_varias", ids: [1, 2, 2] })).status, 200);
   assert.match(varias.escrito[0].url, /id=in\.\(1,2\)/);
@@ -206,11 +208,12 @@ test("Detalle — ✏ Corregir abre el formulario y manda lo cambiado", async ()
   assert.equal(pedidos[0].body.cambios.descripcion, "Comisión de octubre");
 });
 
-test("Detalle — lo del libro dice dónde se corrige; la corregida dice quién la corrigió", () => {
+test("Detalle — lo del libro se anula en Gypi (no se corrige); la corregida dice quién la corrigió", () => {
   render(<Detalle op={{ ...manual, origen: "libro" }} datos={DATOS} onCerrar={() => {}} onAnulada={() => {}} />);
   assert.equal(screen.queryByRole("button", { name: "✏ Corregir" }), null);
-  assert.equal(screen.queryByRole("button", { name: "Anular operación" }), null);
-  assert.ok(screen.getByText(/Se cambia o se anula desde el libro/));
+  fireEvent.click(screen.getByRole("button", { name: "Anular operación" }));
+  assert.ok(screen.getByText(/al pasar el histórico no vuelve/));
+  assert.ok(screen.getByRole("button", { name: "Sí, anular" }));
   cleanup();
   render(<Detalle op={{ ...manual, origen: "plazo_fijo", anulada_at: "2026-11-12T10:00:00Z", anulada_por_nombre: "Tadeo (corregida)" }} datos={DATOS} onCerrar={() => {}} onAnulada={() => {}} />);
   assert.ok(screen.getByText(/Corregida por Tadeo/));

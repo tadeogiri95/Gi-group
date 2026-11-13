@@ -112,6 +112,15 @@ export function renglonesDelLibro(grilla) {
 }
 
 const ORIGENES_HISTORICO = new Set([ORIGEN_LIBRO, ORIGEN_SALDO_INICIAL]);
+
+/**
+ * ¿Lo anuló una persona (y no Gypi al pasar el histórico, ni 🧹 Empezar de
+ * nuevo, que se vuelve a cargar)? Por quién lo anuló.
+ */
+export function anuladaAMano(anuladaPor) {
+  const q = String(anuladaPor || "").trim();
+  return !!q && !q.startsWith("Gypi (") && !q.startsWith("Empezar de nuevo ");
+}
 const diasEntre = (a, b) => Math.abs(Math.round((Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86400000));
 
 /**
@@ -155,11 +164,12 @@ const esDeGypi = (ref) => String(ref || "").toUpperCase().startsWith(PREFIJO_OPE
 
 /**
  * Qué hay que hacer para dejar Gypi como el libro desde una fecha.
- * @param {{ grilla: string[][], desde: string, cuentas: object[], tesoreria: object[], proveedores: object[], clientes: object[], existentes: { id: number, origen: string, origen_id: string }[], otras?: object[], tc?: Record<string, number> }} d
+ * @param {{ grilla: string[][], desde: string, cuentas: object[], tesoreria: object[], proveedores: object[], clientes: object[], existentes: { id: number, origen: string, origen_id: string }[], otras?: object[], anuladas?: string[], tc?: Record<string, number> }} d
+ *   anuladas: claves (origen_id) de lo del libro que el Dueño anuló en Gypi: no se vuelven a pasar.
  *   otras: las operaciones vivas de otros orígenes que tocan cajas y bancos (id, fecha, total, cuenta_debe, cuenta_haber, origen).
  *   tc: tipo de cambio por mes ("AAAA-MM") para las operaciones en dólares, y "apertura" para lo anterior.
  */
-export function planHistorico({ grilla, desde = DESDE_HISTORICO, cuentas = [], tesoreria = [], proveedores = [], clientes = [], existentes = [], otras = [], tc = {} }) {
+export function planHistorico({ grilla, desde = DESDE_HISTORICO, cuentas = [], tesoreria = [], proveedores = [], clientes = [], existentes = [], otras = [], anuladas = [], tc = {} }) {
   const leido = renglonesDelLibro(grilla);
   if (leido.error) return { error: leido.error };
   const codigos = new Set(cuentas.map((c) => c.codigo));
@@ -272,7 +282,10 @@ export function planHistorico({ grilla, desde = DESDE_HISTORICO, cuentas = [], t
 
   // ─── Qué ya está ───
   const vivas = new Map(existentes.filter((x) => x.origen === ORIGEN_LIBRO).map((x) => [x.origen_id, x]));
-  const porPasar = operaciones.filter((o) => !vivas.has(o.origen_id));
+  // 13/11: lo que el Dueño anuló en Gypi no vuelve aunque siga en el libro
+  const anuladasAMano = new Set(anuladas.map(String));
+  const porPasar = operaciones.filter((o) => !vivas.has(o.origen_id) && !anuladasAMano.has(o.origen_id));
+  const yaAnuladas = operaciones.filter((o) => !vivas.has(o.origen_id) && anuladasAMano.has(o.origen_id)).length;
   // 13/11: lo que ya entró a Gypi por otro lado (extracto, planilla de plazos
   // fijos, un pago o cobro de Gypi…) no se repite: misma caja, mismo lado,
   // mismo importe y hasta 3 días de diferencia (el más cercano, una vez cada uno).
@@ -287,7 +300,8 @@ export function planHistorico({ grilla, desde = DESDE_HISTORICO, cuentas = [], t
   return {
     desde, fecha_apertura: fechaApertura,
     apertura, nuevas, anular,
-    iguales: operaciones.length - porPasar.length,
+    iguales: operaciones.length - porPasar.length - yaAnuladas,
+    anuladas_en_gypi: yaAnuladas,
     ya_en_gypi: yaEnGypi,
     total_libro: operaciones.length,
     de_gypi: deGypi,

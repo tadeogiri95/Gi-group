@@ -436,7 +436,10 @@ export function Detalle({ op, datos, nombres = SIN_NOMBRES, onCerrar, onAnulada 
             {!confirmar && puedeCorregir(op) && <button type="button" className="g-btn g-btn-secondary" onClick={() => setCorrigiendo(true)}>✏ Corregir</button>}
             {confirmar ? (
               <>
-                <span className="self-center text-[13px] text-gypi-text">{gasto ? "¿Anular este gasto? Se anula junto con su pago, si lo cargaste. Queda tachado y no suma." : "¿Anular esta operación? Queda tachada y no suma."}</span>
+                <span className="self-center text-[13px] text-gypi-text">{gasto ? "¿Anular este gasto? Se anula junto con su pago, si lo cargaste. Queda tachado y no suma."
+                  : op.origen === "libro" ? "¿Anular esta operación? Queda tachada y no suma. Sigue en tu planilla del libro, pero al pasar el histórico no vuelve."
+                    : op.origen === "saldo_inicial" ? "¿Anular este saldo inicial? Queda tachado y no suma. Si volvés a pasar el histórico, la apertura se arma de nuevo."
+                      : "¿Anular esta operación? Queda tachada y no suma."}</span>
                 <button type="button" className="g-btn g-btn-secondary" onClick={() => setConfirmar(false)}>No</button>
                 <button type="button" className="g-btn g-btn-primary" disabled={anulando} onClick={anular}>{anulando ? "Anulando…" : "Sí, anular"}</button>
               </>
