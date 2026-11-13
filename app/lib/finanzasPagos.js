@@ -6,9 +6,15 @@
 //     (informativo) y con qué formas: efectivo (una caja), transferencia (un
 //     banco), e-cheq (siempre Credicoop) o cheques de terceros de la cartera.
 //     El total es la suma de las formas.
-//   - borrador → para aprobar (se manda el link por WhatsApp al CFO) →
-//     aprobada o rechazada (lo decide el CFO en la página, sin usuario) →
-//     pagada (la marca el dueño: recién ahí se mueve la plata) · anulada.
+//   - El dueño la paga cuando quiere (💸 Registrar pago): ahí se mueve la
+//     plata. No espera a nadie.
+//   - Al CFO se le manda solo para que sepa (13/11): el link por WhatsApp le
+//     muestra lo que tiene preparado para firmar en el banco, antes o después
+//     de pagarla. Si quiere, aprieta 👍 Visto y le avisamos al dueño.
+//   - Estados en la base (los de la migración 175, sin cambiar):
+//     borrador · para_aprobar = mandada al CFO · aprobada = el CFO la vio ·
+//     rechazada (solo de antes del 13/11; se ve como mandada) · pagada ·
+//     anulada. En una pagada, decidida_at dice si el CFO la vio.
 //   - Al pagarla: efectivo y transferencia son "PAGO A PROVEEDORES"
 //     (Proveedores contra la caja o el banco); el e-cheq es un cheque propio
 //     nuevo (con su "PAGO A PROVEEDORES"); el cheque de terceros pasa a
@@ -27,9 +33,9 @@ export const FORMAS_PAGO = {
 };
 export const ESTADOS_ORDEN = {
   borrador: { nombre: "Borrador", icono: "📝" },
-  para_aprobar: { nombre: "Esperando al CFO", icono: "⏳" },
-  aprobada: { nombre: "Aprobada, falta pagar", icono: "✅" },
-  rechazada: { nombre: "Rechazada", icono: "❌" },
+  para_aprobar: { nombre: "Mandada al CFO", icono: "📲" },
+  aprobada: { nombre: "Vista por el CFO", icono: "👍" },
+  rechazada: { nombre: "Mandada al CFO", icono: "📲" },
   pagada: { nombre: "Pagada", icono: "💸" },
   anulada: { nombre: "Anulada", icono: "🚫" },
 };
@@ -117,16 +123,25 @@ export function textoForma(x) {
   return [`Cheque${x.banco ? ` ${x.banco}` : " de terceros"}${x.numero ? ` N° ${x.numero}` : ""}`, x.fecha_pago ? `vence el ${fechaCorta(x.fecha_pago)}` : null, x.librador].filter(Boolean).join(" · ");
 }
 
-/** Lo que se puede hacer con la orden según su estado. */
+/** Lo que se puede hacer con la orden según su estado. Pagar no espera al CFO. */
 export function accionesOrden(estado) {
   return {
-    borrador: ["mandar", "anular"],
-    para_aprobar: ["mandar", "anular"],
-    aprobada: ["pagar", "anular"],
-    rechazada: ["mandar", "anular"],
-    pagada: ["anular"],
+    borrador: ["pagar", "mandar", "anular"],
+    para_aprobar: ["pagar", "mandar", "anular"],
+    aprobada: ["pagar", "mandar", "anular"],
+    rechazada: ["pagar", "mandar", "anular"],
+    pagada: ["mandar", "anular"],
   }[estado] || [];
 }
+
+/** Estados en los que la orden todavía no se pagó (ni se anuló). */
+export const SIN_PAGAR = ["borrador", "para_aprobar", "aprobada", "rechazada"];
+
+/** El CFO apretó 👍 Visto (en una pagada también puede haberla visto). */
+export const vistaPorCfo = (o) => Boolean(o?.decidida_at) && o?.estado !== "rechazada";
+
+/** Ya se le mandó el link al CFO. */
+export const mandadaAlCfo = (o) => Boolean(o?.enviada_at) || ["para_aprobar", "aprobada", "rechazada"].includes(o?.estado);
 
 /**
  * Lo que genera pagar la orden.
@@ -180,19 +195,20 @@ export function datosParaCfo(orden, empresa = {}) {
     estado: orden.estado, notas: orden.notas || null, cargada_por: orden.cargada_por_nombre || null,
     facturas: (orden.facturas || []).map((f) => ({ fecha: f.fecha, detalle: f.detalle, importe: f.importe })),
     formas: (orden.formas || []).map((x) => ({ texto: textoForma(x), importe: x.importe })),
-    decision: orden.decidida_at ? { por: orden.decidida_por_nombre || null, nota: orden.decision_nota || null, at: orden.decidida_at } : null,
+    pagada: orden.estado === "pagada", pagada_fecha: orden.pagada_fecha || null,
+    visto: vistaPorCfo(orden) ? { por: orden.decidida_por_nombre || null, at: orden.decidida_at } : null,
   };
 }
 
 /** Mensaje de WhatsApp para el CFO. */
 export function textoWhatsappCfo(orden, url, { empresa = "", cfo = "" } = {}) {
   return [
-    `${cfo ? `Hola ${cfo}, ` : ""}te paso la orden de pago N° ${orden.numero}${empresa ? ` de ${empresa}` : ""} para que la apruebes.`,
+    `${cfo ? `Hola ${cfo}, ` : ""}te paso la orden de pago N° ${orden.numero}${empresa ? ` de ${empresa}` : ""} para que sepas lo que hay para firmar en el banco.`,
     `Proveedor: ${orden.proveedor_nombre}`,
     `Total: ${plata(orden.total, "ARS")}`,
     ...(orden.formas || []).map((x) => `• ${textoForma(x)}: ${plata(x.importe, "ARS")}`),
     "",
-    `Para aprobarla o rechazarla abrí este link: ${url}`,
+    `Para verla abrí este link: ${url}`,
   ].join("\n");
 }
 
@@ -206,8 +222,8 @@ export function htmlOrdenPago({ empresa = {}, orden }) {
   const est = ESTADOS_ORDEN[orden.estado];
   const facturas = (orden.facturas || []).map((f) => `<tr><td>${esc(fechaCorta(f.fecha))}</td><td>${esc(f.detalle)}</td><td class="n">${esc(plata(f.importe))}</td></tr>`).join("");
   const formas = (orden.formas || []).map((x) => `<tr><td>${esc(textoForma(x))}</td><td class="n">${esc(plata(x.importe))}</td></tr>`).join("");
-  const decision = orden.decidida_at
-    ? `<p class="nota"><b>${orden.estado === "rechazada" ? "Rechazada" : "Aprobada"}</b>${orden.decidida_por_nombre ? ` por ${esc(orden.decidida_por_nombre)}` : ""} el ${esc(fechaCorta(String(orden.decidida_at).slice(0, 10)))}.${orden.decision_nota ? ` ${esc(orden.decision_nota)}` : ""}</p>`
+  const decision = vistaPorCfo(orden)
+    ? `<p class="nota"><b>Vista por el CFO</b>${orden.decidida_por_nombre ? ` (${esc(orden.decidida_por_nombre)})` : ""} el ${esc(fechaCorta(String(orden.decidida_at).slice(0, 10)))}.</p>`
     : "";
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Orden de pago N° ${esc(orden.numero)} · ${esc(orden.proveedor_nombre)}</title>
 <style>
@@ -244,7 +260,7 @@ export function htmlOrdenPago({ empresa = {}, orden }) {
   <div class="total">Total: ${esc(plata(orden.total))}</div>
   ${orden.notas ? `<p class="nota">${esc(orden.notas)}</p>` : ""}
   ${decision}
-  <div class="firmas"><div>Preparó${orden.cargada_por_nombre ? `: ${esc(orden.cargada_por_nombre)}` : ""}</div><div>Aprobó</div></div>
+  <div class="firmas"><div>Preparó${orden.cargada_por_nombre ? `: ${esc(orden.cargada_por_nombre)}` : ""}</div><div>Firma</div></div>
 </body></html>`;
 }
 

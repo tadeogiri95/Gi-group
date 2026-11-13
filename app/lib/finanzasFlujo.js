@@ -16,8 +16,8 @@
 //     lubricantes, Movilidad…). Por mes, en pesos y en dólares por separado,
 //     con la apertura (saldo antes del primer mes) y el cierre.
 //   - Lo que viene, por semana: cheques de terceros a depositar (+), e-cheq
-//     y cheques propios a debitar (−), órdenes de pago aprobadas o por
-//     aprobar (−), sueldos confirmados sin pagar (−) e intereses de plazos
+//     y cheques propios a debitar (−), órdenes de pago sin pagar
+//     (−), sueldos confirmados sin pagar (−) e intereses de plazos
 //     fijos al vencer (+, parte 8 del 11/11), desde el saldo de hoy. Desde la
 //     auditoría del 12/11 (parte 11) también los cobros de cada OT para su
 //     entrega, las facturas de proveedores sin orden de pago (con los días de
@@ -281,7 +281,7 @@ export function flujoPrevisto({ hoy, saldoHoy = 0, cheques = [], ordenes = [], s
   const filas = [
     { id: "cheques_terceros", nombre: "Cheques de terceros a acreditar", signo: 1 },
     { id: "cheques_propios", nombre: "E-cheq y cheques propios a debitar", signo: -1 },
-    { id: "ordenes", nombre: "Órdenes de pago aprobadas o por aprobar", signo: -1 },
+    { id: "ordenes", nombre: "Órdenes de pago sin pagar", signo: -1 },
     { id: "sueldos", nombre: "Sueldos por pagar", signo: -1 },
     { id: "intereses", nombre: "Intereses de plazos fijos", signo: 1 },
     // Auditoría del 12/11, parte 11 (app/lib/finanzasFlujoAdelante.js)
@@ -306,7 +306,7 @@ export function flujoPrevisto({ hoy, saldoHoy = 0, cheques = [], ordenes = [], s
     if (ch.clase === "propio" && ch.estado === "pendiente") poner("cheques_propios", mueve < hoy ? hoy : mueve, ch.importe, `${ch.beneficiario || "E-cheq"}${ch.numero ? ` N° ${ch.numero}` : ""}${vence}`);
   }
   for (const o of ordenes) {
-    if (["aprobada", "para_aprobar"].includes(o.estado)) poner("ordenes", o.fecha < hoy ? hoy : o.fecha, o.total, `OP N° ${o.numero} · ${o.proveedor_nombre}${o.estado === "para_aprobar" ? " (por aprobar)" : ""}`);
+    if (["borrador", "para_aprobar", "aprobada", "rechazada"].includes(o.estado)) poner("ordenes", o.fecha < hoy ? hoy : o.fecha, o.total, `OP N° ${o.numero} · ${o.proveedor_nombre}`);
   }
   for (const s of sueldos) if (s.importe > 0) poner("sueldos", s.fecha < hoy ? hoy : s.fecha, s.importe, s.detalle);
   // El interés entra el día que vence el plazo fijo (lo depositado vuelve al banco y no cambia el saldo)

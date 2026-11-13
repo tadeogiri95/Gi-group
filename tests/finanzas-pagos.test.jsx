@@ -21,8 +21,8 @@ afterEach(() => cleanup());
 
 const { signAccessToken } = await import("../app/lib/jwt.ts");
 const api = await import("../app/api/finanzas/pagos/route.js");
-const decidirApi = await import("../app/api/op/decidir/route.js");
-const { decidirOrden } = await import("../app/lib/ordenPagoCfo.js");
+const vistoApi = await import("../app/api/op/visto/route.js");
+const { marcarVisto } = await import("../app/lib/ordenPagoCfo.js");
 const { default: FinanzasPagos } = await import("../app/components/FinanzasPagos.jsx");
 
 const E = "11111111-1111-1111-1111-111111111111";
@@ -73,9 +73,9 @@ test("validar — proveedor, formas, la caja en dólares no y el cheque una sola
 });
 
 test("estados — qué se puede hacer en cada uno", () => {
-  assert.deepEqual(accionesOrden("borrador"), ["mandar", "anular"]);
-  assert.deepEqual(accionesOrden("aprobada"), ["pagar", "anular"]);
-  assert.deepEqual(accionesOrden("pagada"), ["anular"]);
+  // 13/11: se paga sin esperar al CFO; mandárselo es solo para que sepa
+  for (const e of ["borrador", "para_aprobar", "aprobada", "rechazada"]) assert.deepEqual(accionesOrden(e), ["pagar", "mandar", "anular"], e);
+  assert.deepEqual(accionesOrden("pagada"), ["mandar", "anular"]);
   assert.deepEqual(accionesOrden("anulada"), []);
   assert.ok(slugReservado("op"), "/op/ no puede ser el slug de una empresa");
 });
@@ -104,6 +104,8 @@ test("CFO — ve qué se paga y con qué, sin cuentas; el WhatsApp lleva el link
   assert.match(d.formas[3].texto, /Bancor N° 389 · vence el 20\/11\/26/);
   const w = textoWhatsappCfo(o, `https://x/op/${TOKEN}`, { empresa: "Gi", cfo: "Juan" });
   assert.match(w, /Hola Juan/);
+  assert.match(w, /firmar en el banco/);
+  assert.equal(/aprob/i.test(w), false, "el CFO ya no aprueba");
   assert.match(w, new RegExp(`https://x/op/${TOKEN}`));
   assert.match(textoForma({ forma: "echeq", fecha_pago: "2026-12-15" }), /E-cheq Credicoop · vence el 15\/12\/26/);
   assert.match(htmlOrdenPago({ empresa: {}, orden: { ...o, proveedor_nombre: "<b>x</b>" } }), /&lt;b&gt;x&lt;\/b&gt;/);
@@ -210,17 +212,20 @@ test("/api/finanzas/pagos — crear y mandar: número siguiente, link largo para
   assert.equal(escrito.filter((x) => x.tabla !== "fin_ordenes_pago").length, 0, "crear no mueve plata");
 });
 
-test("/api/finanzas/pagos — pagar solo aprobadas; genera operaciones, e-cheq y entrega el cheque", async () => {
+test("/api/finanzas/pagos — pagar sin esperar al CFO; genera operaciones, e-cheq y entrega el cheque", async () => {
   const { orden } = validarOrden({ proveedor_id: 5, fecha: "2026-11-09", formas: FORMAS }, CTX);
-  mockApi({ ordenes: [{ ...ORDEN, ...orden, estado: "para_aprobar" }] });
-  assert.equal((await pedir("gerencial", "POST", { accion: "pagar", id: 9, fecha: "2026-11-10" })).status, 400);
+  mockApi({ ordenes: [{ ...ORDEN, ...orden, estado: "pagada" }] });
+  const otraVez = await pedir("gerencial", "POST", { accion: "pagar", id: 9, fecha: "2026-11-10" });
+  assert.equal(otraVez.status, 400);
+  assert.match((await otraVez.json()).error, /ya está pagada/);
 
-  const { escrito } = mockApi({ ordenes: [{ ...ORDEN, ...orden }] });
+  const { escrito } = mockApi({ ordenes: [{ ...ORDEN, ...orden, estado: "borrador", token: null }] });
   const res = await pedir("gerencial", "POST", { accion: "pagar", id: 9, fecha: "2026-11-10" });
   assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
   const marca = escrito[0];
-  assert.match(marca.url, /estado=eq\.aprobada/, "se marca primero, para no pagar dos veces");
+  assert.match(marca.url, /estado=eq\.borrador/, "se marca primero, para no pagar dos veces");
   assert.equal(marca.body.estado, "pagada");
+  assert.equal("token" in marca.body, false, "el link del CFO sigue sirviendo");
   const ops = escrito.filter((x) => x.tabla === "fin_operaciones" && x.metodo === "POST").flatMap((x) => (Array.isArray(x.body) ? x.body : [x.body]));
   assert.deepEqual(ops.map((o) => o.tipo), ["PAGO A PROVEEDORES", "PAGO A PROVEEDORES", "PAGO A PROVEEDORES", "PAGO A PROVEEDORES"]);
   const nuevo = escrito.find((x) => x.tabla === "fin_cheques" && x.metodo === "POST");
@@ -248,21 +253,29 @@ test("/api/finanzas/pagos — anular una pagada deshace todo; no si el e-cheq ya
   assert.equal(r2.escrito.length, 0);
 });
 
-test("CFO — aprueba con el link; rechazar pide motivo; un link viejo no sirve", async () => {
-  const esperando = { ...ORDEN, estado: "para_aprobar", token: TOKEN };
-  const { escrito } = mockApi({ ordenes: [esperando] });
-  assert.equal((await decidirOrden(TOKEN, "rechazar", { nota: "" })).status, 400);
-  const r = await decidirOrden(TOKEN, "aprobar", { nombre: "Juan" }, { messaging: { send: async () => {} } });
-  assert.deepEqual(r, { ok: true, estado: "aprobada" });
+test("CFO — 👍 Visto: avisa sin cambiar el pago; una pagada sigue pagada; link de anulada no sirve", async () => {
+  const mandada = { ...ORDEN, estado: "para_aprobar", token: TOKEN, decidida_at: null };
+  const { escrito } = mockApi({ ordenes: [mandada] });
+  const r = await marcarVisto(TOKEN, { nombre: "Juan" }, { messaging: { send: async () => {} } });
+  assert.equal(r.ok, true);
+  assert.deepEqual([r.estado, r.visto.por], ["aprobada", "Juan"]);
   const p = escrito.find((x) => x.tabla === "fin_ordenes_pago");
   assert.match(p.url, /estado=eq\.para_aprobar&token=eq\./);
   assert.deepEqual([p.body.estado, p.body.decidida_por_nombre], ["aprobada", "Juan"]);
 
-  mockApi({ ordenes: [{ ...esperando, estado: "aprobada" }] });
-  assert.equal((await decidirOrden(TOKEN, "aprobar")).status, 409);
+  const pagada = mockApi({ ordenes: [{ ...mandada, estado: "pagada" }] });
+  assert.equal((await marcarVisto(TOKEN, { nombre: "Juan" }, { messaging: { send: async () => {} } })).estado, "pagada");
+  assert.equal(pagada.escrito.find((x) => x.tabla === "fin_ordenes_pago").body.estado, "pagada");
+
+  const yaVista = mockApi({ ordenes: [{ ...mandada, estado: "aprobada", decidida_at: "2026-11-12T10:00:00Z", decidida_por_nombre: "Juan" }] });
+  assert.deepEqual((await marcarVisto(TOKEN)).visto.por, "Juan");
+  assert.equal(yaVista.escrito.length, 0, "dos veces no escribe de nuevo");
+
+  mockApi({ ordenes: [{ ...mandada, estado: "anulada" }] });
+  assert.equal((await marcarVisto(TOKEN)).status, 404);
   mockApi({ ordenes: [] });
-  assert.equal((await decidirOrden("corto", "aprobar")).status, 404);
-  const res = await decidirApi.POST(new Request("http://localhost/api/op/decidir", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: TOKEN, decision: "aprobar" }) }));
+  assert.equal((await marcarVisto("corto")).status, 404);
+  const res = await vistoApi.POST(new Request("http://localhost/api/op/visto", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: TOKEN }) }));
   assert.equal(res.status, 404);
 });
 
@@ -280,7 +293,7 @@ test("pantalla — lista las órdenes y arma una nueva con el total de las forma
   };
   render(<FinanzasPagos />);
   assert.ok(await screen.findByText("EGGER ARGENTINA"));
-  assert.ok(screen.getByText(/Aprueba:/));
+  assert.ok(screen.getByText(/CFO \(solo le avisamos\):/));
   fireEvent.click(screen.getByRole("button", { name: "+ Orden de pago" }));
   fireEvent.focus(await screen.findByLabelText("Proveedor"));
   await screen.findByRole("option", { name: "EGGER ARGENTINA" });
@@ -288,8 +301,26 @@ test("pantalla — lista las órdenes y arma una nueva con el total de las forma
   fireEvent.click(screen.getByRole("button", { name: "+ Efectivo" }));
   fireEvent.change(screen.getByLabelText("Importe en Efectivo"), { target: { value: "1.500,50" } });
   assert.ok(screen.getByText("$ 1.500,50"));
-  fireEvent.click(screen.getByRole("button", { name: "Guardar borrador" }));
+  fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
   await waitFor(() => assert.equal(enviados.length, 1));
   const [b] = enviados;
   assert.deepEqual([b.accion, b.mandar, b.orden.proveedor_id, b.orden.formas[0].importe, b.orden.formas[0].cuenta], ["crear", false, 5, 1500.5, "01.01.01.001.001.01"]);
+});
+
+test("pantalla — una orden sin mandar al CFO ya se puede pagar (💸 Registrar pago)", async () => {
+  const datos = {
+    tesoreria: TESORERIA, proveedores: PROVEEDORES, cheques: [], empresa: { nombre: "Gi" }, cfo: { nombre: "Juan", telefono: "" }, links: {},
+    ordenes: [{ ...ORDEN, estado: "borrador", formas: [{ forma: "efectivo", importe: 1000000, cuenta_nombre: "Caja Principal" }] }],
+  };
+  const enviados = [];
+  global.fetch = async (url, o = {}) => {
+    if (o.method === "POST") { enviados.push(JSON.parse(o.body)); return new Response(JSON.stringify({ ok: true, orden: { ...ORDEN, estado: "pagada" } }), { status: 200 }); }
+    return new Response(JSON.stringify(datos), { status: 200 });
+  };
+  render(<FinanzasPagos />);
+  fireEvent.click(await screen.findByText("EGGER ARGENTINA"));
+  fireEvent.click(await screen.findByRole("button", { name: "💸 Registrar pago" }));
+  await waitFor(() => assert.equal(enviados.length, 1));
+  assert.deepEqual([enviados[0].accion, enviados[0].id], ["pagar", 9]);
+  assert.equal(screen.queryByText(/Aprobar|aprobad/), null);
 });

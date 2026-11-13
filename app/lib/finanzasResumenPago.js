@@ -7,16 +7,18 @@
 //     comprobante de la orden si lo cargó (opcional).
 //   - Al pie: lo que se paga en forma inmediata (efectivo y transferencia), lo
 //     que se paga con cheques (e-cheq propios y cheques de terceros) y el total.
-//   - Se le manda al CFO un link (sin usuario) para verlo y aprobar las
-//     órdenes, o se exporta en PDF. Las anuladas no suman.
-import { FORMAS_PAGO, ESTADOS_ORDEN, fechaCorta, textoForma } from "./finanzasPagos";
+//   - Se le manda al CFO un link (sin usuario) para que vea lo que tiene para
+//     firmar en el banco (solo informativo desde el 13/11: puede apretar
+//     👍 Visto), o se exporta en PDF. Las anuladas no suman. Entran también
+//     las órdenes ya pagadas.
+import { FORMAS_PAGO, ESTADOS_ORDEN, fechaCorta, textoForma, vistaPorCfo } from "./finanzasPagos";
 import { plata } from "./finanzasOperaciones";
 
 /** Formas que se pagan en el momento; el resto son cheques. */
 export const FORMAS_INMEDIATAS = ["efectivo", "transferencia"];
 export const FORMAS_CHEQUE = ["echeq", "cheque_tercero"];
 /** Órdenes que se pueden juntar en un resumen. */
-export const ENTRAN_EN_RESUMEN = ["borrador", "para_aprobar", "rechazada", "aprobada"];
+export const ENTRAN_EN_RESUMEN = ["borrador", "para_aprobar", "rechazada", "aprobada", "pagada"];
 export const ESTADOS_RESUMEN = {
   armado: { nombre: "Armado, sin mandar", icono: "📝" },
   enviado: { nombre: "Mandado al CFO", icono: "📲" },
@@ -79,7 +81,7 @@ export function totalesResumen(ordenes = []) {
   const inmediato = centavos(FORMAS_INMEDIATAS.reduce((s, k) => s + porForma[k], 0));
   const cheques = centavos(FORMAS_CHEQUE.reduce((s, k) => s + porForma[k], 0));
   const vivas = ordenes.filter((o) => o && o.estado !== "anulada");
-  return { inmediato, cheques, total: centavos(inmediato + cheques), porForma, ordenes: vivas.length, aprobadas: vivas.filter((o) => ["aprobada", "pagada"].includes(o.estado)).length };
+  return { inmediato, cheques, total: centavos(inmediato + cheques), porForma, ordenes: vivas.length, vistas: vivas.filter(vistaPorCfo).length, pagadas: vivas.filter((o) => o.estado === "pagada").length };
 }
 
 /** Lo que ve el CFO en la página del resumen (nada de cuentas contables de más). */
@@ -94,9 +96,9 @@ export function datosResumenParaCfo(resumen, ordenes = [], empresa = {}) {
       numero: o.numero, fecha: o.fecha, proveedor: o.proveedor_nombre, estado: o.estado, total: Number(o.total) || 0,
       comprobante: /^https:\/\//.test(String(o.comprobante_url || "")) ? o.comprobante_url : null,
       formas: (o.formas || []).map((x) => ({ texto: textoForma(x), importe: x.importe, clase: claseForma(x.forma) })),
-      // El link de la orden, para decidirla de a una (solo mientras espera)
-      token: o.estado === "para_aprobar" && o.token ? o.token : null,
-      decision: o.decidida_at ? { por: o.decidida_por_nombre || null, nota: o.decision_nota || null } : null,
+      // El link de la orden, para verla de a una
+      token: o.token || null,
+      visto: vistaPorCfo(o) ? { por: o.decidida_por_nombre || null } : null,
     })),
   };
 }
@@ -110,7 +112,7 @@ export function textoWhatsappResumen(resumen, ordenes, url, { empresa = "", cfo 
     `Cheques: ${plata(t.cheques, "ARS")}`,
     `Total: ${plata(t.total, "ARS")}`,
     "",
-    `Para verlo y aprobar las órdenes abrí este link: ${url}`,
+    `Es para que sepas lo que hay para firmar en el banco. Para verlo abrí este link: ${url}`,
   ].join("\n");
 }
 

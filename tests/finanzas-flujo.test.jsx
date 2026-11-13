@@ -119,7 +119,7 @@ test("lo que viene — por semana, lo vencido en la primera, saldo proyectado", 
       { clase: "propio", estado: "pendiente", fecha_pago: "2026-11-18", importe: 4000, beneficiario: "Acerco" },
       { clase: "propio", estado: "pendiente", fecha_pago: "2027-03-01", importe: 1 },
     ],
-    ordenes: [{ estado: "aprobada", fecha: "2026-11-01", total: 500, numero: 7, proveedor_nombre: "Acerco" }, { estado: "borrador", fecha: "2026-11-12", total: 9 }],
+    ordenes: [{ estado: "aprobada", fecha: "2026-11-01", total: 500, numero: 7, proveedor_nombre: "Acerco" }, { estado: "pagada", fecha: "2026-11-12", total: 9 }],
     sueldos: [{ fecha: "2026-11-05", importe: 6000, detalle: "Sueldos Octubre 2026" }],
   });
   assert.equal(p.semanas[0], "2026-11-09");

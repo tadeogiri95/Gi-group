@@ -1,8 +1,9 @@
 // app/lib/resumenPagoCfo.js — La página del CFO para ver un resumen de
 // órdenes de pago (/op/resumen/<token>; 12/11, migración 186). Igual que la
 // de una orden (app/lib/ordenPagoCfo.js): sin usuario de Gypi, el token del
-// link es la llave y deja de servir cuando el resumen se anula. Desde ahí el
-// CFO aprueba todas las órdenes que esperan, o abre cada una para decidirla.
+// link es la llave y deja de servir cuando el resumen se anula. Desde el 13/11
+// es solo informativo: el CFO ve lo que tiene para firmar en el banco y puede
+// apretar 👍 Visto (el dueño paga sin esperarlo).
 // Sin sesión: va con service_role, siempre buscando por ese token.
 // Solo servidor.
 import { sbGet, sbPatch, sbGetAll } from "./sbHelpers";
@@ -37,28 +38,34 @@ export async function datosResumenCfo(token) {
 }
 
 /**
- * Aprueba todas las órdenes del resumen que esperan al CFO.
- * @returns {{ ok?: true, aprobadas?: number, error?: string, status?: number }}
+ * 👍 Visto en el resumen: anota que el CFO vio todas sus órdenes vivas que
+ * todavía no había visto (13/11: ya no aprueba; el dueño paga sin esperarlo).
+ * Las mandadas pasan a "vista"; las pagadas siguen pagadas.
+ * @returns {{ ok?: true, vistas?: number, error?: string, status?: number }}
  */
-export async function aprobarResumen(token, { nombre = "" } = {}, { messaging } = {}) {
+export async function resumenVisto(token, { nombre = "" } = {}, { messaging } = {}) {
   const r = await resumenDelToken(token);
   if (!r) return { error: "El link no es válido o el resumen ya no está.", status: 404 };
   const [cfg] = (await sbGet(`config_sistema?empresa_id=eq.${r.empresa_id}&clave=eq.${CLAVE_CFO}&select=valor&limit=1`, { silent: true, fallback: [] })) || [];
   const quien = String(nombre ?? "").replace(/\s+/g, " ").trim().slice(0, 120) || cfg?.valor?.nombre || "CFO";
   const ahora = new Date().toISOString();
-  const hechas = (await sbPatch(`fin_ordenes_pago?empresa_id=eq.${r.empresa_id}&resumen_id=eq.${r.id}&estado=eq.para_aprobar&token=not.is.null`, {
-    estado: "aprobada", decidida_at: ahora, decidida_por_nombre: quien, decision_nota: `Aprobada con el resumen N° ${r.numero}`, updated_at: ahora,
-  }, { silent: true, fallback: [] })) || [];
-  if (!hechas.length) return { error: "No queda ninguna orden esperando tu aprobación.", status: 409 };
+  const base = `fin_ordenes_pago?empresa_id=eq.${r.empresa_id}&resumen_id=eq.${r.id}`;
+  const marca = { decidida_at: ahora, decidida_por_nombre: quien, decision_nota: `Vista con el resumen N° ${r.numero}`, updated_at: ahora };
+  const [sinPagar, pagadas] = await Promise.all([
+    sbPatch(`${base}&estado=in.(borrador,para_aprobar,rechazada)`, { ...marca, estado: "aprobada" }, { silent: true, fallback: [] }),
+    sbPatch(`${base}&estado=eq.pagada&decidida_at=is.null`, marca, { silent: true, fallback: [] }),
+  ]);
+  const hechas = [...(sinPagar || []), ...(pagadas || [])];
+  if (!hechas.length) return { ok: true, vistas: 0 };
   // Un solo aviso a los dueños
   try {
     const total = hechas.reduce((s, o) => s + (Number(o.total) || 0), 0);
     const { data: duenos } = await sbGetAll(`empleados?empresa_id=eq.${r.empresa_id}&rol=eq.gerencial&activo=eq.true&select=legajo&order=legajo.asc`);
     await enviarPushLegajos(r.empresa_id, (duenos || []).map((x) => x.legajo), {
-      title: `✅ Resumen de pagos N° ${r.numero} aprobado`,
-      body: `${hechas.length} ${hechas.length === 1 ? "orden" : "órdenes"} · ${plata(total, "ARS")} · Ya las podés pagar`.slice(0, 180),
+      title: `👍 ${quien} vio el resumen de pagos N° ${r.numero}`,
+      body: `${hechas.length} ${hechas.length === 1 ? "orden" : "órdenes"} · ${plata(total, "ARS")}`.slice(0, 180),
       data: { tipo: "orden_pago", resumen: r.id },
     }, { messaging });
-  } catch { /* el aviso no frena la aprobación */ }
-  return { ok: true, aprobadas: hechas.length };
+  } catch { /* el aviso no frena el visto */ }
+  return { ok: true, vistas: hechas.length };
 }

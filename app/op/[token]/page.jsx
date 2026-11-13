@@ -1,12 +1,13 @@
 // app/op/[token]/page.jsx — Orden de pago para el CFO (Finanzas F2b, 2;
-// migración 175). El dueño le manda este link por WhatsApp a quien firma y
-// libera los pagos; sin usuario de Gypi la abre, ve qué se paga y con qué, y
-// la aprueba o la rechaza. El token solo vale mientras la orden espera
+// migración 175). El dueño le manda este link por WhatsApp a quien firma en
+// el banco; sin usuario de Gypi la abre y ve qué se paga y con qué. Desde el
+// 13/11 es solo informativa: puede apretar 👍 Visto, pero el pago no lo
+// espera. El link deja de servir si la orden se anula
 // (app/lib/ordenPagoCfo.js). No muestra cuentas contables ni otros datos.
 import { datosOrdenCfo } from "../../lib/ordenPagoCfo";
 import { fechaCorta } from "../../lib/finanzasPagos";
 import { plata } from "../../lib/finanzasOperaciones";
-import DecisionOrdenPago from "../../components/DecisionOrdenPago";
+import VistoCfo from "../../components/VistoCfo";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ function NoEncontrada() {
       <div className="max-w-[420px] text-center">
         <div className="text-[40px] mb-2" aria-hidden="true">🔍</div>
         <h1 className="text-[20px] font-bold font-heading m-0 mb-2">Este link ya no sirve</h1>
-        <p className="text-[15px] text-gypi-dim m-0">La orden de pago ya se pagó, se anuló o se mandó de nuevo con otro link. Pedile el link nuevo a quien te la mandó.</p>
+        <p className="text-[15px] text-gypi-dim m-0">La orden de pago se anuló. Pedile el link nuevo a quien te la mandó.</p>
       </div>
     </main>
   );
@@ -31,7 +32,7 @@ export default async function PaginaOrdenPago({ params }) {
   const { token } = await params;
   const datos = await datosOrdenCfo(decodeURIComponent(String(token || ""))).catch(() => null);
   if (!datos) return <NoEncontrada />;
-  const { empresa, numero, fecha, proveedor, total, estado, notas, cargada_por, facturas, formas, decision, cfo } = datos;
+  const { empresa, numero, fecha, proveedor, total, notas, cargada_por, facturas, formas, pagada, pagada_fecha, visto, cfo } = datos;
 
   return (
     <main className="min-h-dvh bg-gypi-bg text-gypi-text font-body overflow-y-auto">
@@ -41,7 +42,7 @@ export default async function PaginaOrdenPago({ params }) {
           {empresa.logo && <img src={empresa.logo} alt="" className="w-12 h-12 rounded-xl object-contain bg-gypi-surface" />}
           <div className="min-w-0">
             <div className="text-[17px] font-bold font-heading truncate">{empresa.nombre}</div>
-            <div className="text-[13px] text-gypi-dim">Orden de pago para aprobar</div>
+            <div className="text-[13px] text-gypi-dim">Orden de pago para firmar en el banco</div>
           </div>
         </header>
 
@@ -50,6 +51,9 @@ export default async function PaginaOrdenPago({ params }) {
           <h1 className="m-0 text-[20px] font-bold font-heading leading-snug">{proveedor}</h1>
           <div className="text-[26px] font-bold font-mono">{plata(total, "ARS")}</div>
           {cargada_por && <div className="text-[13px] text-gypi-dim">Preparó: {cargada_por}</div>}
+          <div className={`text-[13px] font-semibold ${pagada ? "text-gypi-green" : "text-gypi-dim"}`}>
+            {pagada ? `💸 Ya registrada como pagada${pagada_fecha ? ` el ${fechaCorta(pagada_fecha)}` : ""}` : "Preparada para pagar"}
+          </div>
         </section>
 
         <section aria-label="Con qué se paga" className="rounded-[18px] border border-gypi-border bg-gypi-surface p-4">
@@ -81,7 +85,7 @@ export default async function PaginaOrdenPago({ params }) {
 
         {notas && <p className="m-0 text-[14px] rounded-[14px] border border-gypi-border bg-gypi-surface p-3">📝 {notas}</p>}
 
-        <DecisionOrdenPago token={token} estado={estado} decision={decision} cfo={cfo} />
+        <VistoCfo token={token} api="/api/op/visto" visto={visto} cfo={cfo} que="la orden" />
       </div>
     </main>
   );

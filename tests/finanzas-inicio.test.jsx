@@ -65,17 +65,17 @@ test("Inicio — Para hacer: de lo más urgente a lo menos, con cuántos y por c
     ],
     costos: 2, costosTotal: 150000, plazosVencidos: 1,
   });
-  assert.deepEqual(p.map((x) => x.id), ["cheques_propios", "cheques_terceros", "op_aprobar", "op_pagar", "plazos", "mi_caja", "revisar", "costos"]);
+  assert.deepEqual(p.map((x) => x.id), ["cheques_propios", "cheques_terceros", "op_pagar", "plazos", "mi_caja", "revisar", "costos"]);
   const propios = p[0];
   assert.deepEqual([propios.cantidad, propios.importe, propios.tono, propios.ir], [2, 300, "rojo", "fin-cheques"], "uno ya se debitó sin plata: rojo");
   assert.match(propios.texto, /2 e-cheq o cheques propios se debitan esta semana/);
   assert.deepEqual([p[1].cantidad, p[1].importe], [1, 50], "solo el que ya se puede depositar");
   assert.equal(p[1].texto, "1 cheque de terceros ya se puede depositar");
-  assert.equal(p[3].importe, 500.56);
-  assert.equal(p[5].texto, "2 movimientos de Mi caja para revisar");
-  assert.equal(p[5].ir, "fin-tesoreria");
-  assert.equal(p[6].texto, "1 operación para revisar");
-  assert.equal(p[7].texto, "2 costos de Flota y Maquinaria para pasar a Finanzas");
+  assert.deepEqual([p[2].cantidad, p[2].importe, p[2].texto], [2, 1500.56, "2 órdenes de pago sin pagar"], "no esperan al CFO");
+  assert.equal(p[4].texto, "2 movimientos de Mi caja para revisar");
+  assert.equal(p[4].ir, "fin-tesoreria");
+  assert.equal(p[5].texto, "1 operación para revisar");
+  assert.equal(p[6].texto, "2 costos de Flota y Maquinaria para pasar a Finanzas");
   assert.deepEqual(pendientesFinanzas({ hoy: "2026-11-11" }), [], "todo al día");
 });
 
@@ -136,7 +136,7 @@ test("/api/finanzas/inicio — la plata, el mes sin los pases entre cajas y lo q
   // Caja: -30.000 + 20.000 + 1.000 = -9.000; Banco: 100.000 - 20.000 = 80.000 → 71.000 (sin lo "para revisar")
   assert.deepEqual([d.saldo.ARS, d.saldo.USD], [71000, 500]);
   assert.deepEqual([d.mes.entro, d.mes.salio], [100000, 30000], "el pase Banco → Caja no cuenta y los dólares van aparte");
-  assert.deepEqual(d.pendientes.map((p) => p.id), ["op_aprobar", "mi_caja"]);
+  assert.deepEqual(d.pendientes.map((p) => p.id), ["op_pagar", "mi_caja"]);
   assert.equal(d.cajas, 3);
   assert.equal((await pedir(apiInicio, "administrativo", "GET")).status, 403, "solo el dueño");
 });
@@ -145,7 +145,7 @@ test("/api/finanzas/inicio — un módulo que la empresa no tiene queda en cero,
   mockInicio({ fallaCheques: true });
   const r = await pedir(apiInicio, "gerencial", "GET");
   assert.equal(r.status, 200);
-  assert.deepEqual((await r.json()).pendientes.map((p) => p.id), ["op_aprobar", "mi_caja"]);
+  assert.deepEqual((await r.json()).pendientes.map((p) => p.id), ["op_pagar", "mi_caja"]);
 });
 
 // ─── Inicio: pantalla ───
@@ -153,14 +153,14 @@ test("/api/finanzas/inicio — un módulo que la empresa no tiene queda en cero,
 test("Inicio — la plata, Para hacer y las tarjetas llevan cada una a su pantalla", async () => {
   global.fetch = async () => new Response(JSON.stringify({
     hoy: HOY, saldo: { ARS: 71000, USD: 0 }, mes: { entro: 100000, salio: 30000 }, cajas: 2,
-    pendientes: [{ id: "op_aprobar", ir: "fin-pagos", cantidad: 1, importe: 4000, tono: "ambar", texto: "1 orden de pago para aprobar" }],
+    pendientes: [{ id: "op_pagar", ir: "fin-pagos", cantidad: 1, importe: 4000, tono: "normal", texto: "1 orden de pago sin pagar" }],
   }), { status: 200 });
   const idas = [];
   const opciones = OPCIONES_GESTION.finanzas.filter((o) => o.id !== "fin-config");
   render(<FinanzasInicio opciones={opciones} onIr={(id) => idas.push(id)} />);
   assert.ok(await screen.findByText("$ 71.000,00"));
   assert.ok(screen.getByText(/Diferencia \$ 70\.000,00/));
-  fireEvent.click(screen.getByRole("button", { name: /1 orden de pago para aprobar/ }));
+  fireEvent.click(screen.getByRole("button", { name: /1 orden de pago sin pagar/ }));
   fireEvent.click(screen.getByRole("button", { name: /En cajas y bancos/ }));
   fireEvent.click(screen.getByRole("button", { name: /Este mes/ }));
   fireEvent.click(screen.getByRole("button", { name: /Cheques y e-cheq propios/ }));

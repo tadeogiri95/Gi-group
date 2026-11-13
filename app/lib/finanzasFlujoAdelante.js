@@ -5,7 +5,7 @@
 // intereses. Ahora suma:
 //   - Facturas de proveedores a pagar: lo que se le debe a cada proveedor
 //     (sus compras sin pagar, las más viejas primero) menos lo que ya está en
-//     una orden de pago aprobada o por aprobar. Vence en la fecha de la
+//     una orden de pago sin pagar. Vence en la fecha de la
 //     factura más los días de su "Condición de pago" (Compras → Proveedores:
 //     "30 días", "30/60" usa el primero, "contado" o vacío = ese día).
 //   - Órdenes de compra abiertas (enviadas o recibidas en parte, sin factura):
@@ -48,7 +48,7 @@ export function pagosAProveedores({ ops = [], cuentas = [], proveedores = [], or
   // Lo que ya está en una orden de pago no se cuenta dos veces
   const enOrden = new Map();
   for (const o of ordenes) {
-    if (!["aprobada", "para_aprobar"].includes(o.estado) || !o.proveedor_id) continue;
+    if (!["borrador", "para_aprobar", "aprobada", "rechazada"].includes(o.estado) || !o.proveedor_id) continue;
     enOrden.set(`p${o.proveedor_id}`, (enOrden.get(`p${o.proveedor_id}`) || 0) + (Number(o.total) || 0));
   }
   // Agrupadas por proveedor una sola vez (el libro puede tener cientos de miles de operaciones)
