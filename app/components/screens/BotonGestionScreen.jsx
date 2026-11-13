@@ -23,7 +23,6 @@ import MaquinariaScreen from "../MaquinariaScreen";
 import PlanificacionScreen from "../PlanificacionScreen";
 import MinutaScreen from "../MinutaScreen";
 import FinanzasConfig from "../FinanzasConfig";
-import FinanzasMovimientos from "../FinanzasMovimientos";
 import FinanzasProveedores from "../FinanzasProveedores";
 import FinanzasCheques from "../FinanzasCheques";
 import FinanzasTesoreria from "../FinanzasTesoreria";
@@ -58,7 +57,9 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
   const primera = OPCIONES.find((o) => tieneModulo(empresa, o.modulo)) || OPCIONES[0];
   // seccion: la opción con la que abre (el Panel de control manda "ot", "compras"
   // o "flota", que abre en 🔔 Alertas)
-  const [opcion, setOpcion] = useState(OPCIONES.some((o) => o.id === seccion) ? seccion : primera?.id);
+  // 13/11: Movimientos quedó dentro de 💰 Tesorería (los enlaces viejos van ahí)
+  const pedida = seccion === "fin-movimientos" ? "fin-tesoreria" : seccion;
+  const [opcion, setOpcion] = useState(OPCIONES.some((o) => o.id === pedida) ? pedida : primera?.id);
   // Con todo apagado el botón no aparece en la barra; por las dudas, nada
   if (!primera) return null;
   const actual = OPCIONES.find((o) => o.id === opcion) || primera;
@@ -91,10 +92,9 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {!bloqueado && actual.id === "minuta" && <MinutaScreen empresa={empresa} />}
         {!bloqueado && actual.id === "reportes" && <ReportesScreen grupo="produccion" />}
         {!bloqueado && actual.id === "fin-inicio" && <FinanzasInicio opciones={OPCIONES} onIr={(id) => (onIr ? onIr(id.includes(":") ? id : `${boton}:${id}`) : setOpcion(id))} />}
-        {!bloqueado && actual.id === "fin-movimientos" && <FinanzasMovimientos />}
         {!bloqueado && actual.id === "fin-proveedores" && <FinanzasProveedores />}
         {!bloqueado && actual.id === "fin-cheques" && <FinanzasCheques />}
-        {!bloqueado && actual.id === "fin-tesoreria" && <FinanzasTesoreria />}
+        {!bloqueado && actual.id === "fin-tesoreria" && <FinanzasTesoreria onIr={setOpcion} />}
         {!bloqueado && actual.id === "fin-clientes" && <FinanzasClientes />}
         {!bloqueado && actual.id === "fin-sueldos" && <FinanzasSueldos />}
         {!bloqueado && actual.id === "fin-resultados" && <FinanzasResultados />}

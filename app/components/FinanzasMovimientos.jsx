@@ -13,6 +13,8 @@
 // su mes, con su deuda y su pago: FinanzasCargarGasto.jsx.
 // Parte 9: aviso de los costos de Flota y Maquinaria para pasar a Finanzas
 // (FinanzasIntegracion.jsx).
+// 13/11 (parte 3 del plan de Tesorería): ya no es una pantalla aparte; es la
+// lista de 💰 Tesorería, filtrada por las cajas elegidas arriba.
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -109,7 +111,7 @@ const VACIA = {
   cuenta_debe: "", cuenta_haber: "", descripcion: "", referencia: "",
 };
 
-function NuevaOperacion({ datos, onCerrar, onGuardada }) {
+function NuevaOperacion({ datos, cajaInicial = "", onCerrar, onGuardada }) {
   const toast = useToast();
   const agenda = useAgenda();
   const [f, setF] = useState({ ...VACIA, fecha: hoyAr() });
@@ -130,6 +132,17 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
   const tiposActivos = datos.tipos.filter((t) => t.activo !== false);
   const grupos = [...new Set(tiposActivos.map((t) => t.grupo || "Otros"))];
 
+  // 13/11: abierta desde una caja de Tesorería, esa caja queda puesta en el lado que corresponde
+  const conCajaElegida = (t, cuentas) => {
+    if (!cajaInicial || !t) return cuentas;
+    const sirve = (c) => !!cajasDelLado(c, datos.tesoreria)?.opciones.some((x) => x.cuenta === cajaInicial);
+    if (sirve(t.cuenta_haber) && !cuentas.cuenta_haber) return { ...cuentas, cuenta_haber: cajaInicial };
+    if (sirve(t.cuenta_debe) && !cuentas.cuenta_debe) return { ...cuentas, cuenta_debe: cajaInicial };
+    if (sirve(t.cuenta_haber)) return { ...cuentas, cuenta_haber: cajaInicial };
+    if (sirve(t.cuenta_debe)) return { ...cuentas, cuenta_debe: cajaInicial };
+    return cuentas;
+  };
+
   const elegirTipo = (e) => {
     const t = datos.tipos.find((x) => x.codigo === e.target.value);
     setF((x) => {
@@ -137,7 +150,7 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
       const junto = t && !separaIva(t) && (numero(x.iva) || numero(x.otros_impuestos))
         ? { neto: String(Math.round(((numero(x.neto) || 0) + (numero(x.iva) || 0) + (numero(x.otros_impuestos) || 0)) * 100) / 100).replace(".", ","), iva: "", otros_impuestos: "" }
         : {};
-      return { ...x, ...junto, tipo: e.target.value, ...cuentasIniciales(t, datos.cuentas, cuentasDelTipo(t, datos.tesoreria)) };
+      return { ...x, ...junto, tipo: e.target.value, ...conCajaElegida(t, cuentasIniciales(t, datos.cuentas, cuentasDelTipo(t, datos.tesoreria))) };
     });
     setErrores([]);
   };
@@ -465,7 +478,15 @@ export function Detalle({ op, datos, nombres = SIN_NOMBRES, onCerrar, onAnulada 
 
 /* ─── Pantalla ───────────────────────────────────────────────────────── */
 
-export default function FinanzasMovimientos() {
+/**
+ * La lista de movimientos. Desde el 13/11 (parte 3 del plan) vive dentro de
+ * 💰 Tesorería: cajas = las cajas elegidas arriba (ninguna = todo), saldos =
+ * el saldo después de cada movimiento cuando hay una sola, cajaNueva = la que
+ * queda puesta en "+ Nuevo movimiento", acciones = botones de esa caja,
+ * onCambio = avisa que se guardó algo, recargar = vuelve a leer.
+ * @param {{ cajas?: string[]|null, saldos?: Map<number, number>|null, cajaNueva?: string, acciones?: any, onCambio?: (() => void)|null, recargar?: number }} props
+ */
+export default function FinanzasMovimientos({ cajas = null, saldos = null, cajaNueva = "", acciones = null, onCambio = null, recargar = 0 } = {}) {
   const [periodo, setPeriodo] = useState(() => ({ desde: inicioMes(hoyAr()), hasta: hoyAr() }));
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState(null);
@@ -487,8 +508,9 @@ export default function FinanzasMovimientos() {
     } catch (e) {
       setError(e.message);
     }
-  }, [periodo]);
+  }, [periodo, recargar]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { cargar(); }, [cargar]);
+  const cambio = () => { cargar(); onCambio?.(); };
 
   const nombres = useMemo(() => {
     const prov = new Map((datos?.proveedores || []).map((p) => [String(p.id), p.nombre]));
@@ -499,19 +521,22 @@ export default function FinanzasMovimientos() {
     };
   }, [datos]);
 
+  const elegidas = useMemo(() => new Set(cajas || []), [cajas]);
   const lista = useMemo(
-    () => filtrarOperaciones(datos?.operaciones, filtros, (op) => `${nombres.entidad(op)} ${nombres.ot(op)}`),
-    [datos, filtros, nombres],
+    () => filtrarOperaciones(datos?.operaciones, filtros, (op) => `${nombres.entidad(op)} ${nombres.ot(op)}`)
+      .filter((op) => !elegidas.size || elegidas.has(op.cuenta_debe) || elegidas.has(op.cuenta_haber)),
+    [datos, filtros, nombres, elegidas],
   );
 
   if (error) return <p role="alert" className="m-[18px] text-[14px] text-gypi-red">⚠ {error}</p>;
   if (!datos) return <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div>;
-  if (!datos.tipos.length) {
+  if (!datos.tipos?.length) {
     return <p className="m-[18px] text-[14px] text-gypi-text">Primero copiá el libro en Finanzas → 🧾 Configuración: sin tipos de operación no se pueden cargar movimientos.</p>;
   }
 
   const setFiltro = (k) => (e) => setFiltros((x) => ({ ...x, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
-  const caja = datos.tesoreria.find((t) => t.cuenta === filtros.caja);
+  const cajaFiltro = elegidas.size === 1 ? [...elegidas][0] : filtros.caja;
+  const caja = datos.tesoreria.find((t) => t.cuenta === cajaFiltro);
   const entro = caja ? lista.reduce((s, op) => s + Math.max(0, movimientoCaja(op, caja)), 0) : 0;
   const salio = caja ? lista.reduce((s, op) => s + Math.max(0, -movimientoCaja(op, caja)), 0) : 0;
   const filtro = (k, label, opciones) => (
@@ -521,7 +546,7 @@ export default function FinanzasMovimientos() {
     </SelectBuscable>
   );
   const revisar = (datos.operaciones || []).filter((o) => o.estado === "para_revisar" && !o.anulada_at).length;
-  const activos = ["tipo", "caja", "proveedor", "proyecto", "centro"].filter((k) => filtros[k]).length;
+  const activos = ["tipo", ...(elegidas.size ? [] : ["caja"]), "proveedor", "proyecto", "centro"].filter((k) => filtros[k]).length;
   const usadas = (k) => new Set((datos.operaciones || []).map((o) => String(o[k] ?? "")).filter(Boolean));
   const provUsados = usadas("proveedor_id");
   const otsUsadas = usadas("proyecto_id");
@@ -529,17 +554,18 @@ export default function FinanzasMovimientos() {
   return (
     <div className="flex-1 overflow-y-auto px-[18px] pb-6">
       <div className="flex flex-wrap items-end gap-2 mb-2">
-        <button type="button" className="g-btn g-btn-primary" onClick={() => setNueva(true)}>+ Nueva operación</button>
+        <button type="button" className="g-btn g-btn-primary" onClick={() => setNueva(true)}>{cajas ? "＋ Nuevo movimiento" : "+ Nueva operación"}</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setCargarGasto(true)}>🧾 Cargar gasto o factura</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setDescargar(true)}>⬇ Descargar extracto</button>
+        {acciones}
         {campo("Desde", <input type="date" className="g-input" value={periodo.desde} onChange={(e) => e.target.value && setPeriodo((p) => ({ ...p, desde: e.target.value }))} />, "ml-auto")}
         {campo("Hasta", <input type="date" className="g-input" value={periodo.hasta} onChange={(e) => e.target.value && setPeriodo((p) => ({ ...p, hasta: e.target.value }))} />)}
       </div>
-      <CostosMantenimiento datosGasto={datos} onCargado={cargar} />
+      <CostosMantenimiento datosGasto={datos} onCargado={cambio} />
       {verFiltros && (
       <div className="flex flex-wrap gap-2 mb-2">
         {filtro("tipo", "Tipo", [...new Set((datos.operaciones || []).map((o) => o.tipo))].map((t) => [t, nombreDeTipo(t, datos.tipos)]).sort((a, b) => a[1].localeCompare(b[1], "es")).map(([t, n]) => <option key={t} value={t}>{n}</option>))}
-        {filtro("caja", "Caja o banco", datos.tesoreria.map((t) => <option key={t.cuenta} value={t.cuenta}>{t.nombre}</option>))}
+        {!elegidas.size && filtro("caja", "Caja o banco", datos.tesoreria.map((t) => <option key={t.cuenta} value={t.cuenta}>{t.nombre}</option>))}
         {filtro("proveedor", "Proveedor", datos.proveedores.filter((p) => provUsados.has(String(p.id))).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>))}
         {filtro("proyecto", "OT", datos.proyectos.filter((p) => otsUsadas.has(String(p.id))).map((p) => <option key={p.id} value={p.id}>{textoOt(p)}</option>))}
         {filtro("centro", "Centro de costo", datos.centros.map((c) => <option key={c.codigo} value={c.codigo}>{c.codigo}</option>))}
@@ -581,6 +607,9 @@ export default function FinanzasMovimientos() {
                   <span className="font-semibold flex-1 min-w-0 truncate">{nombreDeTipo(op.tipo, datos.tipos)}{quien ? ` · ${quien}` : ""}</span>
                   <span className={`font-mono font-semibold ${COLOR_LADO[lado.como] || ""}`}>{SIGNO_LADO[lado.como] || ""}{plata(op.total, op.moneda)}</span>
                 </span>
+                {saldos?.has(op.id) && caja && !op.anulada_at && (
+                  <span className="block text-right text-[12px] text-gypi-dim">Saldo <b className={`font-mono ${saldos.get(op.id) < 0 ? "text-gypi-red" : "text-gypi-text"}`}>{plata(saldos.get(op.id), caja.moneda)}</b></span>
+                )}
                 <span className="block text-[12px] text-gypi-dim truncate">
                   {lado.texto || `${nombreCuenta(op.cuenta_debe, datos.cuentas)} ← ${nombreCuenta(op.cuenta_haber, datos.cuentas)}`}
                   {ot ? ` · ${ot}` : ""}{op.descripcion ? ` · ${op.descripcion}` : ""}
@@ -600,13 +629,13 @@ export default function FinanzasMovimientos() {
       {lista.length > MAX_LISTA && <p className="mt-2 text-[13px] text-gypi-dim">Hay {lista.length - MAX_LISTA} más: usá los filtros o achicá las fechas.</p>}
       {!lista.length && <p className="mt-2 text-[13px] text-gypi-dim">No hay operaciones en el período con esos filtros.</p>}
 
-      {nueva && <NuevaOperacion datos={datos} onCerrar={() => setNueva(false)} onGuardada={() => { setNueva(false); cargar(); }} />}
-      {cargarGasto && <CargarGasto datos={datos} onCerrar={() => setCargarGasto(false)} onGuardada={() => { setCargarGasto(false); cargar(); }} />}
-      {detalle && <Detalle op={detalle} datos={datos} nombres={nombres} onCerrar={() => setDetalle(null)} onAnulada={() => { setDetalle(null); cargar(); }} />}
+      {nueva && <NuevaOperacion datos={datos} cajaInicial={cajaNueva} onCerrar={() => setNueva(false)} onGuardada={() => { setNueva(false); cambio(); }} />}
+      {cargarGasto && <CargarGasto datos={datos} onCerrar={() => setCargarGasto(false)} onGuardada={() => { setCargarGasto(false); cambio(); }} />}
+      {detalle && <Detalle op={detalle} datos={datos} nombres={nombres} onCerrar={() => setDetalle(null)} onAnulada={() => { setDetalle(null); cambio(); }} />}
       {descargar && (
-        <DescargarExtracto desde={periodo.desde} hasta={periodo.hasta} filtros={filtros} listas={datos} onCerrar={() => setDescargar(false)}
+        <DescargarExtracto desde={periodo.desde} hasta={periodo.hasta} filtros={{ ...filtros, caja: cajaFiltro || "" }} listas={datos} onCerrar={() => setDescargar(false)}
           filtrosTexto={[
-            filtros.caja && (caja?.nombre || filtros.caja),
+            cajaFiltro && (caja?.nombre || cajaFiltro),
             filtros.tipo && nombreDeTipo(filtros.tipo, datos.tipos),
             filtros.proveedor && datos.proveedores.find((p) => String(p.id) === String(filtros.proveedor))?.nombre,
             filtros.proyecto && textoOt(datos.proyectos.find((p) => String(p.id) === String(filtros.proyecto)) || {}),

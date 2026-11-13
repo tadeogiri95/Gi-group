@@ -8,7 +8,7 @@ import { fechaDebito } from "./finanzasDiasHabiles";
 
 /** Las pantallas de Finanzas agrupadas por tema, en el orden del menú. */
 export const GRUPOS_FINANZAS = [
-  { id: "dia", titulo: "Día a día", opciones: ["fin-movimientos", "fin-tesoreria", "fin-pagos", "fin-cheques"] },
+  { id: "dia", titulo: "Día a día", opciones: ["fin-tesoreria", "fin-pagos", "fin-cheques"] },
   { id: "gente", titulo: "Con quién trabajamos", opciones: ["fin-proveedores", "fin-clientes", "fin-sueldos", "fin-personas"] },
   { id: "numeros", titulo: "Cómo vamos", opciones: ["fin-resultados", "fin-flujo", "fin-reporte", "fin-cierre"] },
   { id: "ajustes", titulo: "Ajustes", opciones: ["fin-config"] },
@@ -16,8 +16,7 @@ export const GRUPOS_FINANZAS = [
 
 /** Para qué sirve cada pantalla, en una línea (las tarjetas del Inicio). */
 export const DETALLE_FINANZAS = {
-  "fin-movimientos": "Todo lo que se cargó; cargar un gasto o una factura",
-  "fin-tesoreria": "Saldo de cada caja y banco, Mi caja y plazos fijos",
+  "fin-tesoreria": "Cajas y bancos con su saldo y todo lo que se cargó; cargar, corregir o anular",
   "fin-pagos": "Órdenes de pago: armar, aprobar y pagar",
   "fin-cheques": "Cheques y e-cheq propios y de terceros",
   "fin-proveedores": "Cuánto se le debe a cada uno",
@@ -76,13 +75,13 @@ export function pendientesFinanzas({ hoy, revisar = [], ordenes = [], cheques = 
     out.push({ id: "mi_caja", ir: "fin-tesoreria", cantidad: miCaja.length, tono: "normal", texto: plural(miCaja.length, "1 movimiento de Mi caja para revisar", "N movimientos de Mi caja para revisar") });
   }
   if (otras.length) {
-    out.push({ id: "revisar", ir: "fin-movimientos", cantidad: otras.length, tono: "normal", texto: plural(otras.length, "1 operación para revisar", "N operaciones para revisar") });
+    out.push({ id: "revisar", ir: "fin-tesoreria", cantidad: otras.length, tono: "normal", texto: plural(otras.length, "1 operación para revisar", "N operaciones para revisar") });
   }
   if (sinFactura > 0) {
     out.push({ id: "sin_factura", ir: "inventario:compras", cantidad: sinFactura, tono: "ambar", texto: plural(sinFactura, "1 orden de compra recibida sin factura: cargala en Compras para que entre a Finanzas", "N órdenes de compra recibidas sin factura: cargalas en Compras para que entren a Finanzas") });
   }
   if (costos > 0) {
-    out.push({ id: "costos", ir: "fin-movimientos", cantidad: costos, importe: centavos(costosTotal), tono: "normal", texto: plural(costos, "1 costo de Flota o Maquinaria para pasar a Finanzas", "N costos de Flota y Maquinaria para pasar a Finanzas") });
+    out.push({ id: "costos", ir: "fin-tesoreria", cantidad: costos, importe: centavos(costosTotal), tono: "normal", texto: plural(costos, "1 costo de Flota o Maquinaria para pasar a Finanzas", "N costos de Flota y Maquinaria para pasar a Finanzas") });
   }
   return out;
 }

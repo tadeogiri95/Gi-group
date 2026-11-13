@@ -16,6 +16,11 @@
 // títulos con láminas y cotización (FinanzasInversiones.jsx).
 // 13/11: 🔎 Posibles repetidos busca en todas las cajas lo que parece cargado
 // dos veces; las cargas avisan 🔴/🟡 antes de guardar (finanzasRepetidos.js).
+// 13/11 (parte 3 del plan): 💰 Tesorería = Cajas y bancos + Movimientos en una
+// sola pantalla. Arriba las cajas con su saldo; se elige una, varias o
+// ninguna (todo) y abajo se ven sus movimientos (FinanzasMovimientos), con el
+// saldo renglón por renglón si hay una sola y "＋ Nuevo movimiento" con esa
+// caja puesta. Tocando un movimiento se ve, se corrige o se anula.
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -28,15 +33,13 @@ import SubirExtracto, { Repetidos } from "./FinanzasExtracto";
 import { repetidosEnCuenta } from "../lib/finanzasBanco";
 import PlazosFijos from "./FinanzasPlazosFijos";
 import Inversiones from "./FinanzasInversiones";
-import { Detalle } from "./FinanzasMovimientos";
-import DescargarExtracto from "./FinanzasDescargarExtracto";
+import FinanzasMovimientos, { Detalle } from "./FinanzasMovimientos";
 import AvisoRepetidos, { repetidosDe } from "./FinanzasAvisoRepetidos";
-import { Modal, SelectBuscable, Spinner } from "./ui";
+import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
 const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-const MAX_MOVIMIENTOS = 300;
 
 async function postTesoreria(body) {
   const res = await apiFetch("/api/finanzas/tesoreria", { method: "POST", body: JSON.stringify(body) });
@@ -219,62 +222,6 @@ function Transferir({ datos, desdeInicial = "", onCerrar, onHecho }) {
   );
 }
 
-/* ─── Ficha de una caja ──────────────────────────────────────────────── */
-
-function Ficha({ caja, datos, onCerrar, onTransferir, onExtracto, onCambio }) {
-  const movimientos = useMemo(() => movimientosDeCaja(datos.operaciones, caja), [datos, caja]);
-  const [detalle, setDetalle] = useState(null);
-  const [descargar, setDescargar] = useState(false);
-  const responsable = datos.personal.find((p) => p.id === caja.responsable_id)?.nombre;
-  return (
-    <Modal open onClose={onCerrar} title={caja.nombre} maxWidth={1080}>
-      <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
-        <p className={`m-0 text-[22px] font-bold font-mono ${caja.saldo < 0 ? "text-gypi-red" : ""}`}>{plata(caja.saldo, caja.moneda)}</p>
-        <p className="m-0 text-[13px] text-gypi-dim">{responsable ? `Responsable: ${responsable} · ` : ""}{movimientos.length} movimientos</p>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className="g-btn g-btn-secondary" onClick={onTransferir}>⇄ Pasar plata desde esta caja</button>
-          {caja.tipo === "banco" && caja.moneda !== "USD" && <button type="button" className="g-btn g-btn-secondary" onClick={onExtracto}>📥 Subir extracto</button>}
-          <button type="button" className="g-btn g-btn-secondary" onClick={() => setDescargar(true)}>⬇ Descargar extracto</button>
-        </div>
-        {movimientos.length ? (
-          <table className="w-full text-[13px] border-collapse" aria-label="Movimientos de la caja">
-            <thead>
-              <tr className="text-gypi-dim text-left">
-                <th className="font-semibold py-1">Fecha</th>
-                <th className="font-semibold py-1 text-right">Entra</th>
-                <th className="font-semibold py-1 text-right">Sale</th>
-                <th className="font-semibold py-1 text-right">Saldo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...movimientos].reverse().slice(0, MAX_MOVIMIENTOS).map((m) => (
-                <tr key={m.op.id} className="border-t border-gypi-border">
-                  <td className="py-1">
-                    <button type="button" onClick={() => setDetalle(m.op)} aria-label={`Ver ${m.op.tipo} del ${fechaCorta(m.op.fecha)}`}
-                      className="p-0 border-none bg-transparent text-left cursor-pointer text-gypi-text underline decoration-gypi-border underline-offset-2">
-                      <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(m.op.fecha)}</span> {m.op.tipo}
-                    </button>
-                    {m.op.estado === "para_revisar" && <b className="ml-1 text-gypi-amber-ink">· Para revisar</b>}
-                    {m.op.descripcion && <span className="block text-[12px] text-gypi-dim break-words">{m.op.descripcion}</span>}
-                    {m.op.comprobante_url && <a href={m.op.comprobante_url} target="_blank" rel="noopener noreferrer" className="text-[12px] text-gypi-cyan underline">🧾 Ver ticket</a>}
-                  </td>
-                  <td className="py-1 text-right font-mono">{m.entra ? plata(m.entra, caja.moneda) : ""}</td>
-                  <td className="py-1 text-right font-mono">{m.sale ? plata(m.sale, caja.moneda) : ""}</td>
-                  <td className={`py-1 text-right font-mono font-semibold ${m.saldo < 0 ? "text-gypi-red" : ""}`}>{plata(m.saldo, caja.moneda)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : <p className="m-0 text-[13px] text-gypi-dim">Sin movimientos todavía.</p>}
-        {movimientos.length > MAX_MOVIMIENTOS && <p className="m-0 text-[12px] text-gypi-dim">Se ven los últimos {MAX_MOVIMIENTOS}. El resto está en Movimientos, filtrando por esta caja.</p>}
-        {movimientos.length > 0 && <p className="m-0 text-[12px] text-gypi-dim">Tocá un movimiento para verlo, corregirlo o anularlo.</p>}
-      </div>
-      {detalle && <Detalle op={detalle} datos={datos} onCerrar={() => setDetalle(null)} onAnulada={() => { setDetalle(null); onCambio(); }} />}
-      {descargar && <DescargarExtracto caja={caja.cuenta} operaciones={datos.operaciones} tesoreria={datos.tesoreria} onCerrar={() => setDescargar(false)} />}
-    </Modal>
-  );
-}
-
 /* ─── Mi caja: qué se ofrece y lo que espera revisión (F3b, 176) ───── */
 
 function ConfigMiCaja({ datos, onCerrar, onGuardado }) {
@@ -399,8 +346,6 @@ function RevisarMiCaja({ datos, pendientes, onCerrar, onCambio }) {
   );
 }
 
-/* ─── Pantalla ───────────────────────────────────────────────────────── */
-
 /* ─── 🔎 Posibles repetidos en todas las cajas (13/11) ──────────────────── */
 
 /** Por caja, los grupos del mismo importe con 3 días o menos entre uno y otro (repetidosEnCuenta). */
@@ -434,10 +379,22 @@ function PosiblesRepetidos({ datos, porCaja, onCerrar, onCambio }) {
   );
 }
 
-export default function FinanzasTesoreria() {
+/* ─── Pantalla ───────────────────────────────────────────────────────── */
+
+/** El saldo de la caja después de cada movimiento (para la lista con una sola caja elegida). */
+export function saldosDeCaja(operaciones = [], caja = null) {
+  return caja ? new Map(movimientosDeCaja(operaciones, caja).map((m) => [m.op.id, m.saldo])) : null;
+}
+
+/** Elegir o sacar una caja de las elegidas. */
+export function alternarCaja(elegidas = [], cuenta) {
+  return elegidas.includes(cuenta) ? elegidas.filter((c) => c !== cuenta) : [...elegidas, cuenta];
+}
+
+export default function FinanzasTesoreria({ onIr = null } = {}) {
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState(null);
-  const [ficha, setFicha] = useState(null);
+  const [elegidas, setElegidas] = useState([]);
   const [transferir, setTransferir] = useState(null);
   const [iniciales, setIniciales] = useState(false);
   const [inactivas, setInactivas] = useState(false);
@@ -445,6 +402,9 @@ export default function FinanzasTesoreria() {
   const [verConfig, setVerConfig] = useState(false);
   const [extracto, setExtracto] = useState(null);
   const [verRepetidos, setVerRepetidos] = useState(false);
+  const [masOpciones, setMasOpciones] = useState(false);
+  // Lo que cambia desde acá (pasar plata, extracto, Mi caja) también recarga la lista de abajo
+  const [version, setVersion] = useState(0);
 
   const cargar = useCallback(async () => {
     try {
@@ -458,20 +418,27 @@ export default function FinanzasTesoreria() {
     }
   }, []);
   useEffect(() => { cargar(); }, [cargar]);
+  const cambioAca = () => { cargar(); setVersion((v) => v + 1); };
 
   const saldos = useMemo(() => (datos ? saldosTesoreria(datos.operaciones, datos.tesoreria) : []), [datos]);
   const totales = useMemo(() => totalesTesoreria(saldos), [saldos]);
   const pendientes = useMemo(() => paraRevisarMiCaja(datos?.operaciones), [datos]);
   const porCaja = useMemo(() => (datos ? repetidosPorCaja(datos.operaciones, datos.tesoreria) : []), [datos]);
   const nRepetidos = porCaja.reduce((n, x) => n + x.grupos.length, 0);
+  const una = elegidas.length === 1 ? saldos.find((s) => s.cuenta === elegidas[0]) || null : null;
+  const saldoRenglon = useMemo(() => (datos && una ? saldosDeCaja(datos.operaciones, una) : null), [datos, una]);
 
   if (error) return <p role="alert" className="m-[18px] text-[14px] text-gypi-red">⚠ {error}</p>;
   if (!datos) return <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div>;
   if (!datos.tesoreria.length) {
     return <p className="m-[18px] text-[14px] text-gypi-text">Primero copiá el libro en Finanzas → 🧾 Configuración: no hay cajas ni bancos cargados.</p>;
   }
-  const visibles = saldos.filter((s) => inactivas || s.activa !== false);
-  const cajaFicha = ficha ? saldos.find((s) => s.cuenta === ficha) : null;
+  const visibles = saldos.filter((s) => inactivas || s.activa !== false || elegidas.includes(s.cuenta));
+  const elegidasVivas = elegidas.filter((c) => saldos.some((s) => s.cuenta === c));
+  const nombreResp = (s) => (s.responsable_id ? datos.personal.find((p) => p.id === s.responsable_id)?.nombre : null);
+  const sumaElegidas = elegidasVivas.length > 1
+    ? saldos.filter((s) => elegidasVivas.includes(s.cuenta)).reduce((t, s) => ({ ...t, [s.moneda]: (t[s.moneda] || 0) + s.saldo }), {})
+    : null;
 
   return (
     <div className="flex-1 overflow-y-auto px-[18px] pb-6">
@@ -479,60 +446,91 @@ export default function FinanzasTesoreria() {
         <p className="m-0 text-[15px] text-gypi-text flex-1 min-w-[200px]">
           En pesos <b className="font-mono">{plata(totales.ARS, "ARS")}</b>{Math.abs(totales.USD) >= 0.01 && <> · En dólares <b className="font-mono">{plata(totales.USD, "USD")}</b></>}
         </p>
-        <button type="button" className="g-btn g-btn-primary" onClick={() => setTransferir("")}>⇄ Pasar plata</button>
-        <button type="button" className="g-btn g-btn-secondary" onClick={() => setIniciales(true)}>📥 Cargar saldos iniciales</button>
-        <button type="button" className="g-btn g-btn-secondary" onClick={() => setVerConfig(true)}>⚙ Mi caja</button>
+        <button type="button" className="g-btn g-btn-secondary" onClick={() => setTransferir("")}>⇄ Pasar plata</button>
+        {onIr && <button type="button" className="g-btn g-btn-secondary" onClick={() => onIr("fin-cheques")}>🏦 Cheques</button>}
         <button type="button" className={`g-btn ${nRepetidos ? "g-btn-primary" : "g-btn-secondary"}`} onClick={() => setVerRepetidos(true)}>
           🔎 Posibles repetidos{nRepetidos ? ` (${nRepetidos})` : ""}
         </button>
+        <button type="button" className="g-btn g-btn-secondary" aria-expanded={masOpciones} onClick={() => setMasOpciones((v) => !v)}>⋯ Más</button>
       </div>
+      {masOpciones && (
+        <div className="flex flex-wrap gap-2 mb-3">
+          <button type="button" className="g-btn g-btn-secondary" onClick={() => setIniciales(true)}>📥 Cargar saldos iniciales</button>
+          <button type="button" className="g-btn g-btn-secondary" onClick={() => setVerConfig(true)}>⚙ Mi caja</button>
+        </div>
+      )}
       {pendientes.length > 0 && (
         <button type="button" onClick={() => setVerRevisar(true)}
           className="w-full mb-3 p-3 rounded-lg border border-gypi-amber/40 bg-gypi-amber/10 text-left text-[14px] font-semibold text-gypi-amber-ink cursor-pointer">
           📱 {pendientes.length === 1 ? "1 movimiento" : `${pendientes.length} movimientos`} de Mi caja para revisar
         </button>
       )}
-      {ORDEN_TIPOS.map((tipo) => {
-        const grupo = visibles.filter((s) => (s.tipo || "otro") === tipo);
-        if (!grupo.length) return null;
-        return (
-          <section key={tipo} aria-label={NOMBRE_GRUPO[tipo]} className="mb-4">
-            <h2 className="m-0 mb-1.5 text-[14px] font-bold text-gypi-dim">{NOMBRE_GRUPO[tipo]}</h2>
-            <ul className="list-none m-0 p-0 flex flex-col gap-1.5">
-              {grupo.map((s) => (
-                <li key={s.cuenta}>
-                  <button type="button" onClick={() => setFicha(s.cuenta)}
-                    className={`w-full text-left min-h-[48px] px-3 py-2 rounded-lg border border-gypi-border bg-gypi-surface cursor-pointer ${s.activa === false ? "opacity-60" : ""}`}>
-                    <span className="flex items-baseline gap-2 text-[14px] text-gypi-text">
-                      <span className="font-semibold flex-1 min-w-0 truncate">{s.nombre}</span>
-                      <span className={`font-mono font-semibold ${s.saldo < 0 ? "text-gypi-red" : ""}`}>{plata(s.saldo, s.moneda)}</span>
-                    </span>
-                    <span className="block text-[12px] text-gypi-dim">
-                      {s.ultimo ? `Último movimiento ${fechaCorta(s.ultimo)}` : "Sin movimientos"}
-                      {s.responsable_id && datos.personal.find((p) => p.id === s.responsable_id) ? ` · ${datos.personal.find((p) => p.id === s.responsable_id).nombre}` : ""}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        );
-      })}
-      {datos.tesoreria.some((t) => t.tipo === "plazo_fijo" && t.activa !== false) && <PlazosFijos onCambio={cargar} />}
-      {(datos.tesoreria.some((t) => t.tipo === "fci" && t.activa !== false) || (datos.cuentas || []).some((c) => /T[IÍ]TULOS? P[UÚ]BLICOS/i.test(c.nombre || ""))) && <Inversiones onCambio={cargar} />}
-      {saldos.some((s) => s.activa === false) && (
-        <label className="flex items-center gap-2 text-[13px] text-gypi-dim">
-          <input type="checkbox" checked={inactivas} onChange={(e) => setInactivas(e.target.checked)} /> Ver las inactivas
-        </label>
-      )}
 
-      {verRepetidos && <PosiblesRepetidos datos={datos} porCaja={porCaja} onCerrar={() => setVerRepetidos(false)} onCambio={cargar} />}
-      {cajaFicha && <Ficha caja={cajaFicha} datos={datos} onCambio={cargar} onCerrar={() => setFicha(null)} onTransferir={() => { setTransferir(cajaFicha.cuenta); setFicha(null); }} onExtracto={() => { setExtracto(cajaFicha.cuenta); setFicha(null); }} />}
-      {extracto && <SubirExtracto caja={saldos.find((s) => s.cuenta === extracto) || { cuenta: extracto, nombre: extracto }} datos={datos} onCerrar={() => setExtracto(null)} onCargado={() => { setExtracto(null); cargar(); }} />}
-      {transferir !== null && <Transferir datos={datos} desdeInicial={transferir} onCerrar={() => setTransferir(null)} onHecho={() => { setTransferir(null); cargar(); }} />}
-      {verRevisar && <RevisarMiCaja datos={datos} pendientes={pendientes} onCerrar={() => setVerRevisar(false)} onCambio={cargar} />}
+      <section aria-label="Cajas y bancos" className="mb-3">
+        <div className="flex flex-wrap items-center gap-2 mb-1.5">
+          <p className="m-0 flex-1 min-w-[200px] text-[13px] text-gypi-dim">Tocá una o varias cajas para ver solo sus movimientos. Sin ninguna elegida se ve todo.</p>
+          <Chip type="button" active={!elegidasVivas.length} onClick={() => setElegidas([])}>Todas</Chip>
+        </div>
+        {ORDEN_TIPOS.map((tipo) => {
+          const grupo = visibles.filter((s) => (s.tipo || "otro") === tipo);
+          if (!grupo.length) return null;
+          return (
+            <div key={tipo} role="group" aria-label={NOMBRE_GRUPO[tipo]} className="mb-2">
+              <h2 className="m-0 mb-1 text-[13px] font-bold text-gypi-dim">{NOMBRE_GRUPO[tipo]}</h2>
+              <ul className="list-none m-0 p-0 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-1.5">
+                {grupo.map((s) => {
+                  const marcada = elegidas.includes(s.cuenta);
+                  return (
+                    <li key={s.cuenta}>
+                      <button type="button" aria-pressed={marcada} onClick={() => setElegidas((x) => alternarCaja(x, s.cuenta))}
+                        className={`w-full text-left min-h-[48px] px-3 py-2 rounded-lg border cursor-pointer ${marcada ? "border-gypi-cyan bg-gypi-cyan/10" : "border-gypi-border bg-gypi-surface"} ${s.activa === false ? "opacity-60" : ""}`}>
+                        <span className="flex items-baseline gap-2 text-[14px] text-gypi-text">
+                          <span className="font-semibold flex-1 min-w-0 truncate">{marcada ? "✓ " : ""}{s.nombre}</span>
+                          <span className={`font-mono font-semibold ${s.saldo < 0 ? "text-gypi-red" : ""}`}>{plata(s.saldo, s.moneda)}</span>
+                        </span>
+                        <span className="block text-[12px] text-gypi-dim">
+                          {s.ultimo ? `Último movimiento ${fechaCorta(s.ultimo)}` : "Sin movimientos"}
+                          {nombreResp(s) ? ` · ${nombreResp(s)}` : ""}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
+        {saldos.some((s) => s.activa === false) && (
+          <label className="flex items-center gap-2 text-[13px] text-gypi-dim">
+            <input type="checkbox" checked={inactivas} onChange={(e) => setInactivas(e.target.checked)} /> Ver las inactivas
+          </label>
+        )}
+      </section>
+
+      <section aria-label="Movimientos" className="mb-4 border-t border-gypi-border pt-3">
+        <h2 className="m-0 mb-2 text-[15px] font-bold text-gypi-text">
+          {una ? <>Movimientos de {una.nombre} · <span className={`font-mono ${una.saldo < 0 ? "text-gypi-red" : ""}`}>{plata(una.saldo, una.moneda)}</span></>
+            : elegidasVivas.length > 1 ? <>Movimientos de {elegidasVivas.length} cajas{sumaElegidas && <> · {Object.entries(sumaElegidas).map(([m, v]) => <span key={m} className="font-mono"> {plata(v, m)}</span>)}</>}</>
+              : "Todos los movimientos"}
+        </h2>
+        <FinanzasMovimientos cajas={elegidasVivas} saldos={saldoRenglon} cajaNueva={una?.activa !== false ? una?.cuenta || "" : ""} onCambio={cargar} recargar={version}
+          acciones={una ? (
+            <>
+              <button type="button" className="g-btn g-btn-secondary" onClick={() => setTransferir(una.cuenta)}>⇄ Pasar plata desde esta</button>
+              {una.tipo === "banco" && una.moneda !== "USD" && <button type="button" className="g-btn g-btn-secondary" onClick={() => setExtracto(una.cuenta)}>📥 Subir extracto</button>}
+            </>
+          ) : null} />
+      </section>
+
+      {datos.tesoreria.some((t) => t.tipo === "plazo_fijo" && t.activa !== false) && <PlazosFijos onCambio={cambioAca} />}
+      {(datos.tesoreria.some((t) => t.tipo === "fci" && t.activa !== false) || (datos.cuentas || []).some((c) => /T[IÍ]TULOS? P[UÚ]BLICOS/i.test(c.nombre || ""))) && <Inversiones onCambio={cambioAca} />}
+
+      {verRepetidos && <PosiblesRepetidos datos={datos} porCaja={porCaja} onCerrar={() => setVerRepetidos(false)} onCambio={cambioAca} />}
+      {extracto && <SubirExtracto caja={saldos.find((s) => s.cuenta === extracto) || { cuenta: extracto, nombre: extracto }} datos={datos} onCerrar={() => setExtracto(null)} onCargado={() => { setExtracto(null); cambioAca(); }} />}
+      {transferir !== null && <Transferir datos={datos} desdeInicial={transferir} onCerrar={() => setTransferir(null)} onHecho={() => { setTransferir(null); cambioAca(); }} />}
+      {verRevisar && <RevisarMiCaja datos={datos} pendientes={pendientes} onCerrar={() => setVerRevisar(false)} onCambio={cambioAca} />}
       {verConfig && <ConfigMiCaja datos={datos} onCerrar={() => setVerConfig(false)} onGuardado={() => { setVerConfig(false); cargar(); }} />}
-      {iniciales && <SaldosIniciales datos={datos} onCerrar={() => setIniciales(false)} onCargados={() => { setIniciales(false); cargar(); }} />}
+      {iniciales && <SaldosIniciales datos={datos} onCerrar={() => setIniciales(false)} onCargados={() => { setIniciales(false); cambioAca(); }} />}
     </div>
   );
 }

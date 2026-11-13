@@ -57,8 +57,8 @@ export const BOTONES_GESTION = {
     opciones: [
       // Parte 10 del 11/11: Inicio primero y el resto por tema (finanzasInicio.js)
       { id: "fin-inicio", label: "Inicio", modulo: "finanzas", soloDueno: true },
-      { id: "fin-movimientos", label: "Movimientos", modulo: "finanzas", soloDueno: true },
-      { id: "fin-tesoreria", label: "Cajas y bancos", modulo: "finanzas", soloDueno: true },
+      // 13/11 (parte 3 del plan de Tesorería): Movimientos y Cajas y bancos en una sola
+      { id: "fin-tesoreria", label: "Tesorería", modulo: "finanzas", soloDueno: true },
       { id: "fin-pagos", label: "Pagos", modulo: "finanzas", soloDueno: true },
       { id: "fin-cheques", label: "Cheques", modulo: "finanzas", soloDueno: true },
       { id: "fin-proveedores", label: "Proveedores", modulo: "finanzas", soloDueno: true },
