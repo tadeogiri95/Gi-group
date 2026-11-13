@@ -55,14 +55,21 @@ export function pestanasCelular(boton, opciones, actualId) {
 
 const ReportesScreen = dynamic(() => import("../../reportes_screen"), { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div> });
 
-export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlanes, seccion = null, onIr = null }) {
+// Nombres viejos o con un pedido extra que abren una pestaña: Movimientos quedó
+// dentro de 💰 Tesorería (13/11) y el Panel de control abre Flota o Maquinaria
+// directo en 🔔 Alertas.
+const ALIAS = { "fin-movimientos": "fin-tesoreria", "flota-alertas": "flota", "maquinaria-alertas": "maquinaria" };
+
+export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlanes, seccion = null, onSeccion = null, onIr = null }) {
   const OPCIONES = opcionesBoton(boton, empresa, usuario);
   const primera = OPCIONES.find((o) => tieneModulo(empresa, o.modulo)) || OPCIONES[0];
-  // seccion: la opción con la que abre (el Panel de control manda "ot", "compras"
-  // o "flota", que abre en 🔔 Alertas)
-  // 13/11: Movimientos quedó dentro de 💰 Tesorería (los enlaces viejos van ahí)
-  const pedida = seccion === "fin-movimientos" ? "fin-tesoreria" : seccion;
-  const [opcion, setOpcion] = useState(OPCIONES.some((o) => o.id === pedida) ? pedida : primera?.id);
+  // seccion: la pestaña abierta (?sec= en la dirección). Con onSeccion, cambiar
+  // de pestaña cambia la dirección y el botón Atrás vuelve a la anterior
+  // (revisión de la navegación, 13/11); sin onSeccion, queda en la pantalla.
+  const pedida = ALIAS[seccion] || seccion;
+  const [opcionLocal, setOpcionLocal] = useState(OPCIONES.some((o) => o.id === pedida) ? pedida : primera?.id);
+  const opcion = onSeccion ? pedida : opcionLocal;
+  const setOpcion = onSeccion || setOpcionLocal;
   // Con todo apagado el botón no aparece en la barra; por las dudas, nada
   if (!primera) return null;
   const actual = OPCIONES.find((o) => o.id === opcion) || primera;
@@ -92,8 +99,8 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {!bloqueado && actual.id === "instalaciones" && <ProyectosScreen empresaId={empresaId} onPlanillas={onPlanillas} vistaInicial="gantt" ganttTipo="instalacion" />}
         {!bloqueado && actual.id === "stock" && <StockScreen empresa={empresa} empresaId={empresaId} usuario={usuario} onPlanillas={onPlanillas} />}
         {!bloqueado && actual.id === "compras" && <ComprasScreen empresaId={empresaId} empresa={empresa} usuario={usuario} />}
-        {!bloqueado && actual.id === "flota" && <FlotaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "flota" ? "alertas" : "vehiculos"} />}
-        {!bloqueado && actual.id === "maquinaria" && <MaquinariaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "maquinaria" ? "alertas" : "maquinas"} />}
+        {!bloqueado && actual.id === "flota" && <FlotaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "flota-alertas" ? "alertas" : "vehiculos"} />}
+        {!bloqueado && actual.id === "maquinaria" && <MaquinariaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "maquinaria-alertas" ? "alertas" : "maquinas"} />}
         {!bloqueado && actual.id === "planificacion" && <PlanificacionScreen empresaId={empresaId} />}
         {!bloqueado && actual.id === "minuta" && <MinutaScreen empresa={empresa} />}
         {!bloqueado && actual.id === "reportes" && <ReportesScreen grupo="produccion" />}

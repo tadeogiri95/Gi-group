@@ -47,3 +47,27 @@ test("Mayor de cuentas y Devengamiento tienen su barra para bajar", () => {
     assert.match(raiz, /overflow-y-auto/, f);
   }
 });
+
+// Parte 2 (13/11): la sección y la pestaña van en la dirección (?sec=) para que
+// el botón Atrás del celular o del navegador vuelva al paso anterior.
+test("la sección abierta sale de la dirección, no de un estado que Atrás no ve", () => {
+  const home = leer("[slug]/HomeContent.jsx");
+  assert.match(home, /searchParams\.get\("sec"\)/);
+  assert.doesNotMatch(home, /useState\(null\);\s*\n\s*const irA/);
+  assert.match(home, /if \(seccion\) params\.set\("sec", seccion\); else params\.delete\("sec"\);/);
+});
+
+test("las pestañas de los botones y de Equipo cambian la dirección", async () => {
+  const { default: BotonGestionScreen } = await import("../app/components/screens/BotonGestionScreen.jsx");
+  const pedidas = [];
+  render(<BotonGestionScreen boton="inventario" empresa={{ modulos: ["proyectos", "stock", "compras"] }} usuario={{ rol: "gerencial" }} seccion="stock" onSeccion={(id) => pedidas.push(id)} />);
+  fireEvent.click(screen.getByRole("tab", { name: /Compras/ }));
+  assert.deepEqual(pedidas, ["compras"]);
+  assert.match(leer("components/screens/EquipoScreen.jsx"), /const setOpcion = onSeccion \|\| setOpcionLocal;/);
+});
+
+test("el Panel abre Flota y Maquinaria en Alertas sin chocar con las pestañas", () => {
+  const b = leer("components/screens/BotonGestionScreen.jsx");
+  assert.match(b, /"flota-alertas": "flota"/);
+  assert.match(b, /seccion === "flota-alertas" \? "alertas" : "vehiculos"/);
+});

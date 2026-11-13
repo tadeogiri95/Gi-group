@@ -23,7 +23,7 @@ const NIVEL = { vencido: 0, pronto: 1 };
 export function alertasMantenimiento({ alertasFlota = null, maquinas = [], tareas = [], fallas = [], hoy, textoVencimiento }) {
   const out = [];
   for (const a of alertasFlota || []) {
-    out.push({ clave: `v-${a.patente}-${a.clave}`, nivel: a.nivel, parada: false, texto: textoAlerta(a, textoVencimiento), quien: a.patente, destino: "mantenimiento:flota" });
+    out.push({ clave: `v-${a.patente}-${a.clave}`, nivel: a.nivel, parada: false, texto: textoAlerta(a, textoVencimiento), quien: a.patente, destino: "mantenimiento:flota-alertas" });
   }
   const pendientes = fallasPendientes(fallas);
   for (const a of alertasMaquinaria(maquinas, tareas, hoy)) {
@@ -32,14 +32,14 @@ export function alertasMantenimiento({ alertasFlota = null, maquinas = [], tarea
       const falla = pendientes.find((f) => f.maquina_id === a.maquina.id && f.parada) || pendientes.find((f) => f.maquina_id === a.maquina.id);
       texto = falla ? `Parada: ${falla.descripcion}` : "Máquina parada";
     }
-    out.push({ clave: `m-${a.clave}`, nivel: a.nivel, parada: !!a.parada, texto, quien: a.maquina.codigo, destino: "mantenimiento:maquinaria" });
+    out.push({ clave: `m-${a.clave}`, nivel: a.nivel, parada: !!a.parada, texto, quien: a.maquina.codigo, destino: "mantenimiento:maquinaria-alertas" });
   }
   const paradas = new Set(maquinas.filter((m) => m.estado === "parada").map((m) => m.id));
   const porId = new Map(maquinas.map((m) => [m.id, m]));
   for (const f of pendientes) {
     const m = porId.get(f.maquina_id);
     if (!m || m.activo === false || paradas.has(m.id)) continue;
-    out.push({ clave: `f-${f.id}`, nivel: "pronto", parada: false, texto: `Falla: ${f.descripcion}`, quien: m.codigo, destino: "mantenimiento:maquinaria" });
+    out.push({ clave: `f-${f.id}`, nivel: "pronto", parada: false, texto: `Falla: ${f.descripcion}`, quien: m.codigo, destino: "mantenimiento:maquinaria-alertas" });
   }
   return out.sort((a, b) => Number(b.parada) - Number(a.parada) || (NIVEL[a.nivel] ?? 2) - (NIVEL[b.nivel] ?? 2));
 }

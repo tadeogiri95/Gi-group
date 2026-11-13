@@ -211,8 +211,8 @@ test("alertasMantenimiento — máquinas paradas arriba, después lo vencido y a
     ["AB123CD", "Seguro", "vencido"],
     ["SEC-01", "Falla: Ruido en la sierra", "pronto"],
   ]);
-  assert.equal(r[0].destino, "mantenimiento:maquinaria");
-  assert.equal(r[1].destino, "mantenimiento:flota");
+  assert.equal(r[0].destino, "mantenimiento:maquinaria-alertas");
+  assert.equal(r[1].destino, "mantenimiento:flota-alertas");
 });
 
 test("panel — tarjetas 🔧 Mantenimiento y ⏰ OT atrasadas", async () => {
@@ -252,7 +252,7 @@ test("panel — tarjetas 🔧 Mantenimiento y ⏰ OT atrasadas", async () => {
   assert.ok(within(mant).getByText("1 parada"));
   assert.equal(screen.queryByRole("region", { name: "Flota" }), null, "🔧 Mantenimiento reemplaza a 🚚 Flota");
   fireEvent.click(within(mant).getByText(/Ir a Maquinaria/));
-  assert.deepEqual(destinos, ["mantenimiento:maquinaria"]);
+  assert.deepEqual(destinos, ["mantenimiento:maquinaria-alertas"]);
   const ot = screen.getByRole("region", { name: "OT en curso" });
   assert.ok(ot.compareDocumentPosition(atr) & Node.DOCUMENT_POSITION_FOLLOWING, "OT atrasadas va después de OT en curso");
 });

@@ -27,11 +27,14 @@ export const OPCIONES_EQUIPO = [
   { id: "documentacion", label: "Documentos" },
 ];
 
-export default function EquipoScreen({ empresa, usuario, onVerPlanes, seccion = null }) {
+export default function EquipoScreen({ empresa, usuario, onVerPlanes, seccion = null, onSeccion = null }) {
   // seccion: la pestaña con la que abre (los primeros pasos mandan "horarios")
   // Lo que la empresa apagó en Más → Módulos no aparece (Calendario, Reportes)
   const opciones = OPCIONES_EQUIPO.filter((o) => !seccionApagada(o.id, empresa));
-  const [opcion, setOpcion] = useState(opciones.some((o) => o.id === seccion) ? seccion : "personas");
+  const [opcionLocal, setOpcionLocal] = useState(opciones.some((o) => o.id === seccion) ? seccion : "personas");
+  // Con onSeccion la pestaña va en la dirección (?sec=) y Atrás vuelve a la anterior (13/11)
+  const opcion = onSeccion ? (seccion || "personas") : opcionLocal;
+  const setOpcion = onSeccion || setOpcionLocal;
   const actual = opciones.find((o) => o.id === opcion) || opciones[0];
   const bloqueado = seccionBloqueada(actual.id, empresa);
   const empresaId = usuario?.empresa_id || empresa?.id;

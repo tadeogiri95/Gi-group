@@ -964,7 +964,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         const paradas = alertasMant.filter(a => a.parada).length;
         const vencidas = alertasMant.filter(a => a.nivel === "vencido" && !a.parada).length;
         const pronto = alertasMant.length - paradas - vencidas;
-        const destinos = [conFlota && alertasFlota && { id: "mantenimiento:flota", texto: "Ir a Flota" }, conMaquinaria && maquinaria?.maquinas.length && { id: "mantenimiento:maquinaria", texto: "Ir a Maquinaria" }].filter(Boolean);
+        const destinos = [conFlota && alertasFlota && { id: "mantenimiento:flota-alertas", texto: "Ir a Flota" }, conMaquinaria && maquinaria?.maquinas.length && { id: "mantenimiento:maquinaria-alertas", texto: "Ir a Maquinaria" }].filter(Boolean);
         return (
           <section aria-label="Mantenimiento" className="card-hover g-card mb-4">
             <div className="flex justify-between items-center mb-2 gap-2">
