@@ -1,13 +1,14 @@
 // app/op/resumen/[token]/page.jsx — Resumen de órdenes de pago para el CFO
 // (12/11, migración 186). El dueño le manda este link por WhatsApp; sin
-// usuario de Gypi lo abre, ve cada pago (fecha, proveedor, medio, importe y
-// comprobante), la suma de lo inmediato y de los cheques, y aprueba todas las
-// órdenes que esperan o abre cada una para decidirla (/op/<token>).
+// usuario de Gypi lo abre y ve cada pago (fecha, proveedor, medio, importe y
+// comprobante) y la suma de lo inmediato y de los cheques: lo que tiene para
+// firmar en el banco. Desde el 13/11 es solo informativo: puede apretar
+// 👍 Visto o abrir cada orden (/op/<token>); el pago no lo espera.
 // El token deja de servir cuando el resumen se anula (app/lib/resumenPagoCfo.js).
 import { datosResumenCfo } from "../../../lib/resumenPagoCfo";
 import { ESTADOS_ORDEN, fechaCorta } from "../../../lib/finanzasPagos";
 import { plata } from "../../../lib/finanzasOperaciones";
-import AprobarResumenPago from "../../../components/AprobarResumenPago";
+import VistoCfo from "../../../components/VistoCfo";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ export default async function PaginaResumenPago({ params }) {
   const datos = await datosResumenCfo(decodeURIComponent(String(token || ""))).catch(() => null);
   if (!datos) return <NoEncontrado />;
   const { empresa, numero, fecha, notas, cargado_por, totales, ordenes, cfo } = datos;
-  const esperando = ordenes.filter((o) => o.estado === "para_aprobar").length;
+  const todasVistas = ordenes.length > 0 && ordenes.every((o) => o.visto);
 
   return (
     <main className="min-h-dvh bg-gypi-bg text-gypi-text font-body overflow-y-auto">
@@ -72,7 +73,7 @@ export default async function PaginaResumenPago({ params }) {
               <li key={o.numero} className="rounded-[18px] border border-gypi-border bg-gypi-surface p-3 flex flex-col gap-1">
                 <div className="flex items-baseline gap-2">
                   <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(o.fecha)} · OP N° {o.numero}</span>
-                  <span className={`ml-auto text-[12px] font-semibold ${o.estado === "aprobada" ? "text-gypi-green" : o.estado === "rechazada" ? "text-gypi-red" : "text-gypi-dim"}`}>{est.icono} {est.nombre}</span>
+                  <span className={`ml-auto text-[12px] font-semibold ${o.estado === "pagada" ? "text-gypi-green" : "text-gypi-dim"}`}>{o.estado === "pagada" ? `${est.icono} ${est.nombre}` : "Preparada para pagar"}{o.visto ? " · 👍" : ""}</span>
                 </div>
                 <div className="flex items-baseline gap-2">
                   <span className="flex-1 min-w-0 text-[16px] font-bold">{o.proveedor}</span>
@@ -86,17 +87,16 @@ export default async function PaginaResumenPago({ params }) {
                     </li>
                   ))}
                 </ul>
-                {o.decision?.nota && o.estado === "rechazada" && <p className="m-0 text-[13px] text-gypi-red">{o.decision.nota}</p>}
                 <div className="flex flex-wrap gap-2 mt-1">
                   {o.comprobante && <a className="g-btn g-btn-secondary text-[13px]" href={o.comprobante} target="_blank" rel="noopener noreferrer">📎 Ver comprobante</a>}
-                  {o.token && <a className="g-btn g-btn-secondary text-[13px]" href={`/op/${o.token}`}>Ver y decidir</a>}
+                  {o.token && <a className="g-btn g-btn-secondary text-[13px]" href={`/op/${o.token}`}>Ver la orden</a>}
                 </div>
               </li>
             );
           })}
         </ul>
 
-        <AprobarResumenPago token={token} esperando={esperando} cfo={cfo} />
+        <VistoCfo token={token} api="/api/op/resumen" visto={todasVistas ? { por: null } : null} cfo={cfo} que="el resumen" />
       </div>
     </main>
   );

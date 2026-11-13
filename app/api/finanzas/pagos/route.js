@@ -5,11 +5,12 @@
 //       terceros en cartera, las cajas y bancos, los proveedores, la empresa
 //       (para el PDF) y el nombre y WhatsApp del CFO.
 //   POST { accion: "crear", orden, mandar? } → orden nueva (borrador, o ya
-//       para aprobar con su link si mandar).
-//   POST { accion: "mandar", id } → para aprobar: devuelve el link del CFO
-//       (el mismo si ya estaba mandada; uno nuevo si fue rechazada).
-//   POST { accion: "pagar", id, fecha } → solo aprobadas: genera las
-//       operaciones, los e-cheq y entrega los cheques de terceros.
+//       mandada al CFO con su link si mandar).
+//   POST { accion: "mandar", id } → devuelve el link del CFO (el mismo si ya
+//       tenía uno). Solo informativo (13/11): también para una ya pagada.
+//   POST { accion: "pagar", id, fecha } → cualquier orden sin pagar, sin
+//       esperar al CFO: genera las operaciones, los e-cheq y entrega los
+//       cheques de terceros. El link del CFO sigue sirviendo.
 //   POST { accion: "anular", id } → anulada; si estaba pagada, deshace lo
 //       que generó (si ningún e-cheq se debitó ni un cheque volvió rechazado).
 //   POST { accion: "cfo", nombre, telefono } → guarda a quién se le manda.
@@ -19,7 +20,7 @@
 //   POST { accion: "resumen_crear", resumen: { ordenes, fecha, notas }, comprobantes?, mandar? }
 //       → junta varias órdenes; comprobantes = { <id orden>: url de la foto }.
 //   POST { accion: "resumen_mandar", id } → link del resumen para el CFO; las
-//       órdenes en borrador o rechazadas pasan a esperar su aprobación.
+//       órdenes en borrador pasan a mandadas y las que no tenían link reciben uno.
 //   POST { accion: "resumen_anular", id } → las órdenes quedan libres.
 //   POST { accion: "comprobante", id, url } → foto del comprobante de una
 //       orden (opcional; url vacía la quita).
@@ -101,7 +102,7 @@ export async function GET(request) {
       ...resto, ordenes,
       empresa: empresas?.[0] || {},
       cfo: { nombre: cfg?.[0]?.valor?.nombre || "", telefono: cfg?.[0]?.valor?.telefono || "" },
-      links: Object.fromEntries((ordenes || []).filter((o) => o.token && o.estado === "para_aprobar").map((o) => [o.id, linkCfo(request, o.token)])),
+      links: Object.fromEntries((ordenes || []).filter((o) => o.token && o.estado !== "anulada").map((o) => [o.id, linkCfo(request, o.token)])),
       resumenes: resumenes || [],
       falta_186: resumenes === null,
       links_resumen: Object.fromEntries((resumenes || []).filter((r) => r.token).map((r) => [r.id, linkResumen(request, r.token)])),
@@ -144,11 +145,11 @@ async function mandar(request, sesion, d) {
   const o = await leerOrden(sesion, Number(d.id));
   if (!o) return NextResponse.json({ error: "No encontré esa orden" }, { status: 404 });
   if (!accionesOrden(o.estado).includes("mandar")) return NextResponse.json({ error: "Esta orden ya no se manda al CFO" }, { status: 400 });
-  if (o.estado === "para_aprobar" && o.token) return NextResponse.json({ ok: true, orden: o, url: linkCfo(request, o.token) });
+  if (o.token) return NextResponse.json({ ok: true, orden: o, url: linkCfo(request, o.token) });
   const ahora = new Date().toISOString();
-  // Link nuevo: el de una orden rechazada deja de servir
+  // Link nuevo; una pagada sigue pagada (el CFO solo la mira)
   const [hecha] = (await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}&estado=eq.${o.estado}`, {
-    estado: "para_aprobar", token: nuevoToken(), enviada_at: ahora, decidida_at: null, decidida_por_nombre: null, decision_nota: null, updated_at: ahora,
+    estado: o.estado === "borrador" ? "para_aprobar" : o.estado, token: nuevoToken(), enviada_at: ahora, updated_at: ahora,
   }, { sesion })) || [];
   if (!hecha) return NextResponse.json({ error: "La orden cambió mientras tanto. Actualizá la pantalla." }, { status: 409 });
   refrescar(e, "fin_ordenes_pago");
@@ -159,7 +160,7 @@ async function pagar(sesion, d) {
   const e = sesion.empresa_id;
   const o = await leerOrden(sesion, Number(d.id));
   if (!o) return NextResponse.json({ error: "No encontré esa orden" }, { status: 404 });
-  if (o.estado !== "aprobada") return NextResponse.json({ error: "Solo se paga una orden aprobada por el CFO" }, { status: 400 });
+  if (!accionesOrden(o.estado).includes("pagar")) return NextResponse.json({ error: o.estado === "pagada" ? "Esta orden ya está pagada" : "Esta orden está anulada" }, { status: 400 });
   const fecha = FECHA.test(String(d.fecha || "")) ? d.fecha : hoyAr();
   const ctx = await contexto(sesion);
   const plan = generarPago(o, ctx, fecha);
@@ -176,9 +177,10 @@ async function pagar(sesion, d) {
   }
   const ahora = new Date().toISOString();
   const quien = await nombreEmpleado(sesion);
-  // La orden se marca primero: dos clics no pagan dos veces
-  const [tomada] = (await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}&estado=eq.aprobada`, {
-    estado: "pagada", pagada_at: ahora, pagada_fecha: fecha, pagada_por_nombre: quien, token: null, updated_at: ahora,
+  // La orden se marca primero: dos clics no pagan dos veces. El link del CFO
+  // sigue sirviendo (es informativo).
+  const [tomada] = (await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}&estado=eq.${o.estado}`, {
+    estado: "pagada", pagada_at: ahora, pagada_fecha: fecha, pagada_por_nombre: quien, updated_at: ahora,
   }, { sesion })) || [];
   if (!tomada) return NextResponse.json({ error: "La orden cambió mientras tanto. Actualizá la pantalla." }, { status: 409 });
 
@@ -316,12 +318,12 @@ async function mandarResumen(request, sesion, d) {
   if (!r) return NextResponse.json({ error: "No encontré ese resumen" }, { status: 404 });
   if (r.estado === "anulado") return NextResponse.json({ error: "Ese resumen está anulado" }, { status: 400 });
   const ahora = new Date().toISOString();
-  // Las órdenes en borrador o rechazadas pasan a esperar al CFO, cada una con su link
-  const ordenes = await leer(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&resumen_id=eq.${r.id}&select=id,estado`, 500);
+  const ordenes = await leer(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&resumen_id=eq.${r.id}&select=id,estado,token,enviada_at`, 500);
   if (!ordenes.some((o) => o.estado !== "anulada")) return NextResponse.json({ error: "El resumen no tiene órdenes vivas" }, { status: 400 });
-  for (const o of ordenes.filter((x) => ["borrador", "rechazada"].includes(x.estado))) {
+  // Cada orden tiene su link (para verla de a una); las borrador pasan a mandadas
+  for (const o of ordenes.filter((x) => x.estado !== "anulada" && (x.estado === "borrador" || !x.token))) {
     await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}&estado=eq.${o.estado}`, {
-      estado: "para_aprobar", token: nuevoToken(), enviada_at: ahora, decidida_at: null, decidida_por_nombre: null, decision_nota: null, updated_at: ahora,
+      estado: o.estado === "borrador" ? "para_aprobar" : o.estado, token: o.token || nuevoToken(), enviada_at: o.enviada_at || ahora, updated_at: ahora,
     }, { sesion });
   }
   const [hecho] = (await sbPatch(`fin_resumenes_pago?id=eq.${r.id}&empresa_id=eq.${e}&estado=neq.anulado`, {

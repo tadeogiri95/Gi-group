@@ -4,22 +4,23 @@
 //
 // La Orden de Pago: desde la ficha del proveedor (botón 💸 Pagar) o desde
 // acá se eligen las compras que se pagan y con qué (efectivo, transferencia,
-// e-cheq Credicoop o cheques de la cartera). Se manda por WhatsApp al CFO con
-// un link para aprobarla o rechazarla (/op/<token>, sin usuario). Aprobada,
-// el dueño la marca pagada y recién ahí se generan las operaciones y los
-// cheques. El PDF sale de la ventana de imprimir.
+// e-cheq Credicoop o cheques de la cartera). El dueño la paga cuando quiere
+// (💸 Registrar pago: ahí se generan las operaciones y los cheques), sin
+// esperar a nadie. Al CFO se le manda por WhatsApp solo para que sepa lo que
+// tiene para firmar en el banco (/op/<token>, sin usuario; 13/11): puede
+// apretar 👍 Visto. El PDF sale de la ventana de imprimir.
 //
 // 12/11 (migración 186): 📋 Resumen para el CFO junta varias órdenes, con el
 // comprobante de cada una (foto, opcional) y la suma de lo inmediato
 // (efectivo y transferencia) y de los cheques. Se lo invita al CFO por
-// WhatsApp (/op/resumen/<token>) o se exporta en PDF.
+// WhatsApp (/op/resumen/<token>, solo para mirar) o se exporta en PDF.
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import { numeroWhatsapp } from "../lib/compras";
 import {
-  ESTADOS_ORDEN, FORMAS_PAGO, accionesOrden, cuentasParaPagar, fechaCorta, imprimirOrdenPago, textoForma, textoWhatsappCfo,
+  ESTADOS_ORDEN, FORMAS_PAGO, SIN_PAGAR, accionesOrden, cuentasParaPagar, fechaCorta, imprimirOrdenPago, mandadaAlCfo, textoForma, textoWhatsappCfo, vistaPorCfo,
 } from "../lib/finanzasPagos";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -132,7 +133,7 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
         },
       });
       if (mandar && d.url) mandarWhatsapp(d.orden, d.url, datos);
-      toast.success(mandar ? `Orden N° ${d.orden.numero} lista: mandásela al CFO por WhatsApp` : `Orden N° ${d.orden.numero} guardada como borrador`);
+      toast.success(mandar ? `Orden N° ${d.orden.numero} guardada y mandada al CFO. Ya la podés pagar.` : `Orden N° ${d.orden.numero} guardada. Ya la podés pagar.`);
       onGuardada(d.orden);
     } catch (e) {
       setError(e.message);
@@ -215,11 +216,11 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
             {diferencia > 0 ? `Pagás ${plata(diferencia, "ARS")} más que lo elegido: queda a cuenta.` : `Faltan ${plata(-diferencia, "ARS")} para cubrir lo elegido: queda un pago parcial.`}
           </p>
         )}
-        {campo("Nota para el CFO (opcional)", <textarea className="g-input w-full min-h-[60px]" aria-label="Nota" value={notas} maxLength={500} onChange={(e) => setNotas(e.target.value)} />)}
+        {campo("Nota (opcional, la ve el CFO)", <textarea className="g-input w-full min-h-[60px]" aria-label="Nota" value={notas} maxLength={500} onChange={(e) => setNotas(e.target.value)} />)}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
-          <button type="button" className="g-btn g-btn-secondary" disabled={guardando || !formas.length} onClick={() => guardar(false)}>Guardar borrador</button>
+          <button type="button" className="g-btn g-btn-secondary" disabled={guardando || !formas.length} onClick={() => guardar(false)}>Guardar</button>
           <button type="button" className="g-btn g-btn-primary" disabled={guardando || !formas.length} onClick={() => guardar(true)}>
             {guardando ? "Guardando…" : "Guardar y mandar al CFO"}
           </button>
@@ -247,7 +248,7 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
     try {
       const d = await postPagos({ accion, id: orden.id, ...extra });
       if (accion === "mandar" && d.url) mandarWhatsapp(d.orden, d.url, datos);
-      toast.success({ mandar: "Abrimos WhatsApp con el link para el CFO", pagar: "Orden pagada: se generaron las operaciones y los cheques", anular: "Orden anulada", comprobante: extra.url ? "Comprobante guardado" : "Comprobante quitado" }[accion]);
+      toast.success({ mandar: "Abrimos WhatsApp con el link para el CFO", pagar: "Pago registrado: se generaron las operaciones y los cheques", anular: "Orden anulada", comprobante: extra.url ? "Comprobante guardado" : "Comprobante quitado" }[accion]);
       onCambio();
     } catch (e) {
       setError(e.message);
@@ -283,18 +284,19 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
           </div>
         )}
         {orden.notas && <p className="m-0 text-[13px]">📝 {orden.notas}</p>}
-        {orden.decidida_at && (
-          <p className={`m-0 text-[13px] ${orden.estado === "rechazada" ? "text-gypi-red" : "text-gypi-green"}`}>
-            {orden.estado === "rechazada" ? "❌ Rechazada" : "✅ Aprobada"}{orden.decidida_por_nombre ? ` por ${orden.decidida_por_nombre}` : ""} el {fechaCorta(String(orden.decidida_at).slice(0, 10))}
-            {orden.decision_nota ? `: ${orden.decision_nota}` : ""}
+        {vistaPorCfo(orden) ? (
+          <p className="m-0 text-[13px] text-gypi-green">
+            👍 {orden.decidida_por_nombre || "El CFO"} la vio el {fechaCorta(String(orden.decidida_at).slice(0, 10))}
           </p>
-        )}
+        ) : mandadaAlCfo(orden) ? (
+          <p className="m-0 text-[13px] text-gypi-dim">📲 Mandada al CFO{orden.enviada_at ? ` el ${fechaCorta(String(orden.enviada_at).slice(0, 10))}` : ""}. Todavía no apretó 👍 Visto.</p>
+        ) : null}
         {orden.estado === "pagada" && (
           <p className="m-0 text-[13px] text-gypi-dim">
             💸 Pagada el {fechaCorta(orden.pagada_fecha)}{orden.pagada_por_nombre ? ` por ${orden.pagada_por_nombre}` : ""}. Las operaciones están en Movimientos y los cheques en Cheques.
           </p>
         )}
-        {orden.estado === "para_aprobar" && url && (
+        {orden.estado !== "anulada" && url && (
           <p className="m-0 text-[12px] text-gypi-dim break-all">Link para el CFO: {url}</p>
         )}
         {resumen && <p className="m-0 text-[13px] text-gypi-dim">📋 Está en el resumen N° {resumen.numero}</p>}
@@ -310,7 +312,7 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
           <div className="flex flex-wrap items-end gap-2 p-2 rounded-lg border border-gypi-border">
             {campo("Fecha del pago", <input type="date" className="g-input" aria-label="Fecha del pago" value={fecha} onChange={(e) => e.target.value && setFecha(e.target.value)} />)}
             <button type="button" className="g-btn g-btn-primary flex-1" disabled={!!haciendo} onClick={() => hacer("pagar", { fecha })}>
-              {haciendo === "pagar" ? "Pagando…" : "💸 Marcar pagada"}
+              {haciendo === "pagar" ? "Registrando…" : "💸 Registrar pago"}
             </button>
           </div>
         )}
@@ -332,7 +334,7 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
             <button type="button" className="g-btn g-btn-secondary flex-1" onClick={pdf}>📄 PDF</button>
             {acciones.includes("mandar") && (
               <button type="button" className="g-btn g-btn-secondary flex-1" disabled={!!haciendo} onClick={() => hacer("mandar")}>
-                {orden.estado === "para_aprobar" ? "📲 Mandar el link de nuevo" : "📲 Mandar al CFO"}
+                {url ? "📲 Mandar el link de nuevo" : "📲 Mandar al CFO"}
               </button>
             )}
             {acciones.includes("anular") && <button type="button" className="g-btn g-btn-secondary flex-1" onClick={() => setConfirmarAnular(true)}>🚫 Anular</button>}
@@ -509,7 +511,7 @@ function DetalleResumen({ resumen, datos, url, onCerrar, onCambio, onAbrirOrden 
     <Modal open onClose={onCerrar} title={`Resumen de órdenes de pago N° ${resumen.numero}`} maxWidth={760}>
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
         <div className="text-[13px] text-gypi-dim">
-          {est.icono} {est.nombre} · {fechaCorta(resumen.fecha)}{resumen.cargado_por_nombre ? ` · ${resumen.cargado_por_nombre}` : ""} · {t.aprobadas} de {t.ordenes} aprobadas
+          {est.icono} {est.nombre} · {fechaCorta(resumen.fecha)}{resumen.cargado_por_nombre ? ` · ${resumen.cargado_por_nombre}` : ""} · {t.pagadas} de {t.ordenes} pagadas · 👍 {t.vistas} vistas
         </div>
         <TablaResumen ordenes={ordenes} />
         <Totales ordenes={ordenes} />
@@ -648,8 +650,7 @@ export function SaldoPorOc({ buscar = "" }) {
 }
 
 const FILTROS = {
-  pendientes: { nombre: "Por resolver", estados: ["borrador", "para_aprobar", "aprobada", "rechazada"] },
-  aprobada: { nombre: "Para pagar", estados: ["aprobada"] },
+  pendientes: { nombre: "Sin pagar", estados: SIN_PAGAR },
   pagada: { nombre: "Pagadas", estados: ["pagada"] },
   todas: { nombre: "Todas", estados: null },
 };
@@ -696,7 +697,7 @@ export default function FinanzasPagos() {
     <div className="flex-1 overflow-y-auto px-[18px] pb-6">
       <div className="flex flex-wrap items-center gap-2 mb-2">
         <p className="m-0 text-[13px] text-gypi-dim flex-1 min-w-[200px]">
-          Aprueba: <b className="text-gypi-text">{datos.cfo?.nombre || "sin cargar"}</b>{datos.cfo?.telefono ? ` · ${datos.cfo.telefono}` : ""}{" "}
+          CFO (solo le avisamos): <b className="text-gypi-text">{datos.cfo?.nombre || "sin cargar"}</b>{datos.cfo?.telefono ? ` · ${datos.cfo.telefono}` : ""}{" "}
           <button type="button" className="bg-transparent border-none p-0 text-gypi-amber-ink font-semibold cursor-pointer" onClick={() => setCfo(true)}>Cambiar</button>
         </p>
         {!datos.falta_186 && <button type="button" className="g-btn g-btn-secondary" onClick={() => setNuevoResumen(true)}>📋 Resumen para el CFO</button>}
@@ -729,7 +730,7 @@ export default function FinanzasPagos() {
                     <span className="font-mono font-semibold">{plata(t.total, "ARS")}</span>
                   </span>
                   <span className="block text-[12px] text-gypi-dim">
-                    {est.icono} {est.nombre} · {fechaCorta(r.fecha)} · ⚡ {plata(t.inmediato, "ARS")} · 🧾 {plata(t.cheques, "ARS")} · {t.aprobadas} de {t.ordenes} aprobadas
+                    {est.icono} {est.nombre} · {fechaCorta(r.fecha)} · ⚡ {plata(t.inmediato, "ARS")} · 🧾 {plata(t.cheques, "ARS")} · {t.pagadas} de {t.ordenes} pagadas · 👍 {t.vistas} vistas
                   </span>
                 </button>
               </li>
@@ -750,8 +751,8 @@ export default function FinanzasPagos() {
                   <span className="font-semibold flex-1 min-w-0 truncate">{o.proveedor_nombre}</span>
                   <span className="font-mono font-semibold">{plata(o.total, "ARS")}</span>
                 </span>
-                <span className={`block text-[12px] ${o.estado === "aprobada" ? "text-gypi-green font-semibold" : o.estado === "rechazada" ? "text-gypi-red" : "text-gypi-dim"}`}>
-                  {est.icono} {est.nombre} · {fechaCorta(o.fecha)}
+                <span className={`block text-[12px] ${o.estado === "pagada" ? "text-gypi-green font-semibold" : "text-gypi-dim"}`}>
+                  {est.icono} {est.nombre}{o.estado === "pagada" && vistaPorCfo(o) ? " · 👍 vista por el CFO" : ""} · {fechaCorta(o.fecha)}
                 </span>
               </button>
             </li>

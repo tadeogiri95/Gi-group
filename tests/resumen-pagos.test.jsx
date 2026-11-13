@@ -1,7 +1,7 @@
 // tests/resumen-pagos.test.jsx — 12/11 (migración 186): resumen de órdenes de
 // pago para el CFO. Varias órdenes juntas, comprobante opcional, suma de lo
 // inmediato (efectivo y transferencia) y de los cheques, link para el CFO
-// (aprobar todas) y PDF.
+// (solo para mirar desde el 13/11, con 👍 Visto) y PDF.
 import "./helpers/domSetup.js";
 import { test, before, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -22,7 +22,7 @@ afterEach(() => cleanup());
 const { signAccessToken } = await import("../app/lib/jwt.ts");
 const api = await import("../app/api/finanzas/pagos/route.js");
 const resumenApi = await import("../app/api/op/resumen/route.js");
-const { aprobarResumen, datosResumenCfo } = await import("../app/lib/resumenPagoCfo.js");
+const { resumenVisto, datosResumenCfo } = await import("../app/lib/resumenPagoCfo.js");
 const { default: FinanzasPagos } = await import("../app/components/FinanzasPagos.jsx");
 
 const E = "11111111-1111-1111-1111-111111111111";
@@ -43,7 +43,8 @@ const O3 = { id: 3, empresa_id: E, numero: 9, proveedor_nombre: "Otro", fecha: "
 
 test("totales — inmediato = efectivo + transferencia; cheques = e-cheq + terceros; las anuladas no suman", () => {
   const t = totalesResumen([O1, O2, O3]);
-  assert.deepEqual([t.inmediato, t.cheques, t.total, t.ordenes, t.aprobadas], [250000, 130000, 380000, 2, 1]);
+  assert.deepEqual([t.inmediato, t.cheques, t.total, t.ordenes, t.pagadas, t.vistas], [250000, 130000, 380000, 2, 0, 0]);
+  assert.equal(totalesResumen([O1, { ...O2, estado: "pagada", decidida_at: "2026-11-12T10:00:00Z" }]).vistas, 1);
   assert.equal(claseForma("echeq"), "cheque");
   assert.equal(claseForma("transferencia"), "inmediato");
 });
@@ -58,14 +59,15 @@ test("renglones — uno por forma, por fecha, con proveedor, medio, importe y co
   assert.match(r[3].medio, /E-cheq/);
 });
 
-test("validar — al menos una; ni anuladas, ni pagadas, ni de otro resumen", () => {
+test("validar — al menos una; ni anuladas ni de otro resumen; las pagadas sí entran", () => {
   assert.match(validarResumen({ fecha: "2026-11-12", ordenes: [] }, [O1]).errores[0], /al menos una/);
   assert.match(validarResumen({ fecha: "2026-11-12", ordenes: [3] }, [O3]).errores[0], /no entra/);
   assert.match(validarResumen({ fecha: "2026-11-12", ordenes: [1] }, [{ ...O1, resumen_id: 4 }]).errores[0], /otro resumen/);
   assert.match(validarResumen({ ordenes: [1] }, [O1]).errores[0], /fecha/);
   const ok = validarResumen({ fecha: "2026-11-12", ordenes: [1, "2", 2], notas: "  urgente " }, [O1, O2]);
   assert.deepEqual([ok.errores, ok.ids, ok.resumen.notas], [[], [1, 2], "urgente"]);
-  assert.equal(puedeEntrar({ ...O1, estado: "pagada" }), false);
+  assert.equal(puedeEntrar({ ...O1, estado: "pagada" }), true, "el CFO también ve lo ya pagado");
+  assert.equal(puedeEntrar({ ...O1, estado: "anulada" }), false);
 });
 
 test("CFO, WhatsApp y PDF — muestran las dos sumas; el CFO no ve cuentas", () => {
@@ -134,7 +136,7 @@ function mockApi({ ordenes = [O1, O2], resumenes = [], sin186 = false } = {}) {
           const body = JSON.parse(o.body);
           escrito.push({ tabla: "fin_ordenes_pago", url: u, metodo: o.method, body });
           const tocadas = u.includes("id=in.(") ? ordenes.filter((x) => u.includes(`${x.id}`) && !x.resumen_id)
-            : u.includes("resumen_id=eq.") ? ordenes.filter((x) => x.resumen_id && x.estado === "para_aprobar")
+            : u.includes("resumen_id=eq.") ? ordenes.filter((x) => x.resumen_id && (u.includes("estado=in.(") ? u.match(/estado=in\.\(([^)]*)\)/)[1].split(",").includes(x.estado) : x.estado === "pagada" && !x.decidida_at))
               : ordenes.filter((x) => u.includes(`id=eq.${x.id}&`));
           return { status: 200, body: tocadas.map((x) => ({ ...x, ...body })) };
         }
@@ -162,15 +164,16 @@ test("/api/finanzas/pagos — resumen_crear junta las órdenes con su comprobant
   assert.equal(comp.body.comprobante_url, FOTO);
 });
 
-test("/api/finanzas/pagos — resumen_mandar: link del resumen y las de borrador pasan a esperar al CFO", async () => {
-  const { escrito } = mockApi({ ordenes: [{ ...O1, resumen_id: 4 }, { ...O2, resumen_id: 4 }], resumenes: [{ id: 4, numero: 1, estado: "armado" }] });
+test("/api/finanzas/pagos — resumen_mandar: link del resumen; las de borrador pasan a mandadas", async () => {
+  const { escrito } = mockApi({ ordenes: [{ ...O1, resumen_id: 4 }, { ...O2, resumen_id: 4, token: "ordenordenordenordenorden02" }], resumenes: [{ id: 4, numero: 1, estado: "armado" }] });
   const res = await pedir("gerencial", { accion: "resumen_mandar", id: 4 });
   assert.equal(res.status, 200);
   const d = await res.json();
   const orden = escrito.find((x) => x.tabla === "fin_ordenes_pago");
   assert.match(orden.url, /id=eq\.1&.*estado=eq\.borrador/);
   assert.equal(orden.body.estado, "para_aprobar");
-  assert.ok(!escrito.some((x) => x.tabla === "fin_ordenes_pago" && x.url.includes("id=eq.2&")), "la aprobada queda como está");
+  assert.ok(orden.body.token.length >= 30, "cada orden con su link, para verla de a una");
+  assert.ok(!escrito.some((x) => x.tabla === "fin_ordenes_pago" && x.url.includes("id=eq.2&")), "la que ya tenía link queda como está");
   const r = escrito.find((x) => x.tabla === "fin_resumenes_pago");
   assert.equal(r.body.estado, "enviado");
   assert.equal(d.url, `http://localhost/op/resumen/${r.body.token}`);
@@ -193,19 +196,21 @@ test("/api/finanzas/pagos — anular el resumen libera las órdenes; comprobante
   assert.match((await res.json()).error, /migración 186/);
 });
 
-test("CFO — ve el resumen y aprueba todas las que esperan con un solo aviso; link viejo no sirve", async () => {
-  const esperando = [{ ...O1, estado: "para_aprobar", token: "ordenordenordenordenorden01", resumen_id: 4 }, { ...O2, resumen_id: 4 }];
+test("CFO — ve el resumen y 👍 Visto anota todas, también las pagadas, con un solo aviso; link viejo no sirve", async () => {
+  const esperando = [{ ...O1, estado: "para_aprobar", token: "ordenordenordenordenorden01", resumen_id: 4 }, { ...O2, estado: "pagada", resumen_id: 4 }];
   const { escrito } = mockApi({ ordenes: esperando, resumenes: [{ id: 4, empresa_id: E, numero: 1, estado: "enviado", token: TOKEN, fecha: "2026-11-12" }] });
   const d = await datosResumenCfo(TOKEN);
   assert.equal(d.totales.total, 380000);
   assert.equal(d.ordenes.find((o) => o.numero === 7).token, "ordenordenordenordenorden01");
   assert.equal(d.ordenes.find((o) => o.numero === 8).token, null);
   assert.equal(d.cfo, "Juan");
-  const r = await aprobarResumen(TOKEN, { nombre: "Juan" }, { messaging: { send: async () => {} } });
-  assert.deepEqual(r, { ok: true, aprobadas: 1 });
-  const p = escrito.find((x) => x.tabla === "fin_ordenes_pago");
-  assert.match(p.url, /resumen_id=eq\.4&estado=eq\.para_aprobar&token=not\.is\.null/);
-  assert.deepEqual([p.body.estado, p.body.decidida_por_nombre], ["aprobada", "Juan"]);
+  const r = await resumenVisto(TOKEN, { nombre: "Juan" }, { messaging: { send: async () => {} } });
+  assert.deepEqual(r, { ok: true, vistas: 2 });
+  const [sinPagar, pagada] = escrito.filter((x) => x.tabla === "fin_ordenes_pago");
+  assert.match(sinPagar.url, /resumen_id=eq\.4&estado=in\.\(borrador,para_aprobar,rechazada\)/);
+  assert.deepEqual([sinPagar.body.estado, sinPagar.body.decidida_por_nombre], ["aprobada", "Juan"]);
+  assert.match(pagada.url, /estado=eq\.pagada&decidida_at=is\.null/);
+  assert.equal("estado" in pagada.body, false, "la pagada sigue pagada");
 
   mockApi({ resumenes: [] });
   assert.equal(await datosResumenCfo(TOKEN), null);

@@ -61,18 +61,12 @@ export function pendientesFinanzas({ hoy, revisar = [], ordenes = [], cheques = 
       texto: plural(terceros.length, "1 cheque de terceros ya se puede depositar", "N cheques de terceros ya se pueden depositar"),
     });
   }
-  const paraAprobar = ordenes.filter((o) => o.estado === "para_aprobar");
-  if (paraAprobar.length) {
+  // Órdenes de pago sin pagar: no esperan al CFO (13/11), se pagan cuando se quiere
+  const sinPagar = ordenes.filter((o) => ["borrador", "para_aprobar", "aprobada", "rechazada"].includes(o.estado));
+  if (sinPagar.length) {
     out.push({
-      id: "op_aprobar", ir: "fin-pagos", cantidad: paraAprobar.length, importe: centavos(paraAprobar.reduce((s, o) => s + Number(o.total || 0), 0)), tono: "ambar",
-      texto: plural(paraAprobar.length, "1 orden de pago para aprobar", "N órdenes de pago para aprobar"),
-    });
-  }
-  const aprobadas = ordenes.filter((o) => o.estado === "aprobada");
-  if (aprobadas.length) {
-    out.push({
-      id: "op_pagar", ir: "fin-pagos", cantidad: aprobadas.length, importe: centavos(aprobadas.reduce((s, o) => s + Number(o.total || 0), 0)), tono: "normal",
-      texto: plural(aprobadas.length, "1 orden de pago aprobada para pagar", "N órdenes de pago aprobadas para pagar"),
+      id: "op_pagar", ir: "fin-pagos", cantidad: sinPagar.length, importe: centavos(sinPagar.reduce((s, o) => s + Number(o.total || 0), 0)), tono: "normal",
+      texto: plural(sinPagar.length, "1 orden de pago sin pagar", "N órdenes de pago sin pagar"),
     });
   }
   if (plazosVencidos > 0) {

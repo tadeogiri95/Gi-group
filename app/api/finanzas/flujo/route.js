@@ -65,7 +65,7 @@ export async function GET(request) {
       leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre,activa`),
       config(e, CLAVE_FLUJO),
       leer(sesion, `fin_cheques?empresa_id=eq.${e}&estado=in.(pendiente,en_cartera)&select=id,clase,estado,fecha_pago,importe,banco,numero,librador,beneficiario`, 20000).catch(() => []),
-      leer(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&estado=in.(aprobada,para_aprobar)&select=id,numero,proveedor_id,proveedor_nombre,fecha,estado,total`).catch(() => []),
+      leer(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&estado=in.(borrador,para_aprobar,aprobada,rechazada)&select=id,numero,proveedor_id,proveedor_nombre,fecha,estado,total`).catch(() => []),
       config(e, CLAVE_PLANIFICACION),
     ]);
     const lin = validarLineasFlujo(lineas || {});
