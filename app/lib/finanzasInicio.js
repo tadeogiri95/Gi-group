@@ -10,7 +10,7 @@ import { fechaDebito } from "./finanzasDiasHabiles";
 export const GRUPOS_FINANZAS = [
   { id: "dia", titulo: "Día a día", opciones: ["fin-tesoreria", "fin-pagos", "fin-cheques"] },
   { id: "gente", titulo: "Con quién trabajamos", opciones: ["fin-proveedores", "fin-clientes", "fin-sueldos", "fin-personas"] },
-  { id: "numeros", titulo: "Cómo vamos", opciones: ["fin-resultados", "fin-flujo", "fin-reporte", "fin-cierre"] },
+  { id: "numeros", titulo: "Cómo vamos", opciones: ["fin-mayor", "fin-resultados", "fin-flujo", "fin-reporte", "fin-cierre"] },
   { id: "ajustes", titulo: "Ajustes", opciones: ["fin-config"] },
 ];
 
@@ -23,6 +23,7 @@ export const DETALLE_FINANZAS = {
   "fin-clientes": "Cuánto nos debe cada uno y cobros",
   "fin-sueldos": "Liquidar y pagar sueldos",
   "fin-personas": "Agenda única de clientes y proveedores",
+  "fin-mayor": "Movimientos y saldo de cada cuenta contable; asientos de registro y de ajuste",
   "fin-resultados": "Ganancia o pérdida por mes",
   "fin-flujo": "Cuánta plata entra y sale, y lo que viene",
   "fin-reporte": "Resumen para el contador o los socios",

@@ -32,6 +32,7 @@ import FinanzasResultados from "../FinanzasResultados";
 import FinanzasFlujo from "../FinanzasFlujo";
 import FinanzasReporte from "../FinanzasReporte";
 import FinanzasCierre from "../FinanzasCierre";
+import FinanzasMayor from "../FinanzasMayor";
 import FinanzasPagos from "../FinanzasPagos";
 import FinanzasPersonas from "../FinanzasPersonas";
 import FinanzasInicio from "../FinanzasInicio";
@@ -101,6 +102,7 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {!bloqueado && actual.id === "fin-flujo" && <FinanzasFlujo />}
         {!bloqueado && actual.id === "fin-reporte" && <FinanzasReporte />}
         {!bloqueado && actual.id === "fin-cierre" && <FinanzasCierre />}
+        {!bloqueado && actual.id === "fin-mayor" && <FinanzasMayor />}
         {!bloqueado && actual.id === "fin-pagos" && <FinanzasPagos />}
         {!bloqueado && actual.id === "fin-personas" && <FinanzasPersonas />}
         {!bloqueado && actual.id === "fin-config" && <FinanzasConfig />}
