@@ -318,7 +318,9 @@ test("/api/finanzas/resultados — estima las OT terminadas sin precio con sus n
       match: (u) => u.includes("/rest/v1/proyectos"),
       respond: (u) => {
         pedidos.push(decodeURIComponent(u));
-        if (u.includes("fecha_entrega=gte.")) return { status: 200, body: [{ id: 3, ot: "7001", estado: "cerrado", fecha_entrega: "2026-06-01" }, { id: 6, ot: "6999", estado: "cerrado", created_at: "2025-01-01T12:00:00Z", fecha_entrega: "2026-08-10" }] };
+        if (u.includes("estado=neq.cerrado")) return { status: 200, body: [{ id: 8, ot: "8001", estado: "activo", cliente: "ACME", fecha_entrega: "2026-09-01" }] };
+        if (u.includes("fecha_entrega=is.null")) return { status: 200, body: [{ id: 9, ot: "9001", estado: "cerrado", cliente: "Pérez" }, { id: 4, ot: "7002", estado: "cerrado" }] };
+        if (u.includes("fecha_entrega=gte.")) return { status: 200, body: [{ id: 3, ot: "7001", estado: "cerrado", fecha_entrega: "2026-06-01" }, { id: 6, ot: "6999", estado: "cerrado", created_at: "2025-01-01T12:00:00Z", fecha_entrega: "2026-08-10" }, { id: 7, ot: "7100", estado: "cerrado", cliente: "Gómez", fecha_entrega: "2026-07-01" }] };
         return { status: 200, body: u.includes("id=in.") ? [{ id: 3, ot: "7001", estado: "cerrado", created_at: "2026-09-01T12:00:00Z" }, { id: 4, ot: "7002", estado: "cerrado", created_at: "2026-09-01T12:00:00Z" }, { id: 5, ot: "7003", estado: "activo", created_at: "2026-09-01T12:00:00Z" }] : [...PROYECTOS, { id: 3, division: "MUEBLES" }, { id: 4, division: "MUEBLES" }, { id: 6, division: "MUEBLES" }] };
       },
     },
@@ -341,6 +343,9 @@ test("/api/finanzas/resultados — estima las OT terminadas sin precio con sus n
   // La 6999 se cargó antes del "desde": entra por su fecha de entrega del Plan (agosto). La 7001 queda en la fecha anotada.
   assert.deepEqual(d.estimadas_ot, [{ ot: "6999", fecha: "2026-08-10", valor: 100000 }, { ot: "7001", fecha: "2026-10-12", valor: 300000 }]);
   assert.equal(est.valores[9], 100000);
+  // Las que no se pudieron estimar, con su motivo (la 7002 tiene precio: no aparece)
+  assert.deepEqual(d.no_estimadas_ot.map((x) => [x.ot, x.motivo, x.fecha]), [["9001", "sin_fecha", ""], ["7100", "sin_necesidades", "2026-07-01"], ["8001", "sin_terminar", "2026-09-01"]]);
+  assert.match(d.no_estimadas_ot[1].motivo_texto, /no pasó por el MRP/);
   assert.ok(pedidos.some((p) => p.includes("id=in.(3,4,5)")));
 });
 
@@ -354,4 +359,14 @@ test("Resultados — el renglón estimado se ve con otro color y la lista de OT"
   assert.ok(screen.getByText(/1 OT terminada sin precio en el Plan de trabajo/));
   assert.ok(screen.getByText("OT 7001"));
   assert.ok(screen.getByText("12/10/26"));
+});
+
+test("Resultados — lista de las OT sin precio que no se pudieron estimar, por motivo", async () => {
+  const datos = { hasta: "2026-10", config: { materiales_pct: 40 }, no_estimadas_ot: [{ ot: "7100", cliente: "Gómez", fecha: "2026-07-01", motivo: "sin_necesidades", motivo_texto: "No tiene materiales en Gypi (no pasó por el MRP)" }, { ot: "9001", cliente: "", fecha: "", motivo: "sin_fecha", motivo_texto: "Está terminada pero no tiene fecha de entrega en el Plan" }], ...estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: PROYECTOS, hasta: "2026-10" }) };
+  global.fetch = async () => new Response(JSON.stringify(datos), { status: 200 });
+  render(<FinanzasResultados />);
+  assert.ok(await screen.findByText(/2 OT sin precio que no se pudieron estimar/));
+  assert.ok(screen.getByText("No tiene materiales en Gypi (no pasó por el MRP) (1)"));
+  assert.ok(screen.getByText("OT 7100 · Gómez"));
+  assert.ok(screen.getByText("sin fecha"));
 });

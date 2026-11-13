@@ -171,6 +171,31 @@ function EntregasEstimadas({ ots }) {
   );
 }
 
+/** Las OT sin precio que no se pudieron estimar, agrupadas por el motivo. */
+function NoEstimadas({ ots }) {
+  const grupos = [];
+  for (const o of ots) {
+    let g = grupos.find((x) => x.motivo === o.motivo);
+    if (!g) { g = { motivo: o.motivo, texto: o.motivo_texto || o.motivo, ots: [] }; grupos.push(g); }
+    g.ots.push(o);
+  }
+  return (
+    <details className="mt-1 text-[12px] text-gypi-amber-ink">
+      <summary className="cursor-pointer">⚠ {ots.length === 1 ? "1 OT sin precio que no se pudo estimar" : `${ots.length} OT sin precio que no se pudieron estimar`} (no entran en el resultado). Tocá para ver cuáles y por qué.</summary>
+      {grupos.map((g) => (
+        <div key={g.motivo} className="mt-1">
+          <p className="m-0 font-semibold">{g.texto} ({g.ots.length})</p>
+          <ul className="list-none m-0 p-0 flex flex-col gap-0.5 text-gypi-text">
+            {g.ots.map((o) => (
+              <li key={`${g.motivo}-${o.ot}`} className="flex gap-2"><span className="font-mono text-gypi-dim min-w-[64px]">{dma(o.fecha) || "sin fecha"}</span><span className="flex-1">OT {o.ot}{o.cliente ? ` · ${o.cliente}` : ""}</span></li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </details>
+  );
+}
+
 export default function FinanzasResultados() {
   const [hasta, setHasta] = useState(hoyAr().slice(0, 7));
   const [datos, setDatos] = useState(null);
@@ -270,6 +295,7 @@ export default function FinanzasResultados() {
       </div>
       {datos.materiales_estimados && <p className="m-0 mt-1 text-[12px] text-gypi-dim">* Estimado: no hay costo real de materiales cargado.</p>}
       {datos.entregas_estimadas > 0 && <EntregasEstimadas ots={datos.estimadas_ot || []} />}
+      {(datos.no_estimadas_ot || []).length > 0 && <NoEstimadas ots={datos.no_estimadas_ot} />}
 
       {datos.sin_linea.length > 0 && (
         <details className="mt-3 text-[13px] text-gypi-text">

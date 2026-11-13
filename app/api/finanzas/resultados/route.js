@@ -55,13 +55,23 @@ async function materialesDeEntregas(e, ops, cuentas, otrasIds = []) {
   }
 }
 
+/** Por qué una OT sin precio no se pudo estimar (13/11, pedido de Tadeo). */
+const MOTIVOS_NO_ESTIMADA = {
+  sin_necesidades: "No tiene materiales en Gypi (no pasó por el MRP)",
+  sin_precios: "Sus materiales no tienen precio cargado",
+  sin_fecha: "Está terminada pero no tiene fecha de entrega en el Plan",
+  sin_terminar: "Su fecha de entrega ya pasó pero no está terminada en el Plan (TERMINADO)",
+};
+
 /**
- * Las OT terminadas sin precio en la ventana, con su valor estimado. Si algo
- * falla, quedan afuera (el estado se arma igual).
- * @returns {Promise<{ proyecto_id: number, ot: string, fecha: string, valor: number }[]>}
+ * Las OT terminadas sin precio en la ventana, con su valor estimado, y las
+ * que no se pudieron estimar con el motivo. Si algo falla, quedan afuera (el
+ * estado se arma igual).
+ * @returns {Promise<{ estimadas: { proyecto_id: number, ot: string, fecha: string, valor: number }[], noEstimadas: { ot: string, cliente: string, fecha: string, motivo: string }[] }>}
  */
 async function entregasEstimadas(sesion, desde, hasta) {
   const e = sesion.empresa_id;
+  const COLS = "id,ot,cliente,obra,estado,created_at,fecha_entrega";
   try {
     const [fila] = (await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_ENTREGAS_ESTIMADAS}&select=valor&limit=1`, { silent: true, fallback: [] })) || [];
     const anotadas = new Map(Object.entries(fila?.valor?.fechas || {})
@@ -70,24 +80,43 @@ async function entregasEstimadas(sesion, desde, hasta) {
     const ids = [...anotadas].filter(([, f]) => f >= desde && f <= hasta).map(([id]) => id);
     const proyectos = new Map();
     for (let i = 0; i < ids.length; i += 150) {
-      for (const p of await leer(sesion, `proyectos?empresa_id=eq.${e}&id=in.(${ids.slice(i, i + 150).join(",")})&select=id,ot,estado,created_at`, 1000)) proyectos.set(Number(p.id), p);
+      for (const p of await leer(sesion, `proyectos?empresa_id=eq.${e}&id=in.(${ids.slice(i, i + 150).join(",")})&select=${COLS}`, 1000)) proyectos.set(Number(p.id), p);
     }
     // Las terminadas que Gypi no anotó (cargadas antes del "desde" o de este
     // cambio): el mes de su fecha de entrega del Plan (13/11, pedido de Tadeo)
-    const viejas = await leer(sesion, `proyectos?empresa_id=eq.${e}&estado=eq.cerrado&fecha_entrega=gte.${desde}&fecha_entrega=lte.${hasta}&select=id,ot,estado,created_at,fecha_entrega`, 20000).catch(() => []);
+    const viejas = await leer(sesion, `proyectos?empresa_id=eq.${e}&estado=eq.cerrado&fecha_entrega=gte.${desde}&fecha_entrega=lte.${hasta}&select=${COLS}`, 20000).catch(() => []);
     for (const p of viejas) if (!anotadas.has(Number(p.id))) proyectos.set(Number(p.id), p);
-    if (!proyectos.size) return [];
+    // Para la lista de las que no se pudieron estimar: terminadas sin fecha de
+    // entrega, y abiertas con la fecha de entrega ya pasada dentro de la ventana
+    const hoy = hoyAr();
+    const tope = hoy < hasta ? hoy : hasta;
+    const [sinFecha, sinTerminar] = await Promise.all([
+      leer(sesion, `proyectos?empresa_id=eq.${e}&estado=eq.cerrado&fecha_entrega=is.null&select=${COLS}`, 20000).catch(() => []),
+      leer(sesion, `proyectos?empresa_id=eq.${e}&estado=neq.cerrado&fecha_entrega=gte.${desde}&fecha_entrega=lte.${tope}&select=${COLS}`, 20000).catch(() => []),
+    ]);
     // Si le pusieron precio desde la última sync, ya no se estima
     const precios = await sbGet(`precios_ot?empresa_id=eq.${e}&select=ot,precio`, { sesion, silent: true, fallback: [] });
     const conPrecio = new Set((precios || []).filter((f) => Number(f.precio) > 0).map((f) => String(f.ot)));
-    const vivos = [...proyectos.values()].filter((p) => p.estado === "cerrado" && !conPrecio.has(String(p.ot)));
+    const sinPrecio = (p) => !conPrecio.has(String(p.ot));
+    const vivos = [...proyectos.values()].filter((p) => p.estado === "cerrado" && sinPrecio(p));
     const materiales = await materialesDeOts(sesion, vivos);
-    return vivos
-      .map((p) => ({ proyecto_id: Number(p.id), ot: String(p.ot), fecha: anotadas.get(Number(p.id)) || String(p.fecha_entrega || ""), valor: valorOt(0, materiales.get(String(p.ot))).valor }))
-      .filter((x) => x.valor > 0 && x.fecha >= desde && x.fecha <= hasta);
+    const estimadas = [];
+    const noEstimadas = [];
+    const fila_ = (p, fecha, motivo) => ({ ot: String(p.ot), cliente: String(p.cliente || p.obra || "").trim(), fecha, motivo });
+    for (const p of vivos) {
+      const fecha = anotadas.get(Number(p.id)) || String(p.fecha_entrega || "");
+      if (!(fecha >= desde && fecha <= hasta)) continue;
+      const m = materiales.get(String(p.ot));
+      const valor = valorOt(0, m).valor;
+      if (valor > 0) estimadas.push({ proyecto_id: Number(p.id), ot: String(p.ot), fecha, valor });
+      else noEstimadas.push(fila_(p, fecha, !(m?.articulos > 0) ? "sin_necesidades" : "sin_precios"));
+    }
+    for (const p of sinFecha) if (sinPrecio(p) && !anotadas.has(Number(p.id))) noEstimadas.push(fila_(p, "", "sin_fecha"));
+    for (const p of sinTerminar) if (sinPrecio(p)) noEstimadas.push(fila_(p, String(p.fecha_entrega || ""), "sin_terminar"));
+    return { estimadas, noEstimadas };
   } catch (err) {
     logger.warn(`[finanzas] resultados: entregas estimadas ${err?.message}`);
-    return [];
+    return { estimadas: [], noEstimadas: [] };
   }
 }
 
@@ -113,7 +142,7 @@ export async function GET(request) {
       leer(sesion, `fin_centros_costo?empresa_id=eq.${e}&select=codigo,division`).catch(() => []),
     ]);
     // Las OT terminadas sin precio en el Plan, con su valor estimado (13/11)
-    const estimadas = await entregasEstimadas(sesion, `${meses[0]}-01`, finDeMes(hasta));
+    const { estimadas, noEstimadas } = await entregasEstimadas(sesion, `${meses[0]}-01`, finDeMes(hasta));
     // Costo real de materiales de cada OT entregada (auditoría 12/11, parte 4), si el Dueño lo eligió
     const materialesOt = config.materiales_real ? await materialesDeEntregas(e, ops || [], cuentas || [], estimadas.map((x) => x.proyecto_id)) : null;
     const base = { ops: ops || [], cuentas: cuentas || [], proyectos: proyectos || [], centros: centros || [], hasta, materialesPct: config.materiales_pct, ponderador: config.ponderador, materialesOt, entregasEstimadas: estimadas };
@@ -124,7 +153,10 @@ export async function GET(request) {
     const divisiones = [...new Set([...(proyectos || []).map((p) => String(p.division || "").trim()).filter(Boolean), ...Object.keys(config.ponderador)])].sort((a, b) => a.localeCompare(b));
     const por_division = Object.keys(config.ponderador).length ? resumenDivisiones(base) : [];
     const estimadas_ot = estimadas.map(({ ot, fecha, valor }) => ({ ot, fecha, valor })).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.ot.localeCompare(b.ot));
-    return NextResponse.json({ hasta, config, division, divisiones, por_division, estimadas_ot, ...estado });
+    const no_estimadas_ot = noEstimadas
+      .map((x) => ({ ...x, motivo_texto: MOTIVOS_NO_ESTIMADA[x.motivo] }))
+      .sort((a, b) => a.motivo.localeCompare(b.motivo) || (a.fecha || "").localeCompare(b.fecha || "") || a.ot.localeCompare(b.ot));
+    return NextResponse.json({ hasta, config, division, divisiones, por_division, estimadas_ot, no_estimadas_ot, ...estado });
   } catch (err) {
     if (falta179(err)) return NextResponse.json({ error: FALTA_179, falta_migracion: 179 }, { status: 409 });
     return errorFinanzas(err, "resultados GET");
