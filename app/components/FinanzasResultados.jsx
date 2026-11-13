@@ -19,6 +19,7 @@ import { Chip, Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
 const miles = (n) => (n == null ? "" : Math.round(Number(n) || 0).toLocaleString("es-AR"));
+const dma = (f) => (/^\d{4}-\d{2}-\d{2}$/.test(String(f || "")) ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
 const pct = (n) => (n == null ? "" : `${String(n).replace(".", ",")} %`);
 
 function ConfigMateriales({ valor, real: realGuardado = false, onCerrar, onGuardado }) {
@@ -151,6 +152,25 @@ const ESTILO = {
   pct: "text-gypi-dim text-[12px]",
 };
 
+/** Las OT terminadas sin precio en el Plan que entran con valor estimado. */
+function EntregasEstimadas({ ots }) {
+  const total = ots.reduce((s, o) => s + (Number(o.valor) || 0), 0);
+  return (
+    <details className="mt-1 text-[12px] text-gypi-cyan-ink">
+      <summary className="cursor-pointer">
+        <span className="inline-block w-3 h-3 align-middle rounded-sm border border-gypi-border bg-gypi-estimado mr-1" aria-hidden="true" />
+        ** Entregas con valor estimado: {ots.length === 1 ? "1 OT terminada" : `${ots.length} OT terminadas`} sin precio en el Plan de trabajo. Valen lo mismo que en la cuenta corriente de clientes (materiales de sus necesidades ÷ 0,3). Cuando le cargues el precio, pasa a la entrega de verdad.
+      </summary>
+      <ul className="list-none m-0 mt-1 p-0 flex flex-col gap-0.5 text-gypi-text">
+        {ots.map((o) => (
+          <li key={o.ot} className="flex gap-2"><span className="font-mono text-gypi-dim">{dma(o.fecha)}</span><span className="flex-1">OT {o.ot}</span><span className="font-mono">{miles(o.valor)}</span></li>
+        ))}
+        {ots.length > 1 && <li className="flex gap-2 font-semibold border-t border-gypi-border pt-0.5"><span className="flex-1">Total</span><span className="font-mono">{miles(total)}</span></li>}
+      </ul>
+    </details>
+  );
+}
+
 export default function FinanzasResultados() {
   const [hasta, setHasta] = useState(hoyAr().slice(0, 7));
   const [datos, setDatos] = useState(null);
@@ -191,7 +211,7 @@ export default function FinanzasResultados() {
           Hasta el mes
           <input type="month" className="g-input" aria-label="Hasta el mes" value={hasta} onChange={(e) => e.target.value && setHasta(e.target.value)} />
         </label>
-        <p className="m-0 text-[13px] text-gypi-dim flex-1 min-w-[200px]">Devengado, 12 meses, en pesos y sin IVA, ordenado según NIIF (gastos por función). Ingresos = entregas de las OT (precio del Plan, el mes en que se finaliza la OT): se compara lo producido contra los costos. Tocá una sección para abrirla o cerrarla.</p>
+        <p className="m-0 text-[13px] text-gypi-dim flex-1 min-w-[200px]">Devengado, 12 meses, en pesos y sin IVA, ordenado según NIIF (gastos por función). Ingresos = entregas de las OT (precio del Plan, el mes en que se finaliza la OT; las que no tienen precio van aparte, en celeste, con valor estimado): se compara lo producido contra los costos. Tocá una sección para abrirla o cerrarla.</p>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setConfig(true)}>⚙ Materiales ({datos.config?.materiales_real ? "costo real" : pct(datos.config?.materiales_pct)})</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setReparto(true)}>⚙ Compartidos</button>
         {cargando && <Spinner size={16} />}
@@ -227,17 +247,18 @@ export default function FinanzasResultados() {
           </thead>
           <tbody>
             {visibles.map((f) => {
-              const fondo = f.tipo === "seccion" || f.tipo === "resultado" ? "bg-gypi-surface" : "bg-gypi-bg";
+              // Entregas con valor estimado: otro color, para que no se confundan con las de precio del Plan
+              const fondo = f.entrega_estimada ? "bg-gypi-estimado" : f.tipo === "seccion" || f.tipo === "resultado" ? "bg-gypi-surface" : "bg-gypi-bg";
               const aparte = datos.filas.find((x) => x.tipo === "seccion" && x.id === (f.tipo === "seccion" ? f.id : f.seccion))?.aparte;
               const sangria = f.tipo === "linea" ? "pl-6" : f.tipo === "grupo" ? "pl-4" : "pl-2";
               const valor = f.tipo === "pct" ? pct : miles;
               const negativo = (n) => (f.tipo !== "pct" && n < 0 ? "text-gypi-red" : "");
               return (
-                <tr key={f.id} className={`border-t border-gypi-border ${ESTILO[f.tipo]} ${aparte ? "italic opacity-80" : ""}`} onClick={f.tipo === "seccion" ? () => abrirCerrar(f.id) : undefined}>
+                <tr key={f.id} className={`border-t border-gypi-border ${ESTILO[f.tipo]} ${f.entrega_estimada ? "bg-gypi-estimado text-gypi-cyan-ink" : ""} ${aparte ? "italic opacity-80" : ""}`} onClick={f.tipo === "seccion" ? () => abrirCerrar(f.id) : undefined}>
                   <td className={`pr-2 py-1 sticky left-0 ${fondo} ${sangria}`}>
                     {f.tipo === "seccion" && <span aria-hidden="true">{cerradas.has(f.id) ? "▸ " : "▾ "}</span>}
                     {f.tipo === "seccion" ? <button type="button" className="bg-transparent border-none p-0 font-bold text-gypi-text cursor-pointer" aria-expanded={!cerradas.has(f.id)}>{f.nombre}</button> : f.nombre}
-                    {f.estimado && <span className="text-gypi-dim"> *</span>}
+                    {f.estimado && <span className={f.entrega_estimada ? "" : "text-gypi-dim"}> {f.entrega_estimada ? "**" : "*"}</span>}
                   </td>
                   {f.valores.map((v, i) => <td key={i} className={`px-2 py-1 text-right font-mono whitespace-nowrap ${negativo(v)}`}>{valor(v)}</td>)}
                   <td className={`px-2 py-1 text-right font-mono whitespace-nowrap font-semibold ${negativo(f.total)}`}>{valor(f.total)}</td>
@@ -248,6 +269,7 @@ export default function FinanzasResultados() {
         </table>
       </div>
       {datos.materiales_estimados && <p className="m-0 mt-1 text-[12px] text-gypi-dim">* Estimado: no hay costo real de materiales cargado.</p>}
+      {datos.entregas_estimadas > 0 && <EntregasEstimadas ots={datos.estimadas_ot || []} />}
 
       {datos.sin_linea.length > 0 && (
         <details className="mt-3 text-[13px] text-gypi-text">

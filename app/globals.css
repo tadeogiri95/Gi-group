@@ -26,6 +26,9 @@
   --color-gypi-cyan-ink: color-mix(in srgb, var(--color-cyan) 65%, var(--color-text));
   --color-gypi-red-ink: color-mix(in srgb, var(--color-red) 65%, var(--color-text));
   --color-gypi-violet: var(--color-empresa-secondary);
+  /* Fondo de lo estimado (entregas sin precio en el Estado de Resultados):
+     cian suave y opaco, para que la columna fija de la tabla no transparente. */
+  --color-gypi-estimado: color-mix(in srgb, var(--color-cyan) 14%, var(--color-bg));
   /* Procesos del plan de producción (Gantt de OT, 📊 Carga, 📅 Plan de la
      semana): colores fijos, no los de la empresa, para que no se confundan
      entre sí. Amarillo = poco margen; rojo (gypi-red) = atrasado. */
