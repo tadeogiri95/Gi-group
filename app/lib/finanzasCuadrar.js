@@ -154,3 +154,47 @@ export function cuadrarConLibro({ grilla, ops = [], tesoreria = [], corte = null
   const anulables = [...new Set(lista.flatMap((c) => c.sobran.filter((s) => s.importada).map((s) => s.id)))];
   return { corte: fin, desde, cajas: lista, anulables };
 }
+
+/* ─── Empezar de nuevo (13/11) ──────────────────────────────────────────
+ * Anula los movimientos de las cajas y bancos para volver a cargarlos desde
+ * el libro y los extractos. No borra: quedan anulados con una marca
+ * ("Empezar de nuevo dd/mm/aaaa hh:mm · quién") y se pueden volver atrás.
+ *   - "importado": lo que vino de afuera (libro, saldos iniciales, extracto,
+ *     plazos fijos, FCI, títulos) y lo cargado a mano en Movimientos.
+ *   - "todo": también lo hecho en Gypi (pagos, cobros, cheques, Mi caja,
+ *     sueldos…).
+ */
+export const MARCA_VACIAR = "Empezar de nuevo";
+const ORIGENES_VACIAR = new Set([...ORIGENES_IMPORTADOS, "manual"]);
+
+/** ¿Este movimiento se anula con ese alcance? */
+export function entraEnVaciar(op, alcance = "importado") {
+  return alcance === "todo" || ORIGENES_VACIAR.has(op?.origen || "manual");
+}
+
+/**
+ * Qué se anularía: cuántos movimientos de cada origen y sus ids.
+ * @returns {{ ids: number[], porOrigen: { origen: string, nombre: string, n: number }[], quedan: number }}
+ */
+export function resumenVaciar(ops = [], alcance = "importado") {
+  const por = new Map();
+  const ids = [];
+  let quedan = 0;
+  for (const o of ops) {
+    if (o.anulada_at) continue;
+    if (!entraEnVaciar(o, alcance)) { quedan++; continue; }
+    ids.push(o.id);
+    const k = o.origen || "manual";
+    const x = por.get(k) || { origen: k, nombre: nombreOrigen(k), n: 0 };
+    x.n++;
+    por.set(k, x);
+  }
+  return { ids, porOrigen: [...por.values()].sort((a, b) => b.n - a.n), quedan };
+}
+
+/** La marca de una vez que se empezó de nuevo. */
+export function marcaVaciar(quien, ahora = new Date()) {
+  const ar = new Date(ahora.getTime() - 3 * 3600000).toISOString();
+  return `${MARCA_VACIAR} ${ar.slice(8, 10)}/${ar.slice(5, 7)}/${ar.slice(0, 4)} ${ar.slice(11, 16)} · ${String(quien || "Dueño").slice(0, 60)}`;
+}
+export const esMarcaVaciar = (m) => typeof m === "string" && m.startsWith(`${MARCA_VACIAR} `) && m.length <= 120;

@@ -9,10 +9,10 @@
 // algo de afuera (extracto, plazos fijos, saldos iniciales…) sale tildado;
 // lo hecho en Gypi (pagos, cobros, Mi caja…) no. Se anula lo tildado después
 // de confirmar; nada se borra.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { DESDE_HISTORICO } from "../lib/finanzasHistorico";
-import { MAX_ANULAR_CUADRAR, cuadrarConLibro } from "../lib/finanzasCuadrar";
+import { MAX_ANULAR_CUADRAR, cuadrarConLibro, resumenVaciar } from "../lib/finanzasCuadrar";
 import { hoyAr } from "../lib/finanzasOperaciones";
 import { fechaCorta } from "../lib/finanzasPagos";
 import { Modal, Spinner } from "./ui";
@@ -240,18 +240,134 @@ function Cuadrar({ onCerrar, onCambio }) {
   );
 }
 
+async function postCuadrar(body) {
+  const r = await apiFetch("/api/finanzas/cuadrar", { method: "POST", body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || "No se pudo guardar");
+  return d;
+}
+
+function EmpezarDeNuevo({ onCerrar, onCambio }) {
+  const toast = useToast();
+  const [gypi, setGypi] = useState(null);
+  const [alcance, setAlcance] = useState("importado");
+  const [confirmar, setConfirmar] = useState(false);
+  const [trabajando, setTrabajando] = useState(false);
+  const [hecho, setHecho] = useState(null);
+  const [error, setError] = useState(null);
+
+  async function leer() {
+    setError(null);
+    try { setGypi(await leerGypi()); } catch (e) { setError(e.message); }
+  }
+  useEffect(() => { leer(); }, []);
+
+  const resumen = useMemo(() => (gypi ? resumenVaciar(gypi.operaciones, alcance) : null), [gypi, alcance]);
+
+  async function vaciar() {
+    setTrabajando(true);
+    setError(null);
+    try {
+      const d = await postCuadrar({ accion: "vaciar", alcance, esperadas: resumen.ids.length });
+      toast.success(`Listo: ${d.anuladas} movimientos anulados`);
+      setHecho(d.marca || null);
+      setConfirmar(false);
+      await leer();
+      onCambio?.();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setTrabajando(false);
+    }
+  }
+
+  async function deshacer(marca) {
+    setTrabajando(true);
+    setError(null);
+    try {
+      const d = await postCuadrar({ accion: "deshacer", marca });
+      toast.success(`Listo: ${d.vueltas} movimientos volvieron`);
+      setHecho(null);
+      await leer();
+      onCambio?.();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setTrabajando(false);
+    }
+  }
+
+  const ultimo = hecho || gypi?.ultimo_vaciado || null;
+  return (
+    <Modal open onClose={trabajando ? () => {} : onCerrar} title="Empezar de nuevo las cajas y bancos" maxWidth={620}>
+      <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
+        <p className="m-0 text-[13px] text-gypi-dim">
+          Anula los movimientos de todas las cajas y bancos para volver a cargarlos: primero 📚 Pasar el histórico con el libro, después los extractos y la planilla de plazos fijos hasta hoy. No se borra nada: quedan anulados con una marca y se pueden volver atrás. Facturas, órdenes de pago, cheques, clientes, proveedores, plan de cuentas y tipos no se tocan.
+        </p>
+        {!gypi && !error && <Spinner size={16} />}
+        {resumen && (
+          <>
+            <fieldset className="m-0 p-0 border-0 flex flex-col gap-1.5" aria-label="Qué se anula">
+              <label className="flex items-start gap-2 text-[13px]">
+                <input type="radio" name="alcance" className="mt-1" checked={alcance === "importado"} onChange={() => { setAlcance("importado"); setConfirmar(false); }} />
+                <span><b>Lo cargado de afuera y a mano</b> (libro, saldos iniciales, extractos, plazos fijos, FCI, Movimientos). Quedan los pagos, cobros, cheques, Mi caja y sueldos hechos en Gypi.</span>
+              </label>
+              <label className="flex items-start gap-2 text-[13px]">
+                <input type="radio" name="alcance" className="mt-1" checked={alcance === "todo"} onChange={() => { setAlcance("todo"); setConfirmar(false); }} />
+                <span><b>Todo lo que pasa por cajas y bancos</b>, también lo hecho en Gypi. Las órdenes de pago y cobros pueden quedar como hechos sin su movimiento.</span>
+              </label>
+            </fieldset>
+            <div className="text-[13px]" role="status">
+              <p className="m-0">Se anulan <b>{resumen.ids.length}</b> movimientos{resumen.quedan ? `; quedan ${resumen.quedan} hechos en Gypi` : ""}.</p>
+              <ul className="m-0 pl-5" aria-label="Por origen">
+                {resumen.porOrigen.map((o) => <li key={o.origen}>{o.nombre}: {o.n}</li>)}
+              </ul>
+            </div>
+          </>
+        )}
+        {ultimo && (
+          <div className="p-2 rounded-lg border border-gypi-border flex flex-wrap items-center gap-2 text-[13px]">
+            <span className="flex-1 min-w-[200px]">Última vez: <b>{ultimo}</b>. {hecho ? "Ahora pasá el histórico con el libro." : ""}</span>
+            <button type="button" className="g-btn g-btn-secondary" disabled={trabajando} onClick={() => deshacer(ultimo)}>Deshacer</button>
+          </div>
+        )}
+        {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+        {confirmar ? (
+          <div className="p-2 rounded-lg border border-gypi-red flex flex-col gap-2" role="alertdialog" aria-label="Confirmar empezar de nuevo">
+            <p className="m-0 text-[13px]">¿Anular <b>{resumen.ids.length}</b> movimientos de las cajas y bancos? Los saldos van a quedar en cero hasta que pases el histórico.</p>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="g-btn g-btn-secondary" disabled={trabajando} onClick={() => setConfirmar(false)}>Volver</button>
+              <button type="button" className="g-btn g-btn-primary" disabled={trabajando} onClick={vaciar}>{trabajando ? "Anulando…" : "Sí, empezar de nuevo"}</button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex justify-end gap-2">
+            <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cerrar</button>
+            <button type="button" className="g-btn g-btn-primary" disabled={!resumen?.ids.length || trabajando} onClick={() => setConfirmar(true)}>
+              Anular {resumen?.ids.length || 0}
+            </button>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 export default function FinanzasCuadrar({ onCambio }) {
   const [abierto, setAbierto] = useState(false);
+  const [vaciar, setVaciar] = useState(false);
   return (
     <section aria-label="Cuadrar con el libro" className="mb-3 p-3 border border-gypi-border rounded-lg">
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex-1 min-w-[220px]">
           <h3 className="m-0 text-[14px] font-bold text-gypi-text">🧮 Cuadrar con el libro</h3>
-          <p className="m-0 text-[13px] text-gypi-dim">Compara cada caja y banco de Gypi con el libro y muestra lo repetido para anularlo.</p>
+          <p className="m-0 text-[13px] text-gypi-dim">Compara cada caja y banco de Gypi con el libro y muestra lo repetido para anularlo, o empieza de nuevo para volver a cargar todo.</p>
         </div>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setAbierto(true)}>Cuadrar</button>
+        <button type="button" className="g-btn g-btn-secondary" onClick={() => setVaciar(true)}>🧹 Empezar de nuevo</button>
       </div>
       {abierto && <Cuadrar onCerrar={() => setAbierto(false)} onCambio={onCambio} />}
+      {vaciar && <EmpezarDeNuevo onCerrar={() => setVaciar(false)} onCambio={onCambio} />}
     </section>
   );
 }

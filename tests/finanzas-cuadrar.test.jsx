@@ -6,7 +6,7 @@ import { test, before, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
-import { cuadrarCaja, cuadrarConLibro, corteDelLibro } from "../app/lib/finanzasCuadrar.js";
+import { cuadrarCaja, cuadrarConLibro, corteDelLibro, resumenVaciar, marcaVaciar, esMarcaVaciar } from "../app/lib/finanzasCuadrar.js";
 import { planHistorico, renglonesDelLibro, sinLoYaCargado } from "../app/lib/finanzasHistorico.js";
 
 before(() => {
@@ -166,6 +166,38 @@ test("Tesorería — con el histórico pasado no deja cargar saldos iniciales en
   assert.equal(r.status, 400);
   assert.match((await r.json()).error, /histórico del libro/);
   assert.equal(escrito.length, 0);
+});
+
+// ─── Empezar de nuevo ───
+
+test("Empezar de nuevo — lo de afuera y a mano, o todo; la marca dice cuándo y quién", () => {
+  const ops = [op(1, "2026-06-01", 10, BANCO, AJ, "libro"), op(2, "2026-06-02", 10, BANCO, DEU, "banco"), op(3, "2026-06-03", 10, BANCO, DEU, "manual"),
+    op(4, "2026-06-04", 10, BANCO, DEU, null), op(5, "2026-06-05", 10, BANCO, DEU, "cobro"), op(6, "2026-06-06", 10, BANCO, DEU, "pago", { anulada_at: "x" })];
+  const r = resumenVaciar(ops);
+  assert.deepEqual(r.ids, [1, 2, 3, 4]);
+  assert.equal(r.quedan, 1);
+  assert.equal(r.porOrigen.find((o) => o.origen === "manual").n, 2);
+  assert.deepEqual(resumenVaciar(ops, "todo").ids, [1, 2, 3, 4, 5]);
+  const m = marcaVaciar("Tadeo", new Date("2026-11-13T05:30:00Z"));
+  assert.equal(m, "Empezar de nuevo 13/11/2026 02:30 · Tadeo");
+  assert.ok(esMarcaVaciar(m));
+  assert.ok(!esMarcaVaciar("Tadeo (cuadrar con el libro)"));
+});
+
+test("/api/finanzas/cuadrar — empezar de nuevo pide lo mismo que vio la pantalla y se puede deshacer", async () => {
+  const { parches } = mockApi();
+  const d = await (await llamar("GET")).json();
+  const esperadas = resumenVaciar(d.operaciones).ids.length;
+  assert.equal((await llamar("POST", { accion: "vaciar", esperadas: esperadas + 1 })).status, 409);
+  assert.equal(parches.length, 0);
+  const r = await (await llamar("POST", { accion: "vaciar", esperadas })).json();
+  assert.ok(r.marca.startsWith("Empezar de nuevo "));
+  assert.ok(parches.every((p) => p.body.anulada_por_nombre === r.marca && p.body.anulada_at));
+  assert.equal((await llamar("POST", { accion: "deshacer", marca: "otra cosa" })).status, 400);
+  assert.equal((await llamar("POST", { accion: "deshacer", marca: r.marca })).status, 200);
+  const ultimo = parches.at(-1);
+  assert.equal(ultimo.body.anulada_at, null);
+  assert.match(ultimo.url, /anulada_por_nombre=eq\.Empezar de nuevo /);
 });
 
 // ─── Pantalla ───
