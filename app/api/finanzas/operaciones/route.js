@@ -191,8 +191,9 @@ const AVISO_187 = "Se guardó, pero sin los comprobantes: para adjuntarlos falta
  * Guarda las operaciones. Sin la 177 se guarda sin cliente_id y sin la 187 sin
  * los comprobantes (con un aviso), así la carga no se pierde.
  */
-async function guardarConAdjuntos(sesion, filas) {
-  const cuerpo = (l) => (l.length === 1 ? l[0] : l);
+async function guardarConAdjuntos(sesion, filas, { suelta = false } = {}) {
+  // Una sola (crear) va como objeto; las de un gasto, siempre como lista
+  const cuerpo = (l) => (suelta ? l[0] : l);
   try {
     return { filas: (await sbPost("fin_operaciones", cuerpo(filas), { sesion })) || [], aviso: null };
   } catch (err) {
@@ -278,7 +279,7 @@ export async function POST(request) {
       const delCliente = clienteDeOperacion(op, { cuentas: ctx.cuentas, proveedores: ctx.proveedores, clientes: await clientesDe(sesion) });
       if (delCliente) Object.assign(nueva, delCliente, { proveedor_id: null });
       if (adj.lista.length) Object.assign(nueva, columnasComprobantes(adj.lista));
-      const { filas: [fila], aviso } = await guardarConAdjuntos(sesion, [nueva]);
+      const { filas: [fila], aviso } = await guardarConAdjuntos(sesion, [nueva], { suelta: true });
       broadcastRefresh(e, "fin_operaciones");
       return NextResponse.json({ ok: true, operacion: fila, ...(aviso ? { aviso } : {}) });
     }
