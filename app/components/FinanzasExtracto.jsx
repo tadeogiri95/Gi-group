@@ -8,10 +8,17 @@
 // marcado ✓; lo demás viene con el tipo y la cuenta que se usaron antes para
 // ese texto del banco, para revisar y cargar todo junto. "Aprender del libro"
 // lee T-OPERACIONES acá mismo y manda solo las reglas.
-import { useMemo, useState } from "react";
+// 13/11 (parte 5 del plan de Tesorería): el extracto completa, no copia. Un
+// renglón que coincide con algo que Gypi espera (cheque por debitar o en
+// cartera, orden de pago por transferencia, plazo fijo vencido) sale 🔗 y se
+// completa eso en vez de cargarse nuevo. Antes de cargar, el resumen con el
+// saldo contra el del banco. Cada carga queda registrada y se puede deshacer
+// entera o por renglones (migración 188).
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { plata } from "../lib/finanzasOperaciones";
 import { movimientoEnCuenta, reglasDelLibro } from "../lib/finanzasBanco";
+import { resumenDeCarga, textoCarga } from "../lib/finanzasExtractoPendientes";
 import { claseDeArchivo } from "../lib/finanzasExtracto";
 import { puedeAnular, puedeCorregir } from "../lib/finanzasCorregir";
 import { Detalle } from "./FinanzasMovimientos";
@@ -161,7 +168,110 @@ function AvisoSospecha({ f, caja, onVer }) {
   );
 }
 
-export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
+/** Las cargas anteriores del extracto de esta cuenta, para ver qué entró y deshacerlo (13/11, parte 5). */
+export function CargasAnteriores({ caja, recargar = 0, onDeshecho }) {
+  const toast = useToast();
+  const [cargas, setCargas] = useState(null);
+  const [faltaMigracion, setFaltaMigracion] = useState(false);
+  const [abierta, setAbierta] = useState(null);
+  const [ops, setOps] = useState(null);
+  const [elegidos, setElegidos] = useState(() => new Set());
+  const [deshaciendo, setDeshaciendo] = useState(false);
+  const [error, setError] = useState(null);
+
+  const cargar = useCallback(async () => {
+    try {
+      const r = await apiFetch(`/api/finanzas/banco?cuenta=${encodeURIComponent(caja.cuenta)}`);
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "No se pudieron leer las cargas");
+      setCargas(d.cargas || []);
+      setFaltaMigracion(Boolean(d.falta_migracion));
+    } catch (e) {
+      setError(e.message);
+    }
+  }, [caja.cuenta, recargar]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { cargar(); }, [cargar]);
+
+  async function abrir(c) {
+    if (abierta === c.id) { setAbierta(null); return; }
+    setAbierta(c.id);
+    setOps(null);
+    setElegidos(new Set());
+    try {
+      const r = await apiFetch(`/api/finanzas/banco?carga=${c.id}`);
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "No se pudo abrir la carga");
+      setOps(d.operaciones || []);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function deshacer(c, soloElegidos) {
+    const n = soloElegidos ? elegidos.size : (ops || []).filter((o) => !o.anulada_at).length || c.cargadas;
+    if (!window.confirm(`Se anulan ${n} movimientos de esta carga: quedan tachados y dejan de sumar. ¿Seguimos?`)) return;
+    setDeshaciendo(true);
+    setError(null);
+    try {
+      const d = await postBanco({ accion: "deshacer", id: c.id, ...(soloElegidos ? { ops: [...elegidos] } : {}) });
+      toast.success(d.deshecha ? "Carga deshecha" : `Se deshicieron ${d.anuladas} movimientos`);
+      setAbierta(null);
+      await cargar();
+      onDeshecho?.();
+    } catch (e) {
+      setError(e.message);
+    }
+    setDeshaciendo(false);
+  }
+
+  if (faltaMigracion) return <p className="m-0 text-[13px] text-gypi-amber-ink">Para ver las cargas anteriores y poder deshacerlas falta correr la migración 188 en Supabase.</p>;
+  if (!cargas?.length) return error ? <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p> : null;
+  return (
+    <section aria-label="Cargas anteriores" className="rounded-lg border border-gypi-border p-2 text-[13px] flex flex-col gap-1">
+      <b className="text-gypi-text">🗂 Cargas anteriores del extracto</b>
+      <ul className="list-none m-0 p-0 flex flex-col gap-1">
+        {cargas.map((c) => (
+          <li key={c.id} className="flex flex-col gap-1 border-t first:border-t-0 border-gypi-border pt-1">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className={`flex-1 min-w-[200px] ${c.deshecha_at ? "line-through text-gypi-dim" : "text-gypi-text"}`}>
+                <span className="font-mono">{fechaCorta(String(c.created_at || "").slice(0, 10))}</span> · {textoCarga(c)}
+              </span>
+              {c.deshecha_at
+                ? <span className="text-gypi-dim">Deshecha{c.deshecha_por_nombre ? ` por ${c.deshecha_por_nombre}` : ""}</span>
+                : <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[12px]" onClick={() => abrir(c)}>{abierta === c.id ? "Cerrar" : "Ver o deshacer"}</button>}
+            </span>
+            {abierta === c.id && (
+              <div className="pl-2 flex flex-col gap-1">
+                {!ops ? <Spinner /> : (
+                  <>
+                    <ul className="list-none m-0 p-0 flex flex-col gap-0.5" aria-label="Movimientos de la carga">
+                      {ops.map((o) => (
+                        <li key={o.id} className={o.anulada_at ? "line-through text-gypi-dim" : ""}>
+                          <label className="flex items-start gap-2 cursor-pointer">
+                            <input type="checkbox" className="mt-0.5" aria-label={`Deshacer el movimiento ${o.id}`} disabled={Boolean(o.anulada_at)} checked={elegidos.has(o.id)}
+                              onChange={() => setElegidos((s) => { const n = new Set(s); if (n.has(o.id)) n.delete(o.id); else n.add(o.id); return n; })} />
+                            <span><span className="font-mono">{fechaCorta(o.fecha)}</span> <b className="font-mono">{plata(movimientoEnCuenta(o, caja.cuenta), "ARS")}</b> {o.tipo}{o.entidad ? ` · ${o.entidad}` : ""}{o.descripcion ? ` · ${o.descripcion}` : ""}</span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                    <span className="flex flex-wrap justify-end gap-2">
+                      <button type="button" className="g-btn g-btn-secondary !py-1 !px-2 text-[12px]" disabled={deshaciendo || !elegidos.size} onClick={() => deshacer(c, true)}>Deshacer {elegidos.size || ""} elegidos</button>
+                      <button type="button" className="g-btn g-btn-primary !py-1 !px-2 text-[12px]" disabled={deshaciendo} onClick={() => deshacer(c, false)}>{deshaciendo ? "Deshaciendo…" : "Deshacer la carga entera"}</button>
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+      {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+    </section>
+  );
+}
+
+export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCambio = null }) {
   const toast = useToast();
   const [leyendo, setLeyendo] = useState(false);
   const [aprendiendo, setAprendiendo] = useState(false);
@@ -177,6 +287,8 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
   const [archivo, setArchivo] = useState(null);
   const [detalle, setDetalle] = useState(null);
   const [corrigiendo, setCorrigiendo] = useState(null);
+  const [completando, setCompletando] = useState(null);
+  const [deshechas, setDeshechas] = useState(0);
   const nombreCuenta = useMemo(() => new Map((datos.cuentas || []).map((c) => [c.codigo, c.nombre])), [datos.cuentas]);
   const tipos = useMemo(() => (datos.tipos || []).filter((t) => t.activo !== false), [datos.tipos]);
   const etiquetaCuenta = (c) => (c ? `${c} · ${nombreCuenta.get(c) || ""}` : "");
@@ -197,7 +309,7 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
       setFilas(d.filas.map((f, i) => ({
         ...f, i,
         // 13/11: lo sospechoso (igual a algo de Gypi) no se tilda solo
-        elegida: !f.op && Boolean(f.sugerencia) && !f.sospecha,
+        elegida: !f.op && Boolean(f.sugerencia) && !f.sospecha && !f.pendiente,
         tipo: f.sugerencia?.tipo || "",
         contra: f.sugerencia?.contra ? etiquetaCuenta(f.sugerencia.contra) : "",
         entidad: f.sugerencia?.entidad || "",
@@ -246,11 +358,31 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
   };
 
   const repetidas = useMemo(() => new Set((res?.repetidos || []).flatMap((g) => g.ops.filter((o) => o.id !== g.queda).map((o) => o.id))), [res]);
-  const pendientes = filas.filter((f) => !f.op);
+  const pendientes = filas.filter((f) => !f.op && !f.completada);
+  const completan = pendientes.filter((f) => f.pendiente).length;
+  const completadas = filas.filter((f) => f.completada).length;
   const sospechosas = pendientes.filter((f) => f.sospecha).length;
   const ya = filas.filter((f) => f.op);
   const elegidas = pendientes.filter((f) => f.elegida);
   const incompletas = elegidas.filter((f) => !f.tipo || !nombreCuenta.has(codigoDe(f.contra)));
+  const resumen = res ? resumenDeCarga(elegidas, { saldoGypi: res.saldo_gypi?.saldo || 0, saldoBanco: res.control?.final ?? null }) : null;
+
+  // 🔗 Completar lo pendiente (el cheque, la orden o el plazo fijo) con su propia pantalla
+  async function completar(f) {
+    setError(null);
+    setCompletando(f.i);
+    try {
+      const r = await apiFetch(f.pendiente.accion.url, { method: "POST", body: JSON.stringify(f.pendiente.accion.body) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || "No se pudo completar");
+      toast.success("✅ Listo: quedó registrado");
+      cambiar(f.i, { completada: true, elegida: false });
+      onCambio?.();
+    } catch (e) {
+      setError(e.message);
+    }
+    setCompletando(null);
+  }
 
   const releer = () => { if (archivo) subir(archivo); };
 
@@ -275,7 +407,7 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
     setGuardando(true);
     try {
       const d = await postBanco({
-        accion: "confirmar", cuenta: caja.cuenta,
+        accion: "confirmar", cuenta: caja.cuenta, archivo: res.archivo || archivo?.name || null, desde: res.desde, hasta: res.hasta, movimientos: res.filas.length,
         filas: elegidas.map((f) => ({
           fecha: f.fecha, descripcion: f.descripcion, comprobante: f.comprobante, importe: f.importe, marca: f.marca,
           tipo: f.tipo, contra: codigoDe(f.contra), entidad: f.entidad || null, proveedor_id: f.proveedor_id, cliente_id: f.cliente_id,
@@ -283,6 +415,7 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
         })),
       });
       toast.success(`Se cargaron ${d.cargadas} movimientos${d.repetidas ? ` (${d.repetidas} ya estaban)` : ""}`);
+      if (d.aviso) toast.error(d.aviso);
       onCargado();
     } catch (e) {
       // 13/11: el servidor encontró algo igual que la pantalla no vio (se cargó recién): esos quedan sospechosos y sin tildar
@@ -304,12 +437,15 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
               <input type="file" className="sr-only" accept=".pdf,.xlsx,.xls,.csv,application/pdf" aria-label="Archivo del extracto" disabled={leyendo} onChange={(e) => subir(e.target.files?.[0])} />
             </label>
             {leyendo && <p className="m-0 flex items-center gap-2 text-gypi-dim"><Spinner /> Leyendo el extracto…</p>}
+            <CargasAnteriores caja={caja} recargar={deshechas} onDeshecho={() => { setDeshechas((n) => n + 1); onCambio?.(); }} />
           </>
         )}
         {res && (
           <>
             <p className="m-0">
-              {res.filas.length} movimientos del {fechaCorta(res.desde)} al {fechaCorta(res.hasta)} · <b className="text-gypi-green">✓ {ya.length} ya en Gypi</b> · <b>{pendientes.length} para cargar</b>
+              {res.filas.length} movimientos del {fechaCorta(res.desde)} al {fechaCorta(res.hasta)} · <b className="text-gypi-green">✓ {ya.length} ya en Gypi</b>
+              {(completan > 0 || completadas > 0) && <> · <b className="text-gypi-text">🔗 {completan} completan algo pendiente{completadas ? ` (${completadas} ya completados)` : ""}</b></>}
+              {" · "}<b>＋ {pendientes.length - completan} nuevos</b>
               {sospechosas > 0 && <> · <b className="text-gypi-red">{sospechosas} sospechosos (no se cargan sin tu OK)</b></>}
             </p>
             {res.control && (
@@ -363,6 +499,16 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
                     <td className="py-1 min-w-[220px]">
                       <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(f.fecha)}</span> {f.descripcion}
                       {f.sospecha && <AvisoSospecha f={f} caja={caja} onVer={setDetalle} />}
+                      {f.pendiente && (
+                        <span className="block mt-1 p-1.5 rounded bg-gypi-green/10 text-[12px] text-gypi-text">
+                          🔗 Completa algo pendiente: {f.pendiente.texto}. No hace falta cargarlo nuevo.
+                          <span className="flex flex-wrap gap-1.5 mt-1">
+                            <button type="button" className="g-btn g-btn-primary !py-0.5 !px-2 text-[12px]" disabled={completando === f.i} onClick={() => completar(f)}>
+                              {completando === f.i ? "Registrando…" : f.pendiente.boton}
+                            </button>
+                          </span>
+                        </span>
+                      )}
                       {f.entidad && <span className="block text-[12px] text-gypi-dim">{f.entidad}{f.sugerencia?.por === "cuit" ? " · por CUIT" : ""}</span>}
                       {f.parecido && (
                         <span className="block mt-1 p-1.5 rounded bg-gypi-amber/10 text-[12px] text-gypi-text">
@@ -433,6 +579,16 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
           </div>
         )}
 
+        {res && resumen && resumen.n > 0 && (
+          <section aria-label="Resumen de la carga" className="rounded-lg border border-gypi-border bg-gypi-surface p-2 text-[13px] text-gypi-text">
+            <p className="m-0">Vas a cargar <b>{resumen.n}</b> movimientos: entran <b className="font-mono text-gypi-green">{plata(resumen.entra, "ARS")}</b> y salen <b className="font-mono text-gypi-red">{plata(resumen.sale, "ARS")}</b>.</p>
+            <p className="m-0">Al {fechaCorta(res.hasta)}, Gypi queda en <b className="font-mono">{plata(resumen.queda, "ARS")}</b>
+              {resumen.diferencia == null ? "." : resumen.cierra
+                ? <span className="text-gypi-green"> ✓ igual que el banco.</span>
+                : <span className="text-gypi-red"> y el banco dice {plata(res.control.final, "ARS")}: diferencia de {plata(resumen.diferencia, "ARS")}.</span>}
+            </p>
+          </section>
+        )}
         {detalle && <Detalle op={detalle} datos={datos} onCerrar={() => setDetalle(null)} onAnulada={() => { setDetalle(null); releer(); }} />}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         <div className="flex flex-wrap justify-end gap-2">

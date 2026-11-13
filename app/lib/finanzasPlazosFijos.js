@@ -201,13 +201,18 @@ export function estadoDePlazos(plazos = [], ops = [], cuentasPf = []) {
   for (const p of plazos) {
     const id = (paso) => `pf${p.certificado}:${paso}`;
     const buscar = (paso, cond) => vivas.find((o) => !usadas.has(o.id) && (o.origen === ORIGEN_PLAZO_FIJO ? o.origen_id === id(paso) : cond(o))) || null;
-    const c = buscar("c", (o) => tieneCert(o, p.certificado) && pfs.has(o.cuenta_debe));
+    // 13/11 (parte 5): lo que ya trajo el extracto del banco se une, no se carga otra vez
+    const delBanco = (o, cuenta, fecha, margen) => o.origen === "banco" && pfs.has(o[cuenta]) && Math.abs(centavos(o.total) - p.depositado) <= 0.011
+      && (fecha ? Math.abs(dias(o.fecha, fecha)) <= margen : o.fecha <= p.vencimiento && dias(p.vencimiento, o.fecha) <= 400);
+    const c = buscar("c", (o) => tieneCert(o, p.certificado) && pfs.has(o.cuenta_debe))
+      || buscar("c", (o) => delBanco(o, "cuenta_debe", p.constituido, 3));
     if (c) usadas.add(c.id);
     // 12/11: el rescate del libro sin el número de certificado se reconoce por
     // el capital y la fecha; el interés, con hasta $1 de diferencia y 5 días
     // (el banco a veces lo acredita al día hábil siguiente)
     const r = buscar("r", (o) => tieneCert(o, p.certificado) && pfs.has(o.cuenta_haber))
-      || buscar("r", (o) => pfs.has(o.cuenta_haber) && !/\d{6,}/.test(String(o.descripcion || "")) && Math.abs(centavos(o.total) - p.depositado) <= 0.011 && Math.abs(dias(o.fecha, p.vencimiento)) <= 3);
+      || buscar("r", (o) => pfs.has(o.cuenta_haber) && !/\d{6,}/.test(String(o.descripcion || "")) && Math.abs(centavos(o.total) - p.depositado) <= 0.011 && Math.abs(dias(o.fecha, p.vencimiento)) <= 3)
+      || buscar("r", (o) => delBanco(o, "cuenta_haber", p.vencimiento, 3));
     if (r) usadas.add(r.id);
     const i = p.interes > 0
       ? buscar("i", (o) => esInteres(o) && (tieneCert(o, p.certificado) || (Math.abs(centavos(o.total) - p.interes) <= 1 && Math.abs(dias(o.fecha, p.vencimiento)) <= 5)))

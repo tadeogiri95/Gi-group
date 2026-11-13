@@ -12,6 +12,17 @@
 //       Lo que se confirma enseña para la próxima. 13/11: un renglón igual a
 //       algo que ya está en la cuenta (mismo importe, hasta 3 días) da 409
 //       salvo que venga con forzar ("es otro distinto").
+//   13/11 (parte 5): cada renglón sin pareja que coincide con algo que Gypi
+//       espera (cheque por debitar o en cartera, orden de pago por
+//       transferencia, plazo fijo vencido) trae "pendiente": se completa con
+//       su pantalla en vez de cargarse nuevo. "confirmar" recibe también
+//       archivo, desde, hasta y movimientos, y deja registrada la carga
+//       (migración 188, fin_cargas_banco).
+//   GET ?cuenta=X → las últimas cargas de esa cuenta. GET ?carga=id → la
+//       carga con sus operaciones.
+//   POST { accion: "deshacer", id, ops?: [id] } → anula las operaciones de
+//       la carga (todas o las elegidas). Si no queda ninguna viva, la carga
+//       queda deshecha.
 //   POST { accion: "aprender", cuenta, reglas } → suma las reglas que la
 //       pantalla sacó del libro (la hoja T-OPERACIONES se lee en el teléfono o
 //       la computadora: el libro pesa demasiado para subirlo).
@@ -23,7 +34,9 @@ import { sbGet, sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
-import { FECHA } from "../../../lib/finanzasOperaciones";
+import { FECHA, hoyAr } from "../../../lib/finanzasOperaciones";
+import { idsParaDeshacer, pendientesDelExtracto } from "../../../lib/finanzasExtractoPendientes";
+import { CLAVE_PLAZOS_FIJOS, leerGuardados, pathOpsPlazos, vencidosPendientes } from "../../../lib/finanzasPlazosFijos";
 import { claseDeArchivo, grillaDeArchivo, movimientosDeGrilla, movimientosDePdf } from "../../../lib/finanzasExtracto";
 import {
   CLAVE_REGLAS_BANCO, DIAS_EMPAREJAR, DIAS_SOSPECHA, MAX_MOVIMIENTOS, ORIGEN_BANCO, controlSaldo, emparejarExtracto, entidadDe, juntarReglas,
@@ -57,6 +70,31 @@ async function guardarReglas(e, cuenta, nuevas, actual) {
   if (actual) await sbPatch(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_REGLAS_BANCO}`, { valor });
   else await sbPost("config_sistema", { empresa_id: e, clave: CLAVE_REGLAS_BANCO, valor });
   return Object.keys(valor[cuenta]).length;
+}
+
+const FALTA_188 = "Los movimientos se cargaron, pero para que quede registrada la carga (y se pueda deshacer entera) falta correr la migración 188 en Supabase.";
+const falta188 = (err) => /fin_cargas_banco/.test(String(err?.message)) && /does not exist|42P01|PGRST20[05]|schema cache/.test(String(err?.message));
+const txt = (v, max) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+
+/** Lo que Gypi espera que pase por el banco: cheques vivos, órdenes sin pagar y plazos vencidos sin registrar. */
+async function loQueSeEspera(sesion) {
+  const e = sesion.empresa_id;
+  const [cheques, ordenes, plazos] = await Promise.all([
+    leer(sesion, `fin_cheques?empresa_id=eq.${e}&estado=in.(pendiente,en_cartera)&select=id,clase,estado,numero,beneficiario,recibido_de,librador,fecha_pago,importe,cuenta_banco`, 5000).catch(() => []),
+    leer(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&estado=in.(borrador,para_aprobar,aprobada,rechazada)&select=id,numero,proveedor_nombre,fecha,estado,formas`, 2000).catch(() => []),
+    (async () => {
+      const hoy = hoyAr();
+      const [tesoreria, cfg] = await Promise.all([
+        leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&tipo=eq.plazo_fijo&select=cuenta`),
+        sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_PLAZOS_FIJOS}&select=valor&limit=1`, { silent: true, fallback: [] }),
+      ]);
+      const guardados = leerGuardados(cfg?.[0]?.valor);
+      if (!guardados.length) return [];
+      const cuentasPf = tesoreria.map((t) => t.cuenta);
+      return vencidosPendientes(guardados, await leer(sesion, pathOpsPlazos(e, cuentasPf, hoy), 20000), cuentasPf, hoy);
+    })().catch(() => []),
+  ]);
+  return { cheques, ordenes, plazos };
 }
 
 async function bancoDe(sesion, cuenta) {
@@ -111,20 +149,23 @@ async function leerExtracto(sesion, request) {
   const hasta = mover(fechas[fechas.length - 1], DIAS_EMPAREJAR);
   const c = encodeURIComponent(`"${cuenta.replace(/"/g, "")}"`);
   // Toda la cuenta hasta el fin del extracto: para el saldo de Gypi y los repetidos
-  const [todas, reglasTodas, proveedores, clientes] = await Promise.all([
+  const [todas, reglasTodas, proveedores, clientes, espera] = await Promise.all([
     leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&fecha=lte.${hasta}&or=(cuenta_debe.in.(${c}),cuenta_haber.in.(${c}))&select=${COLUMNAS}&order=fecha.asc,id.asc`, 50000),
     leerReglas(e),
     leer(sesion, `proveedores?empresa_id=eq.${e}&select=id,nombre&order=nombre.asc`, 5000).catch(() => []),
     leer(sesion, `fin_clientes?empresa_id=eq.${e}&select=id,nombre,alias,activo&order=nombre.asc`, 5000).catch(() => []),
+    loQueSeEspera(sesion),
   ]);
   const reglas = reglasTodas?.[cuenta] || {};
   const operaciones = todas.filter((o) => o.fecha >= desde);
   const { filas, sin_banco } = emparejarExtracto(ext.movimientos, operaciones, cuenta);
   const parecidos = parecidosEnGypi(filas, sin_banco, cuenta);
+  const pendientes = pendientesDelExtracto(filas, { ...espera, cuenta });
   const finExtracto = ext.hasta || fechas[fechas.length - 1];
   const ops = (o) => (o ? { ...o, empresa_id: undefined } : null);
   return NextResponse.json({
     ok: true,
+    archivo: txt(file.name, 200) || null,
     banco: { cuenta: banco.cuenta, nombre: banco.nombre },
     cuenta_extracto: ext.cuenta || null,
     desde: ext.desde || fechas[0], hasta: ext.hasta || fechas[fechas.length - 1],
@@ -134,7 +175,7 @@ async function leerExtracto(sesion, request) {
       const s = f.op ? null : sugerir(f, reglas);
       return {
         fecha: f.fecha, comprobante: f.comprobante, descripcion: f.descripcion, importe: f.importe, marca: f.marca,
-        op: ops(f.op), ya: f.ya, parecido: ops(parecidos.get(i)),
+        op: ops(f.op), ya: f.ya, parecido: ops(parecidos.get(i)), pendiente: pendientes.get(i) || null,
         sospecha: f.sospecha ? { nivel: f.sospecha.nivel, motivo: f.sospecha.motivo, parecida: ops(f.sospecha.parecida) } : null,
         sugerencia: s ? { tipo: s.tipo, contra: s.contra, por: s.por, ...entidadDe(s.entidad, { proveedores, clientes }) } : null,
       };
@@ -193,8 +234,27 @@ async function confirmar(sesion, d) {
   }
   const ahora = new Date().toISOString();
   const quien = await nombreEmpleado(sesion);
+  const ids = [];
   for (let i = 0; i < nuevas.length; i += 500) {
-    await sbPost("fin_operaciones", nuevas.slice(i, i + 500).map((o) => ({ ...o, empresa_id: e, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora })), { sesion });
+    const hechas = await sbPost("fin_operaciones", nuevas.slice(i, i + 500).map((o) => ({ ...o, empresa_id: e, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora })), { sesion });
+    if (Array.isArray(hechas)) ids.push(...hechas.map((o) => Number(o.id)).filter(Boolean));
+  }
+  // 13/11 (parte 5, migración 188): la carga queda registrada para poder deshacerla
+  let carga = null;
+  let aviso = null;
+  if (nuevas.length) {
+    try {
+      const [fila] = (await sbPost("fin_cargas_banco", {
+        empresa_id: e, cuenta, archivo: txt(d.archivo, 200) || null,
+        desde: FECHA.test(String(d.desde || "")) ? d.desde : null, hasta: FECHA.test(String(d.hasta || "")) ? d.hasta : null,
+        movimientos: Math.max(Number.isInteger(d.movimientos) ? d.movimientos : 0, filas.length), cargadas: nuevas.length, op_ids: ids,
+        cargada_por_nombre: quien, created_at: ahora, updated_at: ahora,
+      }, { sesion })) || [];
+      carga = fila?.id || null;
+    } catch (err) {
+      if (!falta188(err)) throw err;
+      aviso = FALTA_188;
+    }
   }
   // Lo confirmado enseña para el próximo extracto
   try {
@@ -203,7 +263,64 @@ async function confirmar(sesion, d) {
     // Las reglas son una ayuda: si no se guardan, las operaciones ya están
   }
   if (nuevas.length) broadcastRefresh(e, "fin_operaciones");
-  return NextResponse.json({ ok: true, cargadas: nuevas.length, repetidas: ops.length - nuevas.length });
+  return NextResponse.json({ ok: true, cargadas: nuevas.length, repetidas: ops.length - nuevas.length, carga, aviso });
+}
+
+async function deshacer(sesion, d) {
+  const e = sesion.empresa_id;
+  const id = Number(d.id);
+  if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta la carga" }, { status: 400 });
+  const [carga] = (await leer(sesion, `fin_cargas_banco?id=eq.${id}&empresa_id=eq.${e}&select=*&limit=1`)) || [];
+  if (!carga) return NextResponse.json({ error: "No encontré esa carga" }, { status: 404 });
+  const ids = idsParaDeshacer(carga, Array.isArray(d.ops) ? d.ops : null);
+  if (!ids.length) return NextResponse.json({ error: "Elegí qué movimientos deshacer" }, { status: 400 });
+  const ahora = new Date().toISOString();
+  const quien = await nombreEmpleado(sesion);
+  let anuladas = 0;
+  for (let i = 0; i < ids.length; i += 200) {
+    const r = await sbPatch(`fin_operaciones?empresa_id=eq.${e}&origen=eq.${ORIGEN_BANCO}&anulada_at=is.null&id=in.(${ids.slice(i, i + 200).join(",")})`,
+      { anulada_at: ahora, anulada_por_nombre: quien, updated_at: ahora }, { sesion });
+    anuladas += Array.isArray(r) ? r.length : 0;
+  }
+  // ¿Queda alguna viva de la carga?
+  const todas = idsParaDeshacer(carga);
+  let vivas = 0;
+  for (let i = 0; i < todas.length; i += 200) {
+    vivas += (await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&id=in.(${todas.slice(i, i + 200).join(",")})&select=id`)).length;
+  }
+  if (!vivas) await sbPatch(`fin_cargas_banco?id=eq.${id}&empresa_id=eq.${e}`, { deshecha_at: ahora, deshecha_por_nombre: quien, updated_at: ahora }, { sesion });
+  if (anuladas) broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, anuladas, vivas, deshecha: !vivas });
+}
+
+export async function GET(request) {
+  const { sesion, response } = await sesionDueno(request);
+  if (response) return response;
+  const e = sesion.empresa_id;
+  const q = new URL(request.url).searchParams;
+  try {
+    const id = Number(q.get("carga"));
+    if (Number.isInteger(id) && id > 0) {
+      const [carga] = (await leer(sesion, `fin_cargas_banco?id=eq.${id}&empresa_id=eq.${e}&select=*&limit=1`)) || [];
+      if (!carga) return NextResponse.json({ error: "No encontré esa carga" }, { status: 404 });
+      const ids = idsParaDeshacer(carga);
+      const operaciones = [];
+      for (let i = 0; i < ids.length; i += 200) {
+        operaciones.push(...(await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&id=in.(${ids.slice(i, i + 200).join(",")})&select=id,fecha,tipo,entidad,descripcion,total,cuenta_debe,cuenta_haber,anulada_at&order=fecha.asc,id.asc`)));
+      }
+      return NextResponse.json({ carga, operaciones });
+    }
+    const cuenta = txt(q.get("cuenta"), 40);
+    if (!cuenta) return NextResponse.json({ error: "Falta la cuenta" }, { status: 400 });
+    const cargas = await leer(sesion, `fin_cargas_banco?empresa_id=eq.${e}&cuenta=eq.${encodeURIComponent(cuenta)}&select=id,cuenta,archivo,desde,hasta,movimientos,cargadas,cargada_por_nombre,deshecha_at,deshecha_por_nombre,created_at&order=created_at.desc&limit=30`, 30)
+      .catch((err) => {
+        if (falta188(err)) return null;
+        throw err;
+      });
+    return NextResponse.json({ cargas: cargas || [], falta_migracion: cargas === null });
+  } catch (err) {
+    return errorFinanzas(err, "banco GET");
+  }
 }
 
 async function aprender(sesion, d) {
@@ -233,6 +350,7 @@ export async function POST(request) {
     if (!d || typeof d !== "object") return NextResponse.json({ error: "Pedido inválido" }, { status: 400 });
     if (d.accion === "confirmar") return await confirmar(sesion, d);
     if (d.accion === "aprender") return await aprender(sesion, d);
+    if (d.accion === "deshacer") return await deshacer(sesion, d);
     return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
   } catch (err) {
     return errorFinanzas(err, "banco");
