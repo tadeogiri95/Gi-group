@@ -18,6 +18,9 @@
 //       su pantalla en vez de cargarse nuevo. "confirmar" recibe también
 //       archivo, desde, hasta y movimientos, y deja registrada la carga
 //       (migración 188, fin_cargas_banco).
+//   13/11 (parte 7): lo mismo sirve para una caja con una planilla (Fecha,
+//       Concepto, Ingreso, Egreso). En una caja no se buscan cheques, órdenes
+//       ni plazos fijos: esos pasan por el banco.
 //   GET ?cuenta=X → las últimas cargas de esa cuenta. GET ?carga=id → la
 //       carga con sus operaciones.
 //   POST { accion: "deshacer", id, ops?: [id] } → anula las operaciones de
@@ -49,6 +52,8 @@ import { repetidosEnBase } from "../../../lib/finanzasRepetidosServidor";
 export const runtime = "nodejs";
 
 const MAX_BYTES = 4 * 1024 * 1024;
+// 13/11 (parte 7): también una caja (u "otro") se pone al día con una planilla de fecha, concepto, ingreso y egreso
+const CON_PLANILLA = new Set(["banco", "caja", "otro"]);
 // Todo lo de la operación: desde el extracto se abre su detalle para corregirla o anularla (12/11)
 const COLUMNAS = "*";
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data);
@@ -131,8 +136,8 @@ async function leerExtracto(sesion, request) {
   if (!file || typeof file === "string") return NextResponse.json({ error: "Elegí el archivo del extracto" }, { status: 400 });
   if (file.size > MAX_BYTES) return NextResponse.json({ error: "El archivo pesa más de 4 MB" }, { status: 413 });
   const banco = await bancoDe(sesion, cuenta);
-  if (!banco) return NextResponse.json({ error: "Elegí la cuenta del banco" }, { status: 400 });
-  if (banco.moneda === "USD") return NextResponse.json({ error: "Por ahora el extracto se sube solo para cuentas en pesos" }, { status: 400 });
+  if (!banco || !CON_PLANILLA.has(banco.tipo || "banco")) return NextResponse.json({ error: "Elegí la caja o el banco" }, { status: 400 });
+  if (banco.moneda === "USD") return NextResponse.json({ error: "Por ahora el extracto o la planilla se suben solo para cuentas en pesos" }, { status: 400 });
 
   let ext;
   try {
@@ -154,7 +159,8 @@ async function leerExtracto(sesion, request) {
     leerReglas(e),
     leer(sesion, `proveedores?empresa_id=eq.${e}&select=id,nombre&order=nombre.asc`, 5000).catch(() => []),
     leer(sesion, `fin_clientes?empresa_id=eq.${e}&select=id,nombre,alias,activo&order=nombre.asc`, 5000).catch(() => []),
-    loQueSeEspera(sesion),
+    // Cheques, órdenes por transferencia y plazos fijos pasan por el banco, no por una caja
+    (banco.tipo || "banco") === "banco" ? loQueSeEspera(sesion) : {},
   ]);
   const reglas = reglasTodas?.[cuenta] || {};
   const operaciones = todas.filter((o) => o.fecha >= desde);
