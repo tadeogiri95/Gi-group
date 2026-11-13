@@ -49,6 +49,7 @@ import { safeErrorMessage } from "../../lib/validate";
 import { hoyAr, plata } from "../../lib/finanzasOperaciones";
 import { CLAVE_MI_CAJA, ORIGEN_MI_CAJA, PROMPT_TICKET, comprobanteValido, conceptosMiCaja, esquemaTicket, propuestaTicket, referenciaTicket, resumenMiCaja, validarMovimientoMiCaja } from "../../lib/finanzasMiCaja";
 import { avisoRepetido, fechaDma } from "../../lib/finanzasComprobantes";
+import { clienteDeOt, indiceClientes } from "../../lib/finanzasClientes";
 import { buscarComprobanteRepetido, buscarMovimientoParecido } from "../../lib/finanzasComprobantesServidor";
 import { ErrorIa, leerDocumentoIa } from "../../lib/facturaIa";
 import { MAX_ARCHIVO_B64 } from "../../lib/facturasSueltas";
@@ -95,11 +96,37 @@ async function proveedoresDe(empresaId) {
 }
 
 async function conceptos(empresaId) {
-  const [cfg, tipos] = await Promise.all([
+  const [cfg, tipos, cuentas] = await Promise.all([
     sbGet(`config_sistema?empresa_id=eq.${empresaId}&clave=eq.${CLAVE_MI_CAJA}&select=valor&limit=1`, { silent: true, fallback: [] }),
     sbGetAll(`fin_tipos_operacion?empresa_id=eq.${empresaId}&select=codigo,nombre,grupo,descripcion,cuenta_debe,cuenta_haber,activo&order=codigo.asc`, { maxFilas: 2000 }).then((r) => r.data),
+    sbGetAll(`fin_cuentas?empresa_id=eq.${empresaId}&select=codigo,nombre&order=codigo.asc`, { maxFilas: 2000 }).then((r) => r.data || []).catch(() => []),
   ]);
-  return { lista: conceptosMiCaja(cfg?.[0]?.valor, tipos), tipos };
+  return { lista: conceptosMiCaja(cfg?.[0]?.valor, tipos, cuentas), tipos };
+}
+
+/**
+ * Para el cobro a un cliente (13/11): los clientes de la lista y las OT, así
+ * la plata que entra queda en la cuenta del cliente en ese momento. Sin la 177
+ * (o la 184) todavía, listas vacías o sin el cliente de la OT.
+ */
+async function clientesYOt(empresaId) {
+  const [clientes, proyectos] = await Promise.all([
+    sbGetAll(`fin_clientes?empresa_id=eq.${empresaId}&select=id,nombre,alias,activo,unido_a&order=nombre.asc,id.asc`, { maxFilas: 5000 }).then((r) => r.data || []).catch(() => []),
+    sbGetAll(`proyectos?empresa_id=eq.${empresaId}&order=id.desc&select=id,ot,cliente,obra,descripcion,estado,cliente_id`, { maxFilas: 3000 })
+      .catch(() => sbGetAll(`proyectos?empresa_id=eq.${empresaId}&order=id.desc&select=id,ot,cliente,obra,descripcion,estado`, { maxFilas: 3000 }))
+      .then((r) => r.data || []).catch(() => []),
+  ]);
+  return { clientes, proyectos };
+}
+
+/** Lo que viaja a la pantalla: clientes vivos y OT con el cliente que les toca. */
+function listasParaPantalla({ clientes, proyectos }) {
+  const vivos = clientes.filter((c) => c.activo !== false && !c.unido_a);
+  const indice = indiceClientes(clientes);
+  return {
+    clientes: vivos.map((c) => ({ id: c.id, nombre: c.nombre })),
+    proyectos: proyectos.map((p) => ({ id: p.id, ot: p.ot, cliente: p.cliente || "", obra: p.obra || "", descripcion: p.descripcion || "", cliente_id: clienteDeOt(p, clientes, indice) })),
+  };
 }
 
 /** Todas las cajas activas con responsable y el nombre de cada uno (para elegir a quién pasarle). */
@@ -155,6 +182,7 @@ export async function GET(request) {
       // Con Stock, el ticket de materiales se puede mandar al stock (11/11)
       con_stock: !(await requireModuloSesion(sesion, "stock").catch(() => true)),
       conceptos: lista, hoy: hoyAr(), ...deCadaUno,
+      ...(lista.ingresos.some((c) => c.pide_cliente) ? listasParaPantalla(await clientesYOt(e)) : {}),
     });
   } catch (err) {
     if (sinTabla(err)) return NextResponse.json({ cajas: [] });
@@ -185,9 +213,12 @@ async function cargar(sesion, d, cajas) {
   const caja = cajas.find((c) => c.cuenta === d.cuenta);
   if (!caja) return NextResponse.json({ error: "Esa caja no está a tu cargo" }, { status: 403 });
   const [{ lista }, proveedores] = await Promise.all([conceptos(e), proveedoresDe(e)]);
+  const pideCliente = d.clase !== "gasto" && lista.ingresos.some((c) => c.codigo === d.concepto && c.pide_cliente);
+  const { clientes, proyectos } = pideCliente || d.proyecto_id ? await clientesYOt(e) : { clientes: [], proyectos: [] };
   const { op, errores } = validarMovimientoMiCaja(d, {
     caja, conceptos: lista, confirmada: sesion.rol === "gerencial" || caja.propia === false,
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL, empresaId: e, hoy: hoyAr(), proveedores,
+    clientes: clientes.filter((c) => c.activo !== false && !c.unido_a), proyectos,
   });
   if (errores.length) return NextResponse.json({ error: errores[0], errores }, { status: 400 });
   if (op.referencia) {
@@ -206,7 +237,11 @@ async function cargar(sesion, d, cajas) {
   const quien = await nombreEmpleado(sesion);
   const fila = { ...op, empresa_id: e, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora };
   if (!fila.comprobante_url) delete fila.comprobante_url; // sin foto anda aunque falte la 176
-  const [o] = (await sbPost("fin_operaciones", fila)) || [];
+  const [o] = (await sbPost("fin_operaciones", fila).catch((err) => {
+    // Sin la 177 todavía: se guarda igual, con el nombre del cliente
+    if (fila.cliente_id && /cliente_id/.test(String(err?.message))) { delete fila.cliente_id; return sbPost("fin_operaciones", fila); }
+    throw err;
+  })) || [];
   broadcastRefresh(e, "fin_operaciones");
   if (sesion.rol !== "gerencial") await avisarDuenos(e, { quien, op, caja });
   return NextResponse.json({ ok: true, operacion: o ? { id: o.id, estado: o.estado } : null });

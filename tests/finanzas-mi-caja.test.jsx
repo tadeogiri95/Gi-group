@@ -135,7 +135,7 @@ const pedir = async (ruta, empleadoId, rol, metodo, body) => ruta[metodo](new Re
   method: metodo, headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token(empleadoId, rol)}` }, ...(body ? { body: JSON.stringify(body) } : {}),
 }));
 
-function mockApi({ modulos = [], ops = OPS, repetidas = [], parecidas = [], proveedores = [], accesos = null } = {}) {
+function mockApi({ modulos = [], ops = OPS, repetidas = [], parecidas = [], proveedores = [], accesos = null, cuentas = [], clientes = [], proyectos = [] } = {}) {
   const escrito = [];
   const leido = [];
   global.fetch = createFetchMock([
@@ -157,6 +157,9 @@ function mockApi({ modulos = [], ops = OPS, repetidas = [], parecidas = [], prov
       },
     },
     { match: (u) => u.includes("/rest/v1/proveedores"), respond: (u) => { leido.push(u); return { status: 200, body: proveedores }; } },
+    { match: (u) => u.includes("/rest/v1/fin_cuentas"), respond: () => ({ status: 200, body: cuentas }) },
+    { match: (u) => u.includes("/rest/v1/fin_clientes"), respond: (u) => { leido.push(u); return { status: 200, body: clientes }; } },
+    { match: (u) => u.includes("/rest/v1/proyectos"), respond: (u) => { leido.push(u); return { status: 200, body: proyectos }; } },
     { match: (u, o) => u.includes("/rest/v1/fin_operaciones") && u.includes("referencia=ilike.") && !o?.method, respond: (u) => { leido.push(u); return { status: 200, body: repetidas }; } },
     { match: (u, o) => u.includes("/rest/v1/fin_operaciones") && u.includes("&total=eq.") && !o?.method, respond: (u) => { leido.push(u); return { status: 200, body: parecidas }; } },
     {
@@ -408,4 +411,74 @@ test("Cajas y bancos — ⚙ Mi caja: todo tildado de entrada; destildar esconde
   fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
   await waitFor(() => assert.equal(enviados.length, 1));
   assert.deepEqual(enviados[0], { accion: "config_mi_caja", ocultos: { gastos: ["GASTO VIATICOS", "GASTO COMBUSTIBLE"], ingresos: [] } });
+});
+
+// ─── 13/11: el cobro a un cliente dice de qué cliente es ───
+
+const CUENTAS_CLI = [{ codigo: "01.01.02.001.001", nombre: "Deudores por Ventas" }, { codigo: "05.02.01", nombre: "Combustibles" }];
+const CLIENTES = [{ id: 5, nombre: "Bosques SA", activo: true }, { id: 6, nombre: "Riofrío SRL", activo: true }, { id: 9, nombre: "Viejo", activo: true, unido_a: 5 }];
+const PROYECTOS = [{ id: 40, ot: "7858", cliente: "Bosques", obra: "CEVT", cliente_id: 5 }, { id: 41, ot: "7961", cliente: "Riofrío", obra: "Casa", cliente_id: null }];
+
+test("cobro a un cliente — pide el cliente y la OT tiene que ser de ese cliente (13/11)", () => {
+  const conceptos = conceptosMiCaja(CONFIG, TIPOS, CUENTAS_CLI);
+  assert.deepEqual(conceptos.ingresos.map((c) => [c.codigo, !!c.pide_cliente]), [["COBRO CLIENTE", true]]);
+  assert.ok(conceptos.gastos.every((c) => !c.pide_cliente), "un gasto no pide cliente");
+  const ctx = { ...CTX, conceptos, clientes: CLIENTES, proyectos: PROYECTOS };
+  const base = { clase: "ingreso", concepto: "COBRO CLIENTE", importe: 50000, fecha: "2026-11-09" };
+  assert.deepEqual(validarMovimientoMiCaja(base, ctx).errores, ["Elegí de qué cliente es la plata"]);
+  assert.deepEqual(validarMovimientoMiCaja({ ...base, cliente_id: 99 }, ctx).errores, ["Ese cliente no está en la lista"]);
+  assert.match(validarMovimientoMiCaja({ ...base, cliente_id: 6, proyecto_id: 40 }, ctx).errores[0], /La OT 7858 es de Bosques SA/);
+  const { op, errores } = validarMovimientoMiCaja({ ...base, cliente_id: 5, proyecto_id: 40 }, ctx);
+  assert.deepEqual(errores, []);
+  assert.deepEqual([op.cliente_id, op.entidad, op.proyecto_id, op.proveedor_id, op.cuenta_debe, op.cuenta_haber], [5, "Bosques SA", 40, null, CAJA_JUAN.cuenta, "01.01.02.001.001"]);
+  assert.match(op.descripcion, /Cobro a un cliente · Caja Juan · Bosques SA · OT 7858/);
+  // La OT que todavía no tiene cliente unido va con el nombre del Plan
+  assert.deepEqual(validarMovimientoMiCaja({ ...base, cliente_id: 6, proyecto_id: 41 }, ctx).errores, []);
+});
+
+test("/api/mi-caja — el cobro a un cliente queda en su cuenta con la OT; la pantalla trae clientes y OT (13/11)", async () => {
+  const { escrito } = mockApi({ cuentas: CUENTAS_CLI, clientes: CLIENTES, proyectos: PROYECTOS });
+  let r = await pedir(api, JUAN, "operativo", "GET");
+  const d = await r.json();
+  assert.equal(r.status, 200);
+  assert.deepEqual(d.clientes, [{ id: 5, nombre: "Bosques SA" }, { id: 6, nombre: "Riofrío SRL" }], "sin el unido a otro");
+  assert.deepEqual(d.proyectos.map((p) => [p.ot, p.cliente_id]), [["7858", 5], ["7961", 6]]);
+  r = await pedir(api, JUAN, "operativo", "POST", { accion: "cargar", cuenta: CAJA_JUAN.cuenta, clase: "ingreso", concepto: "COBRO CLIENTE", importe: 50000, fecha: "2026-11-09" });
+  assert.equal(r.status, 400);
+  assert.match((await r.json()).error, /de qué cliente/);
+  r = await pedir(api, JUAN, "operativo", "POST", { accion: "cargar", cuenta: CAJA_JUAN.cuenta, clase: "ingreso", concepto: "COBRO CLIENTE", importe: 50000, fecha: "2026-11-09", cliente_id: 5, proyecto_id: 40 });
+  assert.equal(r.status, 200);
+  const op = escrito.find((x) => x.tabla === "fin_operaciones").body;
+  assert.deepEqual([op.cliente_id, op.entidad, op.proyecto_id], [5, "Bosques SA", 40]);
+});
+
+test("/api/mi-caja — sin cuenta de clientes en el plan, nada cambia (ni se leen los clientes)", async () => {
+  const { leido } = mockApi();
+  const d = await (await pedir(api, JUAN, "operativo", "GET")).json();
+  assert.equal(d.clientes, undefined);
+  assert.ok(!leido.some((u) => u.includes("fin_clientes")));
+});
+
+test("Mi caja — Recibí plata de un cliente: elegir el cliente y la OT", async () => {
+  const datos = {
+    cajas: [resumenMiCaja(OPS, CAJA_JUAN, new Map())],
+    conceptos: conceptosMiCaja(CONFIG, TIPOS, CUENTAS_CLI), hoy: "2026-11-09", cargar: () => {},
+    clientes: [{ id: 5, nombre: "Bosques SA" }, { id: 6, nombre: "Riofrío SRL" }],
+    proyectos: [{ id: 40, ot: "7858", cliente: "Bosques", obra: "CEVT", cliente_id: 5 }],
+  };
+  const enviados = [];
+  global.fetch = async (url, o = {}) => {
+    enviados.push(JSON.parse(o.body));
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  };
+  render(<MiCaja datos={datos} onClose={() => {}} onCambio={() => {}} />);
+  fireEvent.click(screen.getByText("➕ Recibí plata"));
+  assert.ok(screen.getByText("¿De qué cliente?"));
+  fireEvent.change(screen.getByLabelText("Importe"), { target: { value: "50.000" } });
+  // Elegir la OT pone su cliente
+  fireEvent.change(screen.getByLabelText("OT"), { target: { value: "40" } });
+  assert.equal(screen.getByLabelText("Cliente").value, "Bosques SA");
+  fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+  await waitFor(() => assert.equal(enviados.length, 1));
+  assert.deepEqual([enviados[0].clase, enviados[0].concepto, enviados[0].cliente_id, enviados[0].proyecto_id, enviados[0].importe], ["ingreso", "COBRO CLIENTE", 5, 40, 50000]);
 });

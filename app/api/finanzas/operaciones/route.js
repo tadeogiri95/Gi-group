@@ -53,6 +53,7 @@ import { avisoRepetido } from "../../../lib/finanzasComprobantes";
 import { buscarComprobanteRepetido } from "../../../lib/finanzasComprobantesServidor";
 import { randomUUID } from "node:crypto";
 import { frenoRepetidos, repetidosEnBase } from "../../../lib/finanzasRepetidosServidor";
+import { clienteDeOperacion } from "../../../lib/finanzasClientes";
 import { MARCA_CORREGIDA, MAX_ANULAR_JUNTAS, SE_ANULAN, operacionCorregida, puedeCorregir } from "../../../lib/finanzasCorregir";
 
 const ANULABLES = `origen=in.(${[...SE_ANULAN].filter((o) => o !== ORIGEN_GASTO).join(",")})`;
@@ -72,6 +73,12 @@ async function listas(sesion) {
     leer(`proyectos?empresa_id=eq.${e}&select=id,ot,cliente,obra,descripcion,estado&order=id.desc`),
   ]);
   return { tipos, cuentas, tesoreria, centros, proveedores, proyectos };
+}
+
+/** Los clientes de la lista (sin la 177, ninguno): para dejar el cobro a mano en su cuenta (13/11). */
+async function clientesDe(sesion) {
+  return sbGetAll(`fin_clientes?empresa_id=eq.${sesion.empresa_id}&select=id,nombre,alias,activo,unido_a&order=id.asc`, { sesion, maxFilas: 5000 })
+    .then((r) => r.data || []).catch(() => []);
 }
 
 async function nombreEmpleado(sesion) {
@@ -211,9 +218,14 @@ export async function POST(request) {
         if (freno) return freno;
       }
       const ahora = new Date().toISOString();
-      const [fila] = await sbPost("fin_operaciones", {
-        ...op, empresa_id: e, cargada_por_nombre: await nombreEmpleado(sesion), created_at: ahora, updated_at: ahora,
-      }, { sesion });
+      const nueva = { ...op, empresa_id: e, cargada_por_nombre: await nombreEmpleado(sesion), created_at: ahora, updated_at: ahora };
+      // 13/11: el cobro (o la venta) de un cliente queda en su cuenta corriente con su id
+      const delCliente = clienteDeOperacion(op, { cuentas: ctx.cuentas, proveedores: ctx.proveedores, clientes: await clientesDe(sesion) });
+      if (delCliente) Object.assign(nueva, delCliente, { proveedor_id: null });
+      const [fila] = await sbPost("fin_operaciones", nueva, { sesion }).catch((err) => {
+        if (nueva.cliente_id && /cliente_id/.test(String(err?.message))) { delete nueva.cliente_id; return sbPost("fin_operaciones", nueva, { sesion }); }
+        throw err;
+      });
       broadcastRefresh(e, "fin_operaciones");
       return NextResponse.json({ ok: true, operacion: fila });
     }

@@ -170,12 +170,13 @@ function porGrupo(lista) {
 /** Gasté / Recibí plata (parte 10 del 11/11: muy fácil). Primero la foto del
  *  ticket (Gypi lee importe, fecha y concepto), los conceptos en botones con
  *  los más usados primero y la fecha en Hoy / Ayer / Otro día. */
-function Cargar({ caja, clase, conceptos, hoy, conStock = false, onCerrar, onHecho }) {
+function Cargar({ caja, clase, conceptos, hoy, conStock = false, clientes = [], proyectos = [], onCerrar, onHecho }) {
   const gasto = clase === "gasto";
   const lista = conceptosPorUso(gasto ? conceptos.gastos : conceptos.ingresos, caja.movimientos);
   const [f, setF] = useState({
     concepto: lista.length === 1 ? lista[0].codigo : "", importe: "", fecha: hoy, descripcion: "", tipo_cambio: "", comprobante_url: "",
     comercio: "", cuit: "", proveedor_id: "", letra: "", punto_venta: "", numero: "", neto: "", iva: "", otros_impuestos: "",
+    cliente_id: "", proyecto_id: "",
   });
   const [verDatos, setVerDatos] = useState(false);
   const [repetido, setRepetido] = useState(null);
@@ -194,6 +195,12 @@ function Cargar({ caja, clase, conceptos, hoy, conStock = false, onCerrar, onHec
   const chips = lista.length > MAX_CHIPS ? lista.slice(0, MAX_CHIPS - 1) : lista;
   const resto = lista.length > MAX_CHIPS ? lista.slice(MAX_CHIPS - 1) : [];
   const elegido = lista.find((c) => c.codigo === f.concepto);
+  // 13/11: el cobro a un cliente dice de qué cliente es (y, si se quiere, la OT)
+  const pideCliente = !gasto && !!elegido?.pide_cliente;
+  const otsDelCliente = f.cliente_id ? proyectos.filter((p) => String(p.cliente_id) === String(f.cliente_id)) : [];
+  const otrasOt = proyectos.filter((p) => !otsDelCliente.includes(p));
+  const otDeOtro = (id, cliente) => { const p = id ? proyectos.find((x) => String(x.id) === String(id)) : null; return !!p?.cliente_id && String(p.cliente_id) !== String(cliente); };
+  const nombreOt = (p) => [p.ot, p.cliente, p.obra || p.descripcion].filter(Boolean).join(" · ");
 
   async function conFoto(url) {
     setF((x) => ({ ...x, comprobante_url: url }));
@@ -237,7 +244,8 @@ function Cargar({ caja, clase, conceptos, hoy, conStock = false, onCerrar, onHec
       const res = await apiFetch("/api/mi-caja", {
         method: "POST",
         body: JSON.stringify({
-          accion: "cargar", cuenta: caja.cuenta, clase, ...f, importe: numero(f.importe), tipo_cambio: usd ? numero(f.tipo_cambio) : null,
+          accion: "cargar", cuenta: caja.cuenta, clase, ...f,
+          cliente_id: pideCliente && f.cliente_id ? Number(f.cliente_id) : null, proyecto_id: pideCliente && f.proyecto_id ? Number(f.proyecto_id) : null, importe: numero(f.importe), tipo_cambio: usd ? numero(f.tipo_cambio) : null,
           neto: numero(f.neto), iva: numero(f.iva), otros_impuestos: numero(f.otros_impuestos), igual_confirmado: igualConfirmado || undefined,
         }),
       });
@@ -307,6 +315,26 @@ function Cargar({ caja, clase, conceptos, hoy, conStock = false, onCerrar, onHec
               )}
               {elegido?.leyenda && <p className="mt-1 mb-0 text-[12px] leading-snug text-gypi-dim">ℹ {elegido.leyenda}</p>}
             </div>
+            {pideCliente && (
+              <div className="flex flex-col gap-2">
+                {campo("¿De qué cliente?", clientes.length ? (
+                  <SelectBuscable className="g-input w-full" aria-label="Cliente" value={f.cliente_id}
+                    onChange={(e) => { const v = e.target.value; setF((x) => ({ ...x, cliente_id: v, proyecto_id: otDeOtro(x.proyecto_id, v) ? "" : x.proyecto_id })); }}>
+                    <option value="">Elegí el cliente…</option>
+                    {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  </SelectBuscable>
+                ) : <span className="text-[13px] font-normal text-gypi-dim">Todavía no hay clientes en la lista: el dueño los carga en Finanzas → Clientes.</span>)}
+                {clientes.length > 0 && proyectos.length > 0 && campo("¿De qué OT? (opcional)", (
+                  <SelectBuscable className="g-input w-full" aria-label="OT" value={f.proyecto_id}
+                    onChange={(e) => { const v = e.target.value; const p = proyectos.find((x) => String(x.id) === v); setF((x) => ({ ...x, proyecto_id: v, cliente_id: p?.cliente_id ? String(p.cliente_id) : x.cliente_id })); }}>
+                    <option value="">Sin OT</option>
+                    {otsDelCliente.length > 0 && <optgroup label="De este cliente">{otsDelCliente.map((p) => <option key={p.id} value={p.id}>{nombreOt(p)}</option>)}</optgroup>}
+                    <optgroup label={otsDelCliente.length ? "Otras OT" : "Todas las OT"}>{otrasOt.map((p) => <option key={p.id} value={p.id}>{nombreOt(p)}</option>)}</optgroup>
+                  </SelectBuscable>
+                ))}
+                <span className="text-[12px] text-gypi-dim">Así el cobro queda en la cuenta del cliente en el momento.</span>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               {campo(usd ? "Importe (USD)" : "Importe", <input className="g-input w-[180px] text-right font-mono text-[18px]" inputMode="decimal" aria-label="Importe" placeholder="0" value={f.importe} onChange={set("importe")} />)}
               {usd && campo("Tipo de cambio", <input className="g-input w-[120px]" inputMode="decimal" aria-label="Tipo de cambio" value={f.tipo_cambio} onChange={set("tipo_cambio")} />)}
@@ -477,7 +505,7 @@ export default function MiCaja({ datos, onClose, onCambio }) {
           onHecho={(persona) => { setPasar(false); setAviso(`Listo: cuando ${persona || "la otra persona"} confirme que la recibió, sale de tu caja`); onCambio(); }} />
       )}
       {cargar && (
-        <Cargar caja={caja} clase={cargar} conceptos={datos.conceptos || { gastos: [], ingresos: [] }} hoy={datos.hoy} conStock={Boolean(datos.con_stock)}
+        <Cargar caja={caja} clase={cargar} conceptos={datos.conceptos || { gastos: [], ingresos: [] }} hoy={datos.hoy} conStock={Boolean(datos.con_stock)} clientes={datos.clientes || []} proyectos={datos.proyectos || []}
           onCerrar={() => setCargar(null)}
           onHecho={() => { setCargar(null); setAviso(`${cargar === "gasto" ? "Gasto cargado" : "Plata recibida cargada"}${caja.propia === false ? ` en ${caja.nombre}: ya está confirmado` : ": ya cuenta en tu saldo y el dueño lo va a revisar"}`); onCambio(); }} />
       )}
