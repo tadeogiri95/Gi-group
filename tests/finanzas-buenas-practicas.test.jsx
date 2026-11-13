@@ -195,3 +195,14 @@ test("Revisión contable — muestra lo que hay que mirar y aplica las cuentas t
   assert.ok(enviado[0].codigos.includes("COMPRAS"));
   assert.ok(!enviado[0].codigos.includes("SERVICIOS"), "el destildado no va");
 });
+
+test("importe negativo (13/11) — el saldo inicial de una caja que funciona como cuenta corriente va al revés", () => {
+  const ctx = { tipos: TIPOS, cuentas: CUENTAS, tesoreria: [{ cuenta: "01.01.01.001.001", nombre: "Caja", tipo: "caja", moneda: "ARS", activa: true }], centros: [], proveedores: [], proyectos: [] };
+  const op = { fecha: "2026-11-01", tipo: "APERTURA", neto: "-1.500,50", cuenta_debe: "01.01.01.001.001", cuenta_haber: "03.01.01.002.001" };
+  const r = validarOperacion(op, ctx);
+  assert.deepEqual(r.errores, []);
+  assert.equal(r.al_reves, true);
+  assert.deepEqual([r.op.cuenta_debe, r.op.cuenta_haber, r.op.total, r.op.neto], ["03.01.01.002.001", "01.01.01.001.001", 1500.5, 1500.5], "la caja queda en el haber: saldo negativo");
+  assert.equal(validarOperacion({ ...op, neto: "1.500,50" }, ctx).al_reves, false);
+  assert.match(validarOperacion({ ...op, tipo: "SERVICIOS", iva: "21", cuenta_debe: "04.02.01.001.011", cuenta_haber: "01.01.01.001.001" }, ctx).errores.join(" "), /van en positivo/, "con IVA, todo en positivo");
+});

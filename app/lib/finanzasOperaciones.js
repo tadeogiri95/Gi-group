@@ -154,8 +154,17 @@ export function validarOperacion(f, ctx) {
     iva = 0;
     otros = 0;
   }
-  else if ([neto, iva, otros].some((n) => n < 0)) errores.push("Los importes van en positivo: el debe y el haber dicen para qué lado va.");
-  const total = redondear((neto || 0) + (iva || 0) + (otros || 0));
+  // Un solo importe en negativo, sin IVA ni otros, va al revés (abajo); con IVA, todo en positivo
+  else if ([neto, iva, otros].some((n) => n < 0) && !(neto < 0 && !iva && !otros)) errores.push("Los importes van en positivo: el debe y el haber dicen para qué lado va.");
+  let total = redondear((neto || 0) + (iva || 0) + (otros || 0));
+  // 13/11 (pedido de Tadeo): un importe negativo en una operación de un solo
+  // importe (un saldo inicial de una caja que funciona como cuenta corriente,
+  // un ajuste) va al revés: se dan vuelta el debe y el haber y queda en positivo.
+  const alReves = Boolean(tipo) && total < 0 && !iva && !otros && !errores.some((e) => e.includes("importe"));
+  if (alReves) {
+    neto = -neto;
+    total = -total;
+  }
   if (!(total > 0) && !errores.some((e) => e.includes("importe"))) errores.push("Falta el importe.");
 
   const moneda = f?.moneda === "USD" ? "USD" : "ARS";
@@ -165,8 +174,8 @@ export function validarOperacion(f, ctx) {
     if (!(tipoCambio > 0)) errores.push("En dólares falta el tipo de cambio.");
   }
 
-  const cuentaDebe = txt(f?.cuenta_debe, 40);
-  const cuentaHaber = txt(f?.cuenta_haber, 40);
+  const cuentaDebe = txt(alReves ? f?.cuenta_haber : f?.cuenta_debe, 40);
+  const cuentaHaber = txt(alReves ? f?.cuenta_debe : f?.cuenta_haber, 40);
   const existe = (c) => cuentas.some((x) => x.codigo === c);
   for (const [lado, c] of [["debe", cuentaDebe], ["haber", cuentaHaber]]) {
     const cajas = cajasDelLado(c, tesoreria);
@@ -209,6 +218,7 @@ export function validarOperacion(f, ctx) {
   if (errores.length) return { op: null, errores: [...new Set(errores)] };
   return {
     errores: [],
+    al_reves: alReves,
     op: {
       fecha,
       tipo: tipo.codigo,

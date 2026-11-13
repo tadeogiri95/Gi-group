@@ -127,10 +127,11 @@ export function NuevoAsiento({ datos, inicial, onCerrar, onGuardado }) {
         <label className={etiqueta}>Descripción
           <input className="g-input w-full" value={f.descripcion} onChange={set("descripcion")} maxLength={500} placeholder="Por qué se hace este asiento" />
         </label>
-        {f.cuenta_debe && f.cuenta_haber && importe > 0 && (
+        {f.cuenta_debe && f.cuenta_haber && importe !== 0 && !Number.isNaN(importe) && (
           <section aria-label="Así queda el asiento" className="rounded-lg border border-gypi-border bg-gypi-surface p-2 text-[13px] text-gypi-text">
-            <p className="m-0 flex justify-between gap-2"><span>Debe: {nombreCuenta(f.cuenta_debe, datos.cuentas)}</span><b className="font-mono">{plata(importe)}</b></p>
-            <p className="m-0 flex justify-between gap-2 pl-4"><span>Haber: {nombreCuenta(f.cuenta_haber, datos.cuentas)}</span><b className="font-mono">{plata(importe)}</b></p>
+            {importe < 0 && <p className="m-0 mb-1 text-gypi-amber-ink">Con el importe en negativo el asiento va al revés: así se carga, por ejemplo, el saldo inicial de una caja que funciona como cuenta corriente.</p>}
+            <p className="m-0 flex justify-between gap-2"><span>Debe: {nombreCuenta(importe < 0 ? f.cuenta_haber : f.cuenta_debe, datos.cuentas)}</span><b className="font-mono">{plata(Math.abs(importe))}</b></p>
+            <p className="m-0 flex justify-between gap-2 pl-4"><span>Haber: {nombreCuenta(importe < 0 ? f.cuenta_debe : f.cuenta_haber, datos.cuentas)}</span><b className="font-mono">{plata(Math.abs(importe))}</b></p>
           </section>
         )}
         {errores.length > 0 && (

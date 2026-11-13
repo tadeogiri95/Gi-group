@@ -163,7 +163,9 @@ function NuevaOperacion({ datos, cajaInicial = "", onCerrar, onGuardada }) {
   const iva = conIva ? numero(f.iva) || 0 : 0;
   const otros = conIva ? numero(f.otros_impuestos) || 0 : 0;
   const total = Math.round((neto + iva + otros) * 100) / 100;
-  const vista = { ...f, neto, iva, otros_impuestos: otros, total, tipo_cambio: numero(f.tipo_cambio) || null };
+  // Un importe negativo sin IVA va al revés (lo mismo que hace validarOperacion al guardar)
+  const reves = total < 0 && !iva && !otros;
+  const vista = { ...f, neto: reves ? -neto : neto, iva, otros_impuestos: otros, total: reves ? -total : total, tipo_cambio: numero(f.tipo_cambio) || null, ...(reves ? { cuenta_debe: f.cuenta_haber, cuenta_haber: f.cuenta_debe } : {}) };
 
   const guardar = async (confirmarRepetido = false) => {
     const operacion = { ...f, ...(conIva ? {} : { iva: "", otros_impuestos: "" }), proveedor_id: otroNombre ? "" : f.proveedor_id, entidad: f.proveedor_id && !otroNombre ? "" : f.entidad };
@@ -317,6 +319,7 @@ function NuevaOperacion({ datos, cajaInicial = "", onCerrar, onGuardada }) {
                 <>
                   {campo("Importe", <input className="g-input w-full sm:w-[260px]" inputMode="decimal" value={f.neto} onChange={set("neto")} placeholder="0,00" />)}
                   <p className="-mt-1 m-0 text-[12px] lg:text-[13px] text-gypi-dim">En {String(tipo.grupo || "este tipo").toLowerCase()} no se separa el IVA: va el importe total. El IVA se carga en la compra o la venta.</p>
+                  {reves && <p className="m-0 text-[13px] text-gypi-amber-ink">Importe en negativo: se dan vuelta el debe y el haber (por ejemplo, el saldo inicial de una caja que funciona como cuenta corriente).</p>}
                 </>
               )}
               <p className="m-0 text-[16px] lg:text-[18px] font-bold text-gypi-text">Total: {plata(total, f.moneda)}</p>
