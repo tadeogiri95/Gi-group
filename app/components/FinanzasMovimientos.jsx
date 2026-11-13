@@ -27,6 +27,7 @@ import { ORIGEN_GASTO, tiposDeGasto } from "../lib/finanzasGastos";
 import { esDeMantenimiento } from "../lib/finanzasIntegracion";
 import { MARCA_CORREGIDA, dondeSeCambia, puedeAnular, puedeCorregir } from "../lib/finanzasCorregir";
 import CorregirOperacion from "./FinanzasCorregir";
+import DescargarExtracto from "./FinanzasDescargarExtracto";
 import { ORIGENES, asientoDe, cajasDelLado, cuentasDelTipo, filtrarOperaciones, hoyAr, inicioMes, ladoCaja, movimientoCaja, numero, plata, validarOperacion, separaIva } from "../lib/finanzasOperaciones";
 import { cuentaParaElegir, cuentasIniciales } from "../lib/finanzasCuentaElegir";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
@@ -461,6 +462,7 @@ export default function FinanzasMovimientos() {
   const [nueva, setNueva] = useState(false);
   const [cargarGasto, setCargarGasto] = useState(false);
   const [detalle, setDetalle] = useState(null);
+  const [descargar, setDescargar] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -516,6 +518,7 @@ export default function FinanzasMovimientos() {
       <div className="flex flex-wrap items-end gap-2 mb-2">
         <button type="button" className="g-btn g-btn-primary" onClick={() => setNueva(true)}>+ Nueva operación</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setCargarGasto(true)}>🧾 Cargar gasto o factura</button>
+        <button type="button" className="g-btn g-btn-secondary" onClick={() => setDescargar(true)}>⬇ Descargar extracto</button>
         {campo("Desde", <input type="date" className="g-input" value={periodo.desde} onChange={(e) => e.target.value && setPeriodo((p) => ({ ...p, desde: e.target.value }))} />, "ml-auto")}
         {campo("Hasta", <input type="date" className="g-input" value={periodo.hasta} onChange={(e) => e.target.value && setPeriodo((p) => ({ ...p, hasta: e.target.value }))} />)}
       </div>
@@ -587,6 +590,17 @@ export default function FinanzasMovimientos() {
       {nueva && <NuevaOperacion datos={datos} onCerrar={() => setNueva(false)} onGuardada={() => { setNueva(false); cargar(); }} />}
       {cargarGasto && <CargarGasto datos={datos} onCerrar={() => setCargarGasto(false)} onGuardada={() => { setCargarGasto(false); cargar(); }} />}
       {detalle && <Detalle op={detalle} datos={datos} nombres={nombres} onCerrar={() => setDetalle(null)} onAnulada={() => { setDetalle(null); cargar(); }} />}
+      {descargar && (
+        <DescargarExtracto desde={periodo.desde} hasta={periodo.hasta} filtros={filtros} listas={datos} onCerrar={() => setDescargar(false)}
+          filtrosTexto={[
+            filtros.caja && (caja?.nombre || filtros.caja),
+            filtros.tipo && nombreDeTipo(filtros.tipo, datos.tipos),
+            filtros.proveedor && datos.proveedores.find((p) => String(p.id) === String(filtros.proveedor))?.nombre,
+            filtros.proyecto && textoOt(datos.proyectos.find((p) => String(p.id) === String(filtros.proyecto)) || {}),
+            filtros.centro && `Centro ${filtros.centro}`,
+            filtros.buscar.trim() && `“${filtros.buscar.trim()}”`,
+          ].filter(Boolean)} />
+      )}
     </div>
   );
 }

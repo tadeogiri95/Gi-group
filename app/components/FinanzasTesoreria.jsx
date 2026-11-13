@@ -26,6 +26,7 @@ import SubirExtracto from "./FinanzasExtracto";
 import PlazosFijos from "./FinanzasPlazosFijos";
 import Inversiones from "./FinanzasInversiones";
 import { Detalle } from "./FinanzasMovimientos";
+import DescargarExtracto from "./FinanzasDescargarExtracto";
 import { Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
@@ -212,6 +213,7 @@ function Transferir({ datos, desdeInicial = "", onCerrar, onHecho }) {
 function Ficha({ caja, datos, onCerrar, onTransferir, onExtracto, onCambio }) {
   const movimientos = useMemo(() => movimientosDeCaja(datos.operaciones, caja), [datos, caja]);
   const [detalle, setDetalle] = useState(null);
+  const [descargar, setDescargar] = useState(false);
   const responsable = datos.personal.find((p) => p.id === caja.responsable_id)?.nombre;
   return (
     <Modal open onClose={onCerrar} title={caja.nombre} maxWidth={1080}>
@@ -221,6 +223,7 @@ function Ficha({ caja, datos, onCerrar, onTransferir, onExtracto, onCambio }) {
         <div className="flex flex-wrap gap-2">
           <button type="button" className="g-btn g-btn-secondary" onClick={onTransferir}>⇄ Pasar plata desde esta caja</button>
           {caja.tipo === "banco" && caja.moneda !== "USD" && <button type="button" className="g-btn g-btn-secondary" onClick={onExtracto}>📥 Subir extracto</button>}
+          <button type="button" className="g-btn g-btn-secondary" onClick={() => setDescargar(true)}>⬇ Descargar extracto</button>
         </div>
         {movimientos.length ? (
           <table className="w-full text-[13px] border-collapse" aria-label="Movimientos de la caja">
@@ -256,6 +259,7 @@ function Ficha({ caja, datos, onCerrar, onTransferir, onExtracto, onCambio }) {
         {movimientos.length > 0 && <p className="m-0 text-[12px] text-gypi-dim">Tocá un movimiento para verlo, corregirlo o anularlo.</p>}
       </div>
       {detalle && <Detalle op={detalle} datos={datos} onCerrar={() => setDetalle(null)} onAnulada={() => { setDetalle(null); onCambio(); }} />}
+      {descargar && <DescargarExtracto caja={caja.cuenta} operaciones={datos.operaciones} tesoreria={datos.tesoreria} onCerrar={() => setDescargar(false)} />}
     </Modal>
   );
 }
