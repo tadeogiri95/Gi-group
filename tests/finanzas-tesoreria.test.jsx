@@ -19,7 +19,7 @@ afterEach(() => cleanup());
 
 const { signAccessToken } = await import("../app/lib/jwt.ts");
 const api = await import("../app/api/finanzas/tesoreria/route.js");
-const { default: FinanzasTesoreria } = await import("../app/components/FinanzasTesoreria.jsx");
+const { default: FinanzasTesoreria, saldosDeCaja, alternarCaja } = await import("../app/components/FinanzasTesoreria.jsx");
 
 const E = "11111111-1111-1111-1111-111111111111";
 const EMP = "22222222-2222-2222-2222-222222222222";
@@ -176,27 +176,53 @@ test("/api/finanzas/tesoreria — saldos iniciales: anula los anteriores de esas
 
 // ─── Pantalla ───
 
-test("Cajas y bancos — grupos con saldo, ficha con movimientos y pasar plata", async () => {
+test("💰 Tesorería — cajas con saldo; elegir una muestra sus movimientos con el saldo y deja pasar plata (13/11)", async () => {
   const datos = { tesoreria: TESORERIA, cuentas: CUENTAS, personal: [{ id: EMP, nombre: "Juan Pérez" }], operaciones: OPS.filter((o) => !o.anulada_at) };
+  const lista = { desde: "2026-11-01", hasta: "2026-11-13", truncado: false, tipos: [{ codigo: "PAGO EFECTIVO", grupo: "PAGOS", activo: true }], cuentas: CUENTAS, tesoreria: TESORERIA, centros: [], proveedores: [], proyectos: [], operaciones: [...OPS].reverse() };
   const enviados = [];
+  const leidos = [];
   global.fetch = async (url, o = {}) => {
     if (o.method === "POST") { enviados.push(JSON.parse(o.body)); return new Response(JSON.stringify({ ok: true }), { status: 200 }); }
-    return new Response(JSON.stringify(datos), { status: 200 });
+    leidos.push(String(url));
+    return new Response(JSON.stringify(String(url).includes("/api/finanzas/operaciones") ? lista : datos), { status: 200 });
   };
-  render(<FinanzasTesoreria />);
+  render(<FinanzasTesoreria onIr={() => {}} />);
   await waitFor(() => assert.ok(screen.getByText("Caja Principal")));
-  assert.ok(screen.getByRole("region", { name: "Cajas" }));
-  assert.ok(screen.getByRole("region", { name: "Bancos" }));
+  assert.ok(screen.getByRole("group", { name: "Cajas" }));
+  assert.ok(screen.getByRole("group", { name: "Bancos" }));
   assert.ok(screen.getByText(/Juan Pérez/), "muestra el responsable");
   assert.equal(screen.queryByText("Caja Vieja"), null, "las inactivas no se ven");
-  fireEvent.click(screen.getByText("Caja Principal"));
-  const tabla = await screen.findByRole("table", { name: "Movimientos de la caja" });
-  assert.equal(tabla.querySelectorAll("tbody tr").length, 3);
-  fireEvent.click(screen.getByText("⇄ Pasar plata desde esta caja"));
+  assert.ok(screen.getByRole("button", { name: "🏦 Cheques" }), "Cheques queda a mano");
+  // Sin ninguna elegida: todos los movimientos del período
+  const movs = await screen.findByRole("list", { name: "Operaciones" });
+  assert.equal(movs.querySelectorAll("li").length, 4, "sin la anulada");
+  assert.ok(screen.getByText("Todos los movimientos"));
+  // Una caja: solo los suyos, con el saldo después de cada uno
+  fireEvent.click(screen.getByRole("button", { name: /^(✓ )?Caja Principal/ }));
+  assert.equal(screen.getByRole("button", { name: /^(✓ )?Caja Principal/ }).getAttribute("aria-pressed"), "true");
+  await waitFor(() => assert.equal(screen.getByRole("list", { name: "Operaciones" }).querySelectorAll("li").length, 3));
+  assert.match(screen.getByRole("heading", { name: /Movimientos de Caja Principal/ }).textContent, /50\.000,00/);
+  assert.ok(screen.getAllByText(/^Saldo/).length >= 3, "saldo renglón por renglón");
+  // Dos cajas: los de las dos
+  fireEvent.click(screen.getByRole("button", { name: /^(✓ )?Caja Juan/ }));
+  assert.match(screen.getByRole("heading", { name: /Movimientos de 2 cajas/ }).textContent, /2 cajas/);
+  fireEvent.click(screen.getByRole("button", { name: /^(✓ )?Caja Juan/ }));
+  fireEvent.click(screen.getByText("⇄ Pasar plata desde esta"));
   assert.equal(screen.getByLabelText("Sale de").value, CAJA.nombre);
   fireEvent.change(screen.getByLabelText("Va a"), { target: { value: CAJA_JUAN.cuenta } });
   fireEvent.change(screen.getByLabelText("Importe"), { target: { value: "1.500,50" } });
   fireEvent.click(screen.getByRole("button", { name: "Pasar la plata" }));
   await waitFor(() => assert.equal(enviados.length, 1));
   assert.deepEqual([enviados[0].accion, enviados[0].desde, enviados[0].hacia, enviados[0].importe], ["transferir", CAJA.cuenta, CAJA_JUAN.cuenta, 1500.5]);
+  // Después de pasar plata se vuelven a leer las cajas y la lista
+  await waitFor(() => assert.ok(leidos.filter((u) => u.includes("/api/finanzas/operaciones")).length >= 2));
+});
+
+test("💰 Tesorería — saldo después de cada movimiento y elegir/sacar cajas", () => {
+  const m = saldosDeCaja(OPS, CAJA);
+  assert.deepEqual([m.get(1), m.get(3), m.get(2)], [100000, 80000, 50000]);
+  assert.equal(m.has(5), false, "la anulada no suma");
+  assert.equal(saldosDeCaja(OPS, null), null);
+  assert.deepEqual(alternarCaja(["a"], "b"), ["a", "b"]);
+  assert.deepEqual(alternarCaja(["a", "b"], "a"), ["b"]);
 });

@@ -20,7 +20,7 @@ test("Finanzas: fuera de Finanzas un solo renglón; adentro, todo por tema", () 
   const fuera = gruposMenu(empresa, dueno, 0, "home").find((g) => g.id === "finanzas").items;
   assert.deepEqual(fuera.map((i) => i.label), ["Inicio y todo Finanzas"]);
   const adentro = gruposMenu(empresa, dueno, 0, "finanzas").find((g) => g.id === "finanzas").items;
-  assert.equal(adentro.length, 14);
+  assert.equal(adentro.length, 13, "13 desde que Movimientos quedó dentro de Tesorería (13/11)");
   assert.equal(adentro[0].tema, undefined, "Inicio va sin tema");
   assert.equal(adentro.find((i) => i.opcion === "fin-flujo").tema, "Cómo vamos");
 });

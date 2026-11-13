@@ -401,7 +401,8 @@ test("Cajas y bancos — ⚙ Mi caja: todo tildado de entrada; destildar esconde
     return new Response(JSON.stringify(datos), { status: 200 });
   };
   render(<FinanzasTesoreria />);
-  fireEvent.click(await screen.findByRole("button", { name: "⚙ Mi caja" }));
+  fireEvent.click(await screen.findByRole("button", { name: "⋯ Más" }));
+  fireEvent.click(screen.getByRole("button", { name: "⚙ Mi caja" }));
   const combustible = screen.getByRole("checkbox", { name: "Combustible" });
   assert.equal(combustible.checked, true, "un tipo que nadie tocó se ofrece");
   assert.equal(screen.getByRole("checkbox", { name: "Viáticos" }).checked, false, "el escondido queda destildado");
