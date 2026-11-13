@@ -98,7 +98,16 @@ export default function HomeContent() {
   const screenFromUrl = searchParams.get("screen") === "planta" ? "proyectos" : (searchParams.get("screen") || "home");
   const screen = VALID_SCREENS.has(screenFromUrl) ? screenFromUrl : "home";
 
-  const setScreen = (pantalla) => {
+  // Sección o pestaña abierta dentro de la pantalla (?sec=): una sección de
+  // "Más", la pestaña de Producción, Materiales, Mantenimiento o Finanzas, o la
+  // de Equipo. Va en la dirección para que el botón Atrás del celular o del
+  // navegador vuelva al paso anterior (revisión de la navegación, 13/11; antes
+  // Más → sección → Atrás llevaba al Inicio y Finanzas → Pagos → Atrás sacaba
+  // de Finanzas).
+  const secUrl = searchParams.get("sec") || "";
+  const seccionMas = /^[a-z0-9-]{1,40}$/.test(secUrl) ? secUrl : null;
+
+  const navegar = (pantalla, seccion = null) => {
     if (!VALID_SCREENS.has(pantalla)) pantalla = "home";
     const params = new URLSearchParams(searchParams);
     if (pantalla === "home") {
@@ -106,9 +115,15 @@ export default function HomeContent() {
     } else {
       params.set("screen", pantalla);
     }
+    if (seccion) params.set("sec", seccion); else params.delete("sec");
     const query = params.toString();
-    router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    const destino = query ? `${pathname}?${query}` : pathname;
+    const actual = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
+    // Tocar lo que ya está abierto no suma un paso al Atrás
+    if (destino === actual) return;
+    router.push(destino, { scroll: false });
   };
+  const setScreen = (pantalla) => navegar(pantalla, null);
 
   // ─── Carga de una OT desde el QR de un bulto (?carga=OT) y acta de
   // instalación (?acta=OT, se llega desde la carga firmada) ───
@@ -204,15 +219,14 @@ export default function HomeContent() {
   const [historialLegajo, setHistorialLegajo] = useState(null);
   const [paywallInfo, setPaywallInfo] = useState(null);
   const [showBilling, setShowBilling] = useState(false);
-  // Sección abierta dentro de "Más" (R5). irA("config:ubicaciones") abre la
-  // sección justa (lo usan los primeros pasos y el tablero).
-  const [seccionMas, setSeccionMas] = useState(null);
+  // irA("config:ubicaciones") abre la sección justa (lo usan los primeros
+  // pasos y el tablero); la sección va en la dirección (?sec=, ver navegar).
   const irA = (destino, legajo) => {
     const { pantalla, seccion } = partirDestino(destino);
     if (legajo) setHistorialLegajo(legajo);
-    setSeccionMas(seccion);
-    setScreen(pantalla);
+    navegar(pantalla, seccion);
   };
+  const setSeccionMas = (seccion) => navegar(screen, seccion);
 
   // ─── Carga de datos de la app ───
   const loadData = useCallback(async () => {
@@ -431,17 +445,17 @@ export default function HomeContent() {
           )}
           {!uIsGer && screen === "documentos" && <DocumentosScreen />}
           {!uIsGer && screen === "instalaciones" && <InstalacionesScreen empresaId={u?.empresa_id || empresa?.id} />}
-          {!uIsGer && screen === "mantenimiento" && u?.es_mantenimiento && <BotonGestionScreen key={`mantenimiento:${seccionMas || ""}`} boton="mantenimiento" empresa={empresa} usuario={u} seccion={seccionMas} onVerPlanes={() => setShowBilling(true)} />}
+          {!uIsGer && screen === "mantenimiento" && u?.es_mantenimiento && <BotonGestionScreen key={`mantenimiento:${seccionMas || ""}`} boton="mantenimiento" empresa={empresa} usuario={u} seccion={seccionMas} onSeccion={setSeccionMas} onVerPlanes={() => setShowBilling(true)} />}
           {uIsGer && screen === "historial-fichajes" && <HistorialFichajesScreen usuario={u} ctx={ctx} reglas={empresa?.reglas_asistencia} legajoVer={historialLegajo} onBack={() => setScreen("home")} />}
           {uIsGer && screen === "solicitudes" && <InboxScreen ctx={ctx} reload={loadData} usuario={u} />}
-          {uIsGer && screen === "equipo" && <EquipoScreen key={seccionMas || "equipo"} empresa={empresa} usuario={u} seccion={seccionMas} onVerPlanes={() => setShowBilling(true)} />}
+          {uIsGer && screen === "equipo" && <EquipoScreen key={seccionMas || "equipo"} empresa={empresa} usuario={u} seccion={seccionMas} onSeccion={setSeccionMas} onVerPlanes={() => setShowBilling(true)} />}
           {uIsGer && screen === "ger-actividad" && <GerenciaActividadScreen empresaId={empresa?.id} />}
-          {uIsGer && BOTONES.has(screen) && <BotonGestionScreen key={`${screen}:${seccionMas || ""}`} boton={screen} empresa={empresa} usuario={u} seccion={seccionMas} onVerPlanes={() => setShowBilling(true)} onIr={irA} />}
+          {uIsGer && BOTONES.has(screen) && <BotonGestionScreen key={`${screen}:${seccionMas || ""}`} boton={screen} empresa={empresa} usuario={u} seccion={seccionMas} onSeccion={setSeccionMas} onVerPlanes={() => setShowBilling(true)} onIr={irA} />}
           {uIsGer && screen === "config" && (
             <ConfigScreen
               seccion={seccionMas}
               onSeccion={setSeccionMas}
-              onIr={(pantalla) => { setSeccionMas(null); setScreen(pantalla); }}
+              onIr={(pantalla) => setScreen(pantalla)}
               pendientes={pend}
               ctx={ctx}
               reload={loadData}
@@ -461,7 +475,7 @@ export default function HomeContent() {
       {/* Historial y documentos del operario se abren desde "Mi cuenta": esa pestaña queda marcada */}
       {/* Ofrecer instalar Gypi en el celular */}
       {!isDemo && !isChat && <TarjetaInstalar />}
-      {!isChat && <Nav active={!uIsGer && (screen === "historial-fichajes" || screen === "documentos") ? "cuenta" : uIsGer && DESDE_MAS.has(screen) ? "config" : screen} onChange={(s) => { setSeccionMas(null); setScreen(s); }} role={u.rol} pend={pend} modulos={isDemo ? undefined : empresa?.modulos} instalador={!!u.es_instalador} mantenimiento={!!u.es_mantenimiento} />}
+      {!isChat && <Nav active={!uIsGer && (screen === "historial-fichajes" || screen === "documentos") ? "cuenta" : uIsGer && DESDE_MAS.has(screen) ? "config" : screen} onChange={(s) => setScreen(s)} role={u.rol} pend={pend} modulos={isDemo ? undefined : empresa?.modulos} instalador={!!u.es_instalador} mantenimiento={!!u.es_mantenimiento} />}
       </div>
 
       {paywallInfo && (
