@@ -12,6 +12,7 @@ import dynamic from "next/dynamic";
 import { tieneModulo } from "../../lib/modulos";
 import { BOTONES_GESTION, opcionesBoton } from "../../lib/menuGestion";
 import ModuloBloqueado from "../ModuloBloqueado";
+import ErrorBoundary from "../ErrorBoundary";
 import Pestanas from "../ui/Pestanas";
 import { Spinner } from "../ui";
 import GerenciaActividadScreen from "../../gerencia_actividad_screen";
@@ -82,6 +83,9 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         </div>
       )}
       <div role="tabpanel" aria-label={actual.label} className="flex-1 overflow-hidden flex flex-col">
+        {/* Cada pestaña con su propio aviso de error (13/11): si una falla, las
+            pestañas de arriba siguen a la vista y al cambiar de pestaña se va */}
+        <ErrorBoundary key={actual.id} name={actual.label}>
         {bloqueado && <ModuloBloqueado modulo={actual.modulo} empresa={empresa} rol={usuario?.rol} onVerPlanes={onVerPlanes} />}
         {!bloqueado && actual.id === "vivo" && <GerenciaActividadScreen empresaId={empresaId} />}
         {!bloqueado && actual.id === "ot" && <ProyectosScreen empresaId={empresaId} onPlanillas={onPlanillas} />}
@@ -108,6 +112,7 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {!bloqueado && actual.id === "fin-pagos" && <FinanzasPagos />}
         {!bloqueado && actual.id === "fin-personas" && <FinanzasPersonas />}
         {!bloqueado && actual.id === "fin-config" && <FinanzasConfig />}
+        </ErrorBoundary>
       </div>
     </div>
   );
