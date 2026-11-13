@@ -4,6 +4,8 @@
 // Reemplaza R-CHEQUES y PREVISIÓN CHEQUES: los propios por debitar, los de
 // terceros en cartera, el calendario por semana y el historial. Cada cambio
 // (debitado, depositado, entregado, rechazado) genera su operación sola.
+// 13/11 (parte 6 del plan de Tesorería): 📥 Subir listado del banco pone al
+// día los e-cheq con el listado que baja el banco (FinanzasEcheqListado.jsx).
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -17,6 +19,7 @@ import { useToast } from "./ui/Toast";
 import { fechaDebito } from "../lib/finanzasDiasHabiles";
 import ElegirProveedor from "./FinanzasElegirProveedor";
 import AvisoRepetidos, { repetidosDe } from "./FinanzasAvisoRepetidos";
+import ListadoEcheq from "./FinanzasEcheqListado";
 
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
 const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -287,6 +290,7 @@ export default function FinanzasCheques() {
   const [nuevo, setNuevo] = useState(null);
   const [detalle, setDetalle] = useState(null);
   const [copiar, setCopiar] = useState(false);
+  const [listado, setListado] = useState(false);
   const hoy = hoyAr();
 
   const cargar = useCallback(async () => {
@@ -328,7 +332,8 @@ export default function FinanzasCheques() {
       <div className="flex flex-wrap items-center gap-2 mb-2">
         <button type="button" className="g-btn g-btn-primary" onClick={() => setNuevo("propio")}>+ Cheque propio</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setNuevo("tercero")}>+ Cheque recibido</button>
-        <button type="button" className="g-btn g-btn-secondary ml-auto" onClick={() => setCopiar(true)}>📥 Copiar del libro</button>
+        <button type="button" className="g-btn g-btn-secondary ml-auto" onClick={() => setListado(true)}>📥 Subir listado del banco</button>
+        <button type="button" className="g-btn g-btn-secondary" onClick={() => setCopiar(true)}>📥 Copiar del libro</button>
       </div>
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <Chip active={vista === "propios"} onClick={() => setVista("propios")}>Por debitar ({propios.length})</Chip>
@@ -392,6 +397,7 @@ export default function FinanzasCheques() {
 
       {nuevo && <NuevoCheque clase={nuevo} datos={datos} onCerrar={() => setNuevo(null)} onGuardado={() => { setNuevo(null); cargar(); }} />}
       {detalle && <Detalle ch={detalle} datos={datos} onCerrar={() => setDetalle(null)} onCambiado={() => { setDetalle(null); cargar(); }} />}
+      {listado && <ListadoEcheq onCerrar={() => setListado(false)} onAplicado={() => { setListado(false); cargar(); }} />}
       {copiar && <CopiarLibro datos={datos} onCerrar={() => setCopiar(false)} onCopiados={() => { setCopiar(false); cargar(); }} />}
     </div>
   );
