@@ -91,6 +91,8 @@ export function operacionCorregida(op, cambios = {}, { cuentas = [] } = {}) {
     descripcion: (cambios.descripcion === undefined ? txt(op.descripcion, 500) : txt(cambios.descripcion, 500)) || null,
     referencia: (cambios.referencia === undefined ? txt(op.referencia, 120) : txt(cambios.referencia, 120)) || null,
     comprobante_url: op.comprobante_url ?? null,
+    // Los comprobantes (187) siguen con la corregida
+    ...(Array.isArray(op.comprobantes) && op.comprobantes.length ? { comprobantes: op.comprobantes } : {}),
     // La corregida es una operación más, cargada a mano (la de Mi caja sigue
     // siendo de Mi caja, así el responsable la sigue viendo)
     origen: op.origen === "mi_caja" ? "mi_caja" : "manual", origen_id: null, estado: "confirmada",

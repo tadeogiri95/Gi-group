@@ -32,6 +32,8 @@ import { MARCA_CORREGIDA, dondeSeCambia, puedeAnular, puedeCorregir } from "../l
 import CorregirOperacion from "./FinanzasCorregir";
 import DescargarExtracto from "./FinanzasDescargarExtracto";
 import AvisoRepetidos, { repetidosDe } from "./FinanzasAvisoRepetidos";
+import Comprobantes from "./FinanzasComprobantes";
+import { comprobantesDe } from "../lib/finanzasAdjuntos";
 import { ORIGENES, asientoDe, cajasDelLado, cuentasDelTipo, filtrarOperaciones, hoyAr, inicioMes, ladoCaja, movimientoCaja, numero, plata, validarOperacion, separaIva } from "../lib/finanzasOperaciones";
 import { cuentaParaElegir, cuentasIniciales } from "../lib/finanzasCuentaElegir";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
@@ -109,6 +111,7 @@ const VACIA = {
   fecha: "", tipo: "", proveedor_id: "", entidad: "", proyecto_id: "", centro_costo: "",
   neto: "", iva: "", otros_impuestos: "", moneda: "ARS", tipo_cambio: "",
   cuenta_debe: "", cuenta_haber: "", descripcion: "", referencia: "",
+  comprobantes: [],
 };
 
 function NuevaOperacion({ datos, cajaInicial = "", onCerrar, onGuardada }) {
@@ -175,6 +178,7 @@ function NuevaOperacion({ datos, cajaInicial = "", onCerrar, onGuardada }) {
       if (rep) { setRepetidos(rep); return; }
       if (!res.ok) { setErrores(d.errores || [d.error || "No se pudo guardar"]); return; }
       toast.success("✅ Operación guardada");
+      if (d.aviso) toast.error(d.aviso);
       onGuardada();
     } catch (err) {
       toast.error(err.message);
@@ -318,6 +322,7 @@ function NuevaOperacion({ datos, cajaInicial = "", onCerrar, onGuardada }) {
               <p className="m-0 text-[16px] lg:text-[18px] font-bold text-gypi-text">Total: {plata(total, f.moneda)}</p>
 
               {campo("Descripción", <textarea className="g-input w-full" rows={2} value={f.descripcion} onChange={set("descripcion")} />)}
+              <Comprobantes lista={f.comprobantes} onCambio={(lista) => setF((x) => ({ ...x, comprobantes: lista }))} />
               {campo("Referencia (factura, recibo, número de transferencia)", <input className="g-input w-full" value={f.referencia} onChange={set("referencia")} />)}
 
               {total > 0 && f.cuenta_debe && f.cuenta_haber && (
@@ -405,7 +410,30 @@ const SIN_NOMBRES = { entidad: (op) => op.entidad || null, ot: () => null };
 
 // 12/11: también se corrige (✏) y se anula lo copiado del libro, los plazos
 // fijos, el extracto, los saldos iniciales y Mi caja (finanzasCorregir.js).
-export function Detalle({ op, datos, nombres = SIN_NOMBRES, onCerrar, onAnulada }) {
+/** Los comprobantes de un movimiento ya guardado: se agregan o se quitan en el momento (13/11, parte 4). */
+function ComprobantesGuardados({ op, onCambio }) {
+  const toast = useToast();
+  const [lista, setLista] = useState(() => comprobantesDe(op));
+  const [guardando, setGuardando] = useState(false);
+  const cambiar = async (nueva) => {
+    setGuardando(true);
+    try {
+      const res = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "comprobantes", id: op.id, comprobantes: nueva }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "No se pudieron guardar los comprobantes");
+      setLista(d.comprobantes || nueva);
+      toast.success(nueva.length > lista.length ? "Comprobante adjuntado" : "Comprobante quitado");
+      onCambio?.();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setGuardando(false);
+    }
+  };
+  return <Comprobantes lista={lista} onCambio={cambiar} disabled={guardando || !!op.anulada_at} />;
+}
+
+export function Detalle({ op, datos, nombres = SIN_NOMBRES, onCerrar, onAnulada, onAdjuntos = null }) {
   const toast = useToast();
   const [confirmar, setConfirmar] = useState(false);
   const [anulando, setAnulando] = useState(false);
@@ -450,6 +478,7 @@ export function Detalle({ op, datos, nombres = SIN_NOMBRES, onCerrar, onAnulada 
           </p>
         )}
         <div className="mt-1"><Asiento op={op} datos={datos} /></div>
+        {(!op.anulada_at || comprobantesDe(op).length > 0) && <ComprobantesGuardados op={op} onCambio={onAdjuntos} />}
         {(compra || deMantenimiento) && !op.anulada_at && <CambiarTipo op={op} datos={datos} onCambiado={onAnulada} />}
         {automatica && !compra && !op.anulada_at && <p className="m-0 text-[12px] text-gypi-dim">Se cambia o se anula desde {dondeSeCambia(op)}.</p>}
         {corrigiendo && <CorregirOperacion op={op} cuentas={datos.cuentas || []} onCancelar={() => setCorrigiendo(false)} onCorregida={onAnulada} />}
@@ -620,6 +649,7 @@ export default function FinanzasMovimientos({ cajas = null, saldos = null, cajaN
                     {op.estado === "para_revisar" && !op.anulada_at && <b className="ml-1 text-gypi-amber-ink">· Para revisar</b>}
                   </span>
                 )}
+                {comprobantesDe(op).length > 0 && <span className="block text-[12px] text-gypi-cyan" aria-label={`${comprobantesDe(op).length} comprobantes`}>📎 {comprobantesDe(op).length}</span>}
                 {op.anulada_at && <span className="block text-[12px] font-semibold text-gypi-red">Anulada</span>}
               </button>
             </li>
@@ -631,7 +661,7 @@ export default function FinanzasMovimientos({ cajas = null, saldos = null, cajaN
 
       {nueva && <NuevaOperacion datos={datos} cajaInicial={cajaNueva} onCerrar={() => setNueva(false)} onGuardada={() => { setNueva(false); cambio(); }} />}
       {cargarGasto && <CargarGasto datos={datos} onCerrar={() => setCargarGasto(false)} onGuardada={() => { setCargarGasto(false); cambio(); }} />}
-      {detalle && <Detalle op={detalle} datos={datos} nombres={nombres} onCerrar={() => setDetalle(null)} onAnulada={() => { setDetalle(null); cambio(); }} />}
+      {detalle && <Detalle op={detalle} datos={datos} nombres={nombres} onCerrar={() => setDetalle(null)} onAnulada={() => { setDetalle(null); cambio(); }} onAdjuntos={cargar} />}
       {descargar && (
         <DescargarExtracto desde={periodo.desde} hasta={periodo.hasta} filtros={{ ...filtros, caja: cajaFiltro || "" }} listas={datos} onCerrar={() => setDescargar(false)}
           filtrosTexto={[

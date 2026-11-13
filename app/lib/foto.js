@@ -30,3 +30,19 @@ export async function subirImagen({ base64, tipo }) {
   if (!r.ok || !data.url) throw new Error(data.error || "No se pudo subir la imagen");
   return data.url;
 }
+
+/**
+ * Un comprobante de Finanzas (13/11, parte 4): una foto se achica como las
+ * demás; un PDF va tal cual (hasta 5 MB).
+ * @returns {Promise<{ url: string, nombre: string, tipo: "pdf"|"foto" }>}
+ */
+export async function subirComprobante(file) {
+  const pdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+  if (!pdf) return { url: await subirImagen(await fotoBase64(file)), nombre: String(file.name || "Foto").slice(0, 120), tipo: "foto" };
+  if (file.size > 5 * 1024 * 1024) throw new Error("El PDF pesa más de 5 MB");
+  const dataUrl = await new Promise((ok, mal) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = mal; r.readAsDataURL(file); });
+  const r = await apiFetch("/api/upload", { method: "POST", body: JSON.stringify({ fileBase64: String(dataUrl).split(",")[1], fileType: "application/pdf", uso: "comprobante" }) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || !data.url) throw new Error(data.error || "No se pudo subir el PDF");
+  return { url: data.url, nombre: String(file.name || "Comprobante.pdf").slice(0, 120), tipo: "pdf" };
+}

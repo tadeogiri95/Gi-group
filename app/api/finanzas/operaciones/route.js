@@ -31,6 +31,9 @@
 //   POST { accion: "corregir", id, cambios } → anula la operación ("corregida")
 //       y carga una nueva con la fecha, el importe, las cuentas, la descripción
 //       o la referencia cambiadas (12/11).
+//   POST { accion: "comprobantes", id, comprobantes } → cambia la lista de
+//       comprobantes (PDF o fotos) de un movimiento (13/11, parte 4; migración
+//       187). "crear" y "gasto" también aceptan comprobantes al cargar.
 //   POST { accion: "cambiar_tipo", id, tipo, recordar } → cambia el tipo (y las
 //       cuentas) de una compra que salió de una factura; con recordar, queda
 //       como tipo del proveedor para las próximas (F2a, migración 172).
@@ -54,6 +57,7 @@ import { buscarComprobanteRepetido } from "../../../lib/finanzasComprobantesServ
 import { randomUUID } from "node:crypto";
 import { frenoRepetidos, repetidosEnBase } from "../../../lib/finanzasRepetidosServidor";
 import { clienteDeOperacion } from "../../../lib/finanzasClientes";
+import { columnasComprobantes, falta187, validarComprobantes } from "../../../lib/finanzasAdjuntos";
 import { MARCA_CORREGIDA, MAX_ANULAR_JUNTAS, SE_ANULAN, operacionCorregida, puedeCorregir } from "../../../lib/finanzasCorregir";
 
 const ANULABLES = `origen=in.(${[...SE_ANULAN].filter((o) => o !== ORIGEN_GASTO).join(",")})`;
@@ -179,6 +183,50 @@ async function proveedorNuevo(sesion, d) {
   return NextResponse.json({ ok: true, proveedor: { id: fila.id, nombre: fila.nombre || nombre } });
 }
 
+/** Los comprobantes que manda la pantalla, revisados (finanzasAdjuntos.js). */
+const adjuntos = (sesion, lista) => validarComprobantes(lista, { supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL, empresaId: sesion.empresa_id });
+const AVISO_187 = "Se guardó, pero sin los comprobantes: para adjuntarlos falta correr la migración 187 en Supabase.";
+
+/**
+ * Guarda las operaciones. Sin la 177 se guarda sin cliente_id y sin la 187 sin
+ * los comprobantes (con un aviso), así la carga no se pierde.
+ */
+async function guardarConAdjuntos(sesion, filas) {
+  const cuerpo = (l) => (l.length === 1 ? l[0] : l);
+  try {
+    return { filas: (await sbPost("fin_operaciones", cuerpo(filas), { sesion })) || [], aviso: null };
+  } catch (err) {
+    const sinCliente = filas.some((f) => f.cliente_id) && /cliente_id/.test(String(err?.message));
+    const sinAdjuntos = filas.some((f) => f.comprobantes) && falta187(err);
+    if (!sinCliente && !sinAdjuntos) throw err;
+    const limpias = filas.map((f) => {
+      const x = { ...f };
+      if (sinCliente) delete x.cliente_id;
+      if (sinAdjuntos) { delete x.comprobantes; delete x.comprobante_url; }
+      return x;
+    });
+    return { filas: (await sbPost("fin_operaciones", cuerpo(limpias), { sesion })) || [], aviso: sinAdjuntos ? AVISO_187 : null };
+  }
+}
+
+/** Cambiar la lista de comprobantes de un movimiento (agregar o quitar). */
+async function cambiarComprobantes(sesion, d) {
+  const id = Number(d.id);
+  if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta la operación" }, { status: 400 });
+  const { lista, error } = adjuntos(sesion, d.comprobantes);
+  if (error) return NextResponse.json({ error }, { status: 400 });
+  const e = sesion.empresa_id;
+  try {
+    const [fila] = (await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}`, { ...columnasComprobantes(lista), updated_at: new Date().toISOString() }, { sesion })) || [];
+    if (!fila) return NextResponse.json({ error: "No encontré esa operación" }, { status: 404 });
+    broadcastRefresh(e, "fin_operaciones");
+    return NextResponse.json({ ok: true, comprobantes: lista });
+  } catch (err) {
+    if (falta187(err)) return NextResponse.json({ error: "Para adjuntar comprobantes falta correr la migración 187 en Supabase." }, { status: 400 });
+    throw err;
+  }
+}
+
 export async function GET(request) {
   const { sesion, response } = await sesionDueno(request);
   if (response) return response;
@@ -190,7 +238,12 @@ export async function GET(request) {
   try {
     const e = sesion.empresa_id;
     const [ops, datos] = await Promise.all([
-      sbGetAll(`fin_operaciones?empresa_id=eq.${e}&fecha=gte.${desde}&fecha=lte.${hasta}&select=${COLUMNAS}&order=fecha.desc,id.desc`, { sesion, maxFilas: MAX_OPERACIONES }),
+      // Con los comprobantes (176 y 187); sin las migraciones, sin ellos
+      sbGetAll(`fin_operaciones?empresa_id=eq.${e}&fecha=gte.${desde}&fecha=lte.${hasta}&select=${COLUMNAS},comprobante_url,comprobantes&order=fecha.desc,id.desc`, { sesion, maxFilas: MAX_OPERACIONES })
+        .catch((err) => {
+          if (!/comprobante/.test(String(err?.message))) throw err;
+          return sbGetAll(`fin_operaciones?empresa_id=eq.${e}&fecha=gte.${desde}&fecha=lte.${hasta}&select=${COLUMNAS}&order=fecha.desc,id.desc`, { sesion, maxFilas: MAX_OPERACIONES });
+        }),
       listas(sesion),
     ]);
     return NextResponse.json({ desde, hasta, operaciones: ops.data, truncado: ops.truncado, ...datos });
@@ -212,6 +265,8 @@ export async function POST(request) {
       const ctx = await listas(sesion);
       const { op, errores } = validarOperacion(d.operacion, ctx);
       if (errores.length) return NextResponse.json({ error: errores.join(" "), errores }, { status: 400 });
+      const adj = adjuntos(sesion, d.operacion?.comprobantes);
+      if (adj.error) return NextResponse.json({ error: adj.error }, { status: 400 });
       // 13/11: mismo importe en la misma caja y fecha cerca = sospechoso (finanzasRepetidos.js)
       if (d.confirmar_repetido !== true) {
         const freno = frenoRepetidos(await repetidosEnBase(sesion, [op], { tesoreria: ctx.tesoreria }));
@@ -222,17 +277,17 @@ export async function POST(request) {
       // 13/11: el cobro (o la venta) de un cliente queda en su cuenta corriente con su id
       const delCliente = clienteDeOperacion(op, { cuentas: ctx.cuentas, proveedores: ctx.proveedores, clientes: await clientesDe(sesion) });
       if (delCliente) Object.assign(nueva, delCliente, { proveedor_id: null });
-      const [fila] = await sbPost("fin_operaciones", nueva, { sesion }).catch((err) => {
-        if (nueva.cliente_id && /cliente_id/.test(String(err?.message))) { delete nueva.cliente_id; return sbPost("fin_operaciones", nueva, { sesion }); }
-        throw err;
-      });
+      if (adj.lista.length) Object.assign(nueva, columnasComprobantes(adj.lista));
+      const { filas: [fila], aviso } = await guardarConAdjuntos(sesion, [nueva]);
       broadcastRefresh(e, "fin_operaciones");
-      return NextResponse.json({ ok: true, operacion: fila });
+      return NextResponse.json({ ok: true, operacion: fila, ...(aviso ? { aviso } : {}) });
     }
     if (d.accion === "gasto") {
       const ctx = await listas(sesion);
       const { ops, errores } = operacionesGasto(d.gasto || {}, ctx);
       if (errores.length) return NextResponse.json({ error: errores.join(" "), errores }, { status: 400 });
+      const adjGasto = adjuntos(sesion, d.gasto?.comprobantes);
+      if (adjGasto.error) return NextResponse.json({ error: adjGasto.error }, { status: 400 });
       const repetida = await facturaRepetida(sesion, d.gasto);
       if (repetida) return NextResponse.json({ error: `${avisoRepetido(repetida, "Esa factura")} Si estaba mal, anulala y cargala de nuevo.` }, { status: 409 });
       if (d.confirmar_repetido !== true) {
@@ -250,15 +305,18 @@ export async function POST(request) {
       }
       const ahora = new Date().toISOString();
       const quien = await nombreEmpleado(sesion);
-      const filas = await sbPost("fin_operaciones", ops.map((op, i) => ({
+      // La factura y su pago llevan los mismos comprobantes
+      const { filas, aviso } = await guardarConAdjuntos(sesion, ops.map((op, i) => ({
         ...op, empresa_id: e, origen_id: i ? `${grupo}-p` : grupo, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora,
-      })), { sesion });
+        ...(adjGasto.lista.length ? columnasComprobantes(adjGasto.lista) : {}),
+      })));
       // El proveedor sin tipo guardado se queda con este para la próxima factura
       const prov = ops[0].proveedor_id ? ctx.proveedores.find((p) => Number(p.id) === ops[0].proveedor_id) : null;
       if (prov && !prov.fin_tipo) await sbPatch(`proveedores?id=eq.${prov.id}&empresa_id=eq.${e}`, { fin_tipo: ops[0].tipo }, { sesion, silent: true }).catch(() => null);
       broadcastRefresh(e, "fin_operaciones");
-      return NextResponse.json({ ok: true, operaciones: filas });
+      return NextResponse.json({ ok: true, operaciones: filas, ...(aviso ? { aviso } : {}) });
     }
+    if (d.accion === "comprobantes") return await cambiarComprobantes(sesion, d);
     if (d.accion === "leer_gasto") return await leerGasto(request, sesion, d);
     if (d.accion === "proveedor_nuevo") return await proveedorNuevo(sesion, d);
     if (d.accion === "anular") {
