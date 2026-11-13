@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import { cuadrarCaja, cuadrarConLibro, corteDelLibro, resumenVaciar, marcaVaciar, esMarcaVaciar } from "../app/lib/finanzasCuadrar.js";
-import { planHistorico, renglonesDelLibro, sinLoYaCargado } from "../app/lib/finanzasHistorico.js";
+import { anuladaAMano, planHistorico, renglonesDelLibro, sinLoYaCargado } from "../app/lib/finanzasHistorico.js";
 
 before(() => {
   if (!process.env.JWT_SECRET) process.env.JWT_SECRET = "test_secret_de_al_menos_32_caracteres_ok";
@@ -114,6 +114,18 @@ test("Histórico — no pasa los renglones que ya están en Gypi con otro origen
   assert.ok(!p.nuevas.some((o) => o.total === 300 && o.cuenta_haber === PF));
   const cajas = new Map(TES.map((t) => [t.cuenta, t]));
   assert.equal(sinLoYaCargado([{ fecha: "2026-07-30", total: 300, cuenta_debe: BANCO, cuenta_haber: PF }], [op(9, "2026-08-04", 300, BANCO, PF, "banco")], cajas).yaEnGypi, 0);
+});
+
+test("Histórico — lo del libro anulado a mano en Gypi no vuelve; lo de Empezar de nuevo sí", () => {
+  assert.ok(anuladaAMano("Tadeo"));
+  assert.ok(anuladaAMano("Tadeo (cuadrar con el libro)"));
+  assert.ok(!anuladaAMano("Gypi (histórico del libro)"));
+  assert.ok(!anuladaAMano("Empezar de nuevo 13/11/2026 02:30 · Tadeo"));
+  assert.ok(!anuladaAMano(null));
+  const p = planHistorico({ grilla: GRILLA, desde: "2026-06-01", cuentas: CUENTAS, tesoreria: TES, existentes: [], anuladas: [filas[1].clave] });
+  assert.equal(p.anuladas_en_gypi, 1);
+  assert.equal(p.nuevas.length, filas.length - 1);
+  assert.ok(!p.nuevas.some((o) => o.origen_id === filas[1].clave));
 });
 
 // ─── Servidor ───

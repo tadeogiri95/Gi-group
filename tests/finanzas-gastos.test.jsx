@@ -228,7 +228,7 @@ test("/api/finanzas/operaciones anular — un gasto se anula junto con su pago; 
   escrito = mockApi({ op: { origen: "factura_oc", origen_id: "12" } });
   await pedir("gerencial", { accion: "anular", id: 41 });
   // 12/11: se anula lo de las pantallas que no tienen la suya (a mano, plazos fijos, extracto…), nunca lo de una factura
-  assert.match(escrito[0].url, /id=eq\.41&.*origen=in\.\(manual,plazo_fijo,banco,mi_caja,fci,titulos\)/);
+  assert.match(escrito[0].url, /id=eq\.41&.*origen=in\.\(manual,plazo_fijo,banco,mi_caja,fci,titulos,libro,saldo_inicial\)/);
   assert.ok(!escrito[0].url.includes("factura"));
 });
 

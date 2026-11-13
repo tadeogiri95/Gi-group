@@ -13,8 +13,13 @@
 // actualiza solo (si se corrigiera acá, el libro quedaría con los dos).
 
 export const SE_CORRIGEN = new Set(["manual", "plazo_fijo", "banco", "mi_caja", "fci", "titulos"]);
-/** Se anulan también los gastos (con su pago, si lo tienen). */
-export const SE_ANULAN = new Set([...SE_CORRIGEN, "gasto"]);
+/**
+ * Se anulan también los gastos (con su pago, si lo tienen) y, desde el 13/11
+ * (pedido de Tadeo), lo copiado del libro y los saldos iniciales: sin tener
+ * que ir al libro. Lo del libro anulado a mano no vuelve al pasar el
+ * histórico otra vez (finanzasHistorico.js); la apertura sí se vuelve a armar.
+ */
+export const SE_ANULAN = new Set([...SE_CORRIGEN, "gasto", "libro", "saldo_inicial"]);
 export const MARCA_CORREGIDA = "(corregida)";
 export const MAX_ANULAR_JUNTAS = 200;
 

@@ -4,7 +4,8 @@
 //   GET → lo que la pantalla necesita para armar el plan en el navegador:
 //       plan de cuentas, cajas y bancos, proveedores, clientes y lo que ya se
 //       pasó (operaciones vivas de origen "libro" y "saldo_inicial"), y lo
-//       que entró a las cajas por otro lado ("otras", para no repetirlo).
+//       que entró a las cajas por otro lado ("otras", para no repetirlo) y
+//       las claves de lo del libro anulado a mano en Gypi ("anuladas").
 //   POST { accion: "anular", ids } → anula esas operaciones (solo de origen
 //       libro o saldo_inicial). No se borran.
 //   POST { accion: "cargar", operaciones } → carga hasta 400 por vez, ya
@@ -16,7 +17,7 @@ import { sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
-import { LOTE_HISTORICO, ORIGEN_LIBRO, limpiarOperacionHistorico } from "../../../lib/finanzasHistorico";
+import { LOTE_HISTORICO, ORIGEN_LIBRO, anuladaAMano, limpiarOperacionHistorico } from "../../../lib/finanzasHistorico";
 import { ORIGEN_SALDO_INICIAL } from "../../../lib/finanzasProveedores";
 
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data || []);
@@ -40,7 +41,10 @@ export async function GET(request) {
     const otras = lista
       ? await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&origen=not.in.(${ORIGEN_LIBRO},${ORIGEN_SALDO_INICIAL})&or=(${encodeURIComponent(`cuenta_debe.in.(${lista}),cuenta_haber.in.(${lista})`)})&select=id,origen,fecha,total,cuenta_debe,cuenta_haber`, 100000)
       : [];
-    return NextResponse.json({ cuentas, tesoreria, proveedores, clientes, existentes, otras });
+    // 13/11: lo del libro que el Dueño anuló en Gypi, para no volver a pasarlo
+    const anuladasLibro = await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&origen=eq.${ORIGEN_LIBRO}&anulada_at=not.is.null&select=origen_id,anulada_por_nombre`, 100000);
+    const anuladas = [...new Set(anuladasLibro.filter((o) => anuladaAMano(o.anulada_por_nombre)).map((o) => o.origen_id))];
+    return NextResponse.json({ cuentas, tesoreria, proveedores, clientes, existentes, otras, anuladas });
   } catch (err) {
     return errorFinanzas(err, "historico GET");
   }
