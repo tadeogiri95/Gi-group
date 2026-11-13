@@ -12,6 +12,7 @@ import { apiFetch } from "../lib/supabase";
 import { textoOt } from "../lib/nombreOt";
 import { leyendaTipo, nombreTipo } from "../lib/finanzasTipos";
 import ExplicacionConcepto, { leyendaCorta } from "./ExplicacionConcepto";
+import Comprobantes from "./FinanzasComprobantes";
 import { asientoDe, cajasDelLado, hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import { MAX_ARCHIVO_B64 } from "../lib/facturasSueltas";
 import { fotoBase64 } from "../lib/foto";
@@ -69,6 +70,8 @@ export default function CargarGasto({ datos, inicial = {}, arreglo = null, onCer
   const [aQuien, setAQuien] = useState(inicial.proveedor_id || !inicial.cuenta_deuda ? "proveedor" : "cuenta");
   const [leyendo, setLeyendo] = useState(false);
   const [leida, setLeida] = useState(false);
+  // 13/11 (parte 4): la factura o los comprobantes del gasto (PDF o fotos)
+  const [adjuntos, setAdjuntos] = useState([]);
   const [avisos, setAvisos] = useState([]);
   const [proveedorNuevo, setProveedorNuevo] = useState(null);
   const [provExtra, setProvExtra] = useState([]);
@@ -186,12 +189,13 @@ export default function CargarGasto({ datos, inicial = {}, arreglo = null, onCer
     if (errores.length) return;
     setGuardando(true);
     try {
-      const res = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "gasto", gasto, confirmar_repetido: confirmarRepetido }) });
+      const res = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "gasto", gasto: { ...gasto, comprobantes: adjuntos }, confirmar_repetido: confirmarRepetido }) });
       const d = await res.json().catch(() => ({}));
       const rep = repetidosDe(res.status, d);
       if (rep) { setRepetidos(rep); return; }
       if (!res.ok) throw new Error(d.error || "No se pudo guardar el gasto");
       toast.success(f.pagado ? "✅ Gasto y pago guardados" : "✅ Gasto guardado: queda la deuda");
+      if (d.aviso) toast.error(d.aviso);
       onGuardada();
     } catch (err) {
       toast.error(err.message);
@@ -304,6 +308,7 @@ export default function CargarGasto({ datos, inicial = {}, arreglo = null, onCer
               ))}
             </div>
             {campo("Descripción", <input className="g-input w-full" value={f.descripcion} onChange={set("descripcion")} placeholder="Luz de la planta, honorarios de octubre…" />)}
+            <Comprobantes titulo="Factura o comprobantes" lista={adjuntos} onCambio={setAdjuntos} />
           </section>
 
           <section className="flex flex-col gap-3" aria-label="Comprobante e importe">

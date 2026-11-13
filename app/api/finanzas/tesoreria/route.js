@@ -56,10 +56,16 @@ export async function GET(request) {
     const path = (cols) => `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&or=(cuenta_debe.in.(${lista}),cuenta_haber.in.(${lista}))&select=${cols}&order=fecha.asc,id.asc`;
     // La foto del ticket (176): sin la migración se ve todo menos la foto
     const operaciones = tesoreria.length
-      ? await leer(sesion, path(`${COLUMNAS},comprobante_url`), 60000).catch((err) => {
-        if (/comprobante_url/.test(String(err?.message))) return leer(sesion, path(COLUMNAS), 60000);
-        throw err;
-      })
+      ? await leer(sesion, path(`${COLUMNAS},comprobante_url,comprobantes`), 60000)
+        // Sin la 187 (varios comprobantes, 13/11) o sin la 176
+        .catch((err) => {
+          if (/comprobantes/.test(String(err?.message))) return leer(sesion, path(`${COLUMNAS},comprobante_url`), 60000);
+          throw err;
+        })
+        .catch((err) => {
+          if (/comprobante_url/.test(String(err?.message))) return leer(sesion, path(COLUMNAS), 60000);
+          throw err;
+        })
       : [];
     return NextResponse.json({ tesoreria, cuentas, personal, operaciones, tipos, mi_caja: leerConfigMiCaja(cfg?.[0]?.valor) });
   } catch (err) {

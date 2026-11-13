@@ -103,6 +103,7 @@ export const MIGRACIONES = [
   { n: 184, archivo: "184_cliente_ot.sql", nombre: "Cada OT unida a su cliente de Finanzas", tablas: { proyectos: ["cliente_id"] } },
   { n: 185, archivo: "185_pedido_origen.sql", nombre: "Pedir material desde un problema", tablas: { pedidos_compra: ["origen", "origen_id"] } },
   { n: 186, archivo: "186_resumen_ordenes_pago.sql", nombre: "Resumen de órdenes de pago para el CFO", tablas: { fin_resumenes_pago: ["id", "token"], fin_ordenes_pago: ["resumen_id", "comprobante_url"] } },
+  { n: 187, archivo: "187_comprobantes_operacion.sql", nombre: "Finanzas: varios comprobantes por movimiento", tablas: { fin_operaciones: ["comprobantes"] } },
 ];
 
 /** Lo que pide una migración, como lista de { tabla, columnas } y funciones. */

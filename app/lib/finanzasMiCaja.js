@@ -101,7 +101,8 @@ export function comprobanteValido(url, { supabaseUrl, empresaId }) {
   if (!url) return true;
   if (typeof url !== "string" || url.length > 500 || !supabaseUrl || !empresaId) return false;
   const base = `${supabaseUrl}/storage/v1/object/public/reportes-obra/${empresaId}/`;
-  return url.startsWith(base) && /^[0-9a-f-]{36}\.(png|jpe?g|webp|gif)$/i.test(url.slice(base.length));
+  // 13/11 (parte 4): también PDF, para los comprobantes de cualquier movimiento
+  return url.startsWith(base) && /^[0-9a-f-]{36}\.(png|jpe?g|webp|gif|pdf)$/i.test(url.slice(base.length));
 }
 
 /**

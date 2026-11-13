@@ -22,11 +22,12 @@ export async function POST(request) {
 
     // fileName se sigue aceptando por compatibilidad, pero ya no se usa: el
     // nombre lo genera el servidor (F2-09), así nadie puede pisar un archivo ajeno.
-    const { fileBase64, fileType } = await request.json();
+    const { fileBase64, fileType, uso } = await request.json();
     if (!fileBase64 || typeof fileBase64 !== "string") return NextResponse.json({ error: "Faltan datos" }, { status: 400 });
 
     // Sin SVG: puede llevar scripts y el bucket es público (F2-09)
-    const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+    // 13/11: un comprobante de Finanzas (solo el Dueño) también puede ser PDF
+    const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", ...(uso === "comprobante" && sesion.rol === "gerencial" ? ["application/pdf"] : [])];
     if (!fileType || !ALLOWED_TYPES.includes(fileType)) {
       return NextResponse.json({ error: "Tipo de archivo no permitido" }, { status: 400 });
     }
@@ -38,7 +39,7 @@ export async function POST(request) {
     }
     // El contenido real tiene que ser el tipo declarado (no confiar en el navegador)
     if (!contenidoCoincide(buffer, fileType)) {
-      return NextResponse.json({ error: "El archivo no es una imagen válida" }, { status: 400 });
+      return NextResponse.json({ error: fileType === "application/pdf" ? "El archivo no es un PDF válido" : "El archivo no es una imagen válida" }, { status: 400 });
     }
 
     // Nombre generado en el servidor y prefijado con la empresa
