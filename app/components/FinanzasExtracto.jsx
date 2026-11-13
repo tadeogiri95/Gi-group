@@ -14,12 +14,15 @@
 // completa eso en vez de cargarse nuevo. Antes de cargar, el resumen con el
 // saldo contra el del banco. Cada carga queda registrada y se puede deshacer
 // entera o por renglones (migración 188).
+// 13/11 (parte 7): en una caja es 📥 Subir planilla (Fecha, Concepto,
+// Ingreso, Egreso) y funciona igual: ya estaba, nuevo, sospechoso, el tipo
+// sugerido y deshacer. Hay una planilla de ejemplo para descargar.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { plata } from "../lib/finanzasOperaciones";
 import { movimientoEnCuenta, reglasDelLibro } from "../lib/finanzasBanco";
 import { resumenDeCarga, textoCarga } from "../lib/finanzasExtractoPendientes";
-import { claseDeArchivo } from "../lib/finanzasExtracto";
+import { PLANILLA_EJEMPLO, claseDeArchivo } from "../lib/finanzasExtracto";
 import { puedeAnular, puedeCorregir } from "../lib/finanzasCorregir";
 import { Detalle } from "./FinanzasMovimientos";
 import { Modal, Spinner } from "./ui";
@@ -64,7 +67,7 @@ const ORIGEN_CORTO = { libro: "del libro", banco: "del extracto", manual: "a man
 const origenCorto = (o) => ORIGEN_CORTO[o?.origen || "manual"] || o?.origen || "";
 
 /** Cómo se arma el saldo de Gypi y la diferencia con el banco (12/11). */
-function SaldoGypi({ saldo, banco, hasta }) {
+function SaldoGypi({ saldo, banco, hasta, dice = "el banco" }) {
   if (!saldo) return null;
   const dif = banco == null ? null : Math.round((saldo.saldo - banco) * 100) / 100;
   const mal = dif != null && Math.abs(dif) >= 0.01;
@@ -72,7 +75,7 @@ function SaldoGypi({ saldo, banco, hasta }) {
     <details className={`rounded-lg border p-2 text-[13px] ${mal ? "border-gypi-red/40 bg-gypi-red/5" : "border-gypi-border"}`} open={mal}>
       <summary className="cursor-pointer font-semibold">
         🔎 Saldo de Gypi al {fechaCorta(hasta)}: {plata(saldo.saldo, "ARS")}
-        {banco != null && (mal ? <span className="text-gypi-red"> · el banco dice {plata(banco, "ARS")} (diferencia {plata(dif, "ARS")})</span> : <span className="text-gypi-green"> · igual que el banco ✓</span>)}
+        {banco != null && (mal ? <span className="text-gypi-red"> · {dice} dice {plata(banco, "ARS")} (diferencia {plata(dif, "ARS")})</span> : <span className="text-gypi-green"> · igual que {dice} ✓</span>)}
       </summary>
       <p className="m-0 mt-2 text-gypi-dim">De dónde sale el saldo de Gypi (todas las operaciones de esta cuenta hasta esa fecha):</p>
       <table className="mt-1 text-[13px] border-collapse" aria-label="Saldo por origen">
@@ -228,7 +231,7 @@ export function CargasAnteriores({ caja, recargar = 0, onDeshecho }) {
   if (!cargas?.length) return error ? <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p> : null;
   return (
     <section aria-label="Cargas anteriores" className="rounded-lg border border-gypi-border p-2 text-[13px] flex flex-col gap-1">
-      <b className="text-gypi-text">🗂 Cargas anteriores del extracto</b>
+      <b className="text-gypi-text">🗂 Cargas anteriores</b>
       <ul className="list-none m-0 p-0 flex flex-col gap-1">
         {cargas.map((c) => (
           <li key={c.id} className="flex flex-col gap-1 border-t first:border-t-0 border-gypi-border pt-1">
@@ -292,6 +295,19 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
   const nombreCuenta = useMemo(() => new Map((datos.cuentas || []).map((c) => [c.codigo, c.nombre])), [datos.cuentas]);
   const tipos = useMemo(() => (datos.tipos || []).filter((t) => t.activo !== false), [datos.tipos]);
   const etiquetaCuenta = (c) => (c ? `${c} · ${nombreCuenta.get(c) || ""}` : "");
+  // Una caja se pone al día con una planilla; un banco, con su extracto
+  const planilla = (caja.tipo || "banco") !== "banco";
+  const dice = planilla ? "la planilla" : "el banco";
+
+  function bajarEjemplo() {
+    // Con BOM, así Excel lee bien los acentos
+    const url = URL.createObjectURL(new Blob(["\uFEFF" + PLANILLA_EJEMPLO], { type: "text/csv;charset=utf-8" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: "planilla-de-caja-ejemplo.csv" });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 
   async function subir(file) {
     if (!file) return;
@@ -394,7 +410,7 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
       const r = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "corregir", id: op.id, cambios: { fecha: f.fecha, total: Math.abs(f.importe) } }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || "No se pudo corregir");
-      toast.success("✅ Quedó como dice el banco");
+      toast.success(`✅ Quedó como dice ${dice}`);
       releer();
     } catch (e) {
       setError(e.message);
@@ -427,16 +443,23 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
   }
 
   return (
-    <Modal open onClose={onCerrar} title={`📥 Extracto de ${caja.nombre}`} maxWidth={980}>
+    <Modal open onClose={onCerrar} title={`📥 ${planilla ? "Planilla" : "Extracto"} de ${caja.nombre}`} maxWidth={980}>
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
         {!res && (
           <>
-            <p className="m-0">Subí el resumen del banco en PDF o los movimientos bajados en Excel o CSV. Lo que ya está en Gypi se marca solo; lo demás viene con el tipo sugerido para revisar.</p>
-            <label className={`g-btn g-btn-primary self-start text-[15px] ${leyendo ? "opacity-60" : "cursor-pointer"}`}>
-              📄 Elegir el archivo del extracto
-              <input type="file" className="sr-only" accept=".pdf,.xlsx,.xls,.csv,application/pdf" aria-label="Archivo del extracto" disabled={leyendo} onChange={(e) => subir(e.target.files?.[0])} />
-            </label>
-            {leyendo && <p className="m-0 flex items-center gap-2 text-gypi-dim"><Spinner /> Leyendo el extracto…</p>}
+            {planilla ? (
+              <p className="m-0">Subí una planilla (Excel o CSV) con los movimientos de la caja: <b>Fecha, Concepto, Ingreso y Egreso</b>. Lo que ya está en Gypi se marca solo; lo demás viene con el tipo sugerido para revisar.</p>
+            ) : (
+              <p className="m-0">Subí el resumen del banco en PDF o los movimientos bajados en Excel o CSV. Lo que ya está en Gypi se marca solo; lo demás viene con el tipo sugerido para revisar.</p>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <label className={`g-btn g-btn-primary text-[15px] ${leyendo ? "opacity-60" : "cursor-pointer"}`}>
+                📄 Elegir {planilla ? "la planilla" : "el archivo del extracto"}
+                <input type="file" className="sr-only" accept=".pdf,.xlsx,.xls,.csv,application/pdf" aria-label={planilla ? "Archivo de la planilla" : "Archivo del extracto"} disabled={leyendo} onChange={(e) => subir(e.target.files?.[0])} />
+              </label>
+              {planilla && <button type="button" className="g-btn g-btn-secondary" onClick={bajarEjemplo}>⬇ Planilla de ejemplo</button>}
+            </div>
+            {leyendo && <p className="m-0 flex items-center gap-2 text-gypi-dim"><Spinner /> Leyendo {planilla ? "la planilla" : "el extracto"}…</p>}
             <CargasAnteriores caja={caja} recargar={deshechas} onDeshecho={() => { setDeshechas((n) => n + 1); onCambio?.(); }} />
           </>
         )}
@@ -451,13 +474,13 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
             {res.control && (
               <p className={`m-0 text-[13px] ${res.control.ok ? "text-gypi-green" : "text-gypi-red"}`}>
                 {res.control.ok
-                  ? `✓ El saldo cierra con el del banco: ${plata(res.control.final, "ARS")}`
-                  : `⚠ El saldo no cierra: el banco dice ${plata(res.control.final, "ARS")} y los movimientos leídos dan ${plata(res.control.calculado, "ARS")}. Revisá que el archivo esté completo.`}
+                  ? `✓ El saldo cierra con el de ${dice}: ${plata(res.control.final, "ARS")}`
+                  : `⚠ El saldo no cierra: ${dice} dice ${plata(res.control.final, "ARS")} y los movimientos leídos dan ${plata(res.control.calculado, "ARS")}. Revisá que el archivo esté completo.`}
               </p>
             )}
-            <SaldoGypi saldo={res.saldo_gypi} banco={res.control?.final ?? null} hasta={res.hasta} />
+            <SaldoGypi saldo={res.saldo_gypi} banco={res.control?.final ?? null} hasta={res.hasta} dice={dice} />
             <Repetidos grupos={res.repetidos} onVer={setDetalle} onAnuladas={releer} />
-            {!res.reglas && <p className="m-0 text-[13px] text-gypi-amber-ink">Todavía no aprendí cómo cargás este banco: subí el libro con &quot;📘 Aprender del libro&quot; y las sugerencias salen solas.</p>}
+            {!res.reglas && <p className="m-0 text-[13px] text-gypi-amber-ink">Todavía no aprendí cómo cargás {planilla ? "esta caja" : "este banco"}: subí el libro con &quot;📘 Aprender del libro&quot; y las sugerencias salen solas.</p>}
           </>
         )}
         <details className="rounded-lg border border-gypi-border p-2 text-[13px] text-gypi-dim" open={Boolean(res && !res.reglas) || aprendiendo || Boolean(aprendido) || Boolean(errorLibro)}>
@@ -486,7 +509,7 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
               <thead>
                 <tr className="text-gypi-dim text-left">
                   <th className="py-1 w-8"><span className="sr-only">Cargar</span></th>
-                  <th className="font-semibold py-1">Movimiento del banco</th>
+                  <th className="font-semibold py-1">Movimiento {planilla ? "de la planilla" : "del banco"}</th>
                   <th className="font-semibold py-1 text-right">Importe</th>
                   <th className="font-semibold py-1">Tipo</th>
                   <th className="font-semibold py-1">Cuenta de enfrente</th>
@@ -516,7 +539,7 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
                           <span className="flex flex-wrap gap-1.5 mt-1">
                             {puedeCorregir(f.parecido) && (
                               <button type="button" className="g-btn g-btn-primary !py-0.5 !px-2 text-[12px]" disabled={corrigiendo === f.parecido.id} onClick={() => comoElBanco(f.parecido, f)}>
-                                {corrigiendo === f.parecido.id ? "Corrigiendo…" : "Dejar como dice el banco"}
+                                {corrigiendo === f.parecido.id ? "Corrigiendo…" : `Dejar como dice ${dice}`}
                               </button>
                             )}
                             <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[12px]" onClick={() => setDetalle(f.parecido)}>Ver</button>
@@ -551,7 +574,7 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
                       {f.op.fecha !== f.fecha && <span className="text-gypi-amber-ink"> · en Gypi dice {fechaCorta(f.op.fecha)}</span>}
                     </span>
                     {f.op.fecha !== f.fecha && puedeCorregir(f.op) && (
-                      <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[12px]" disabled={corrigiendo === f.op.id} onClick={() => comoElBanco(f.op, f)}>📅 Poner la fecha del banco</button>
+                      <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[12px]" disabled={corrigiendo === f.op.id} onClick={() => comoElBanco(f.op, f)}>📅 Poner la fecha {planilla ? "de la planilla" : "del banco"}</button>
                     )}
                     <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[12px]" onClick={() => setDetalle(f.op)}>✏ Corregir o anular</button>
                   </li>
@@ -563,9 +586,9 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
 
         {res?.sin_banco?.length > 0 && (
           <div className="p-3 rounded-lg border border-gypi-amber/40 bg-gypi-amber/10 text-[13px]">
-            <b className="text-gypi-amber-ink">En Gypi pero no en el banco ({res.sin_banco.length}):</b>
-            <p className="m-0 mt-0.5 text-gypi-dim">El extracto suele estar bien: si alguna de estas está mal o sobra, corregila o anulala acá.</p>
-            <ul className="list-none m-0 mt-1 p-0 flex flex-col gap-0.5" aria-label="No están en el banco">
+            <b className="text-gypi-amber-ink">En Gypi pero no en {dice} ({res.sin_banco.length}):</b>
+            <p className="m-0 mt-0.5 text-gypi-dim">{planilla ? "Si la planilla está completa," : "El extracto suele estar bien:"} si alguna de estas está mal o sobra, corregila o anulala acá.</p>
+            <ul className="list-none m-0 mt-1 p-0 flex flex-col gap-0.5" aria-label={`No están en ${dice}`}>
               {res.sin_banco.slice(0, 100).map((o) => (
                 <li key={o.id} className="flex flex-wrap items-start gap-x-2 gap-y-1">
                   <span className="flex-1 min-w-[200px]">
@@ -584,8 +607,8 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
             <p className="m-0">Vas a cargar <b>{resumen.n}</b> movimientos: entran <b className="font-mono text-gypi-green">{plata(resumen.entra, "ARS")}</b> y salen <b className="font-mono text-gypi-red">{plata(resumen.sale, "ARS")}</b>.</p>
             <p className="m-0">Al {fechaCorta(res.hasta)}, Gypi queda en <b className="font-mono">{plata(resumen.queda, "ARS")}</b>
               {resumen.diferencia == null ? "." : resumen.cierra
-                ? <span className="text-gypi-green"> ✓ igual que el banco.</span>
-                : <span className="text-gypi-red"> y el banco dice {plata(res.control.final, "ARS")}: diferencia de {plata(resumen.diferencia, "ARS")}.</span>}
+                ? <span className="text-gypi-green"> ✓ igual que {dice}.</span>
+                : <span className="text-gypi-red"> y {dice} dice {plata(res.control.final, "ARS")}: diferencia de {plata(resumen.diferencia, "ARS")}.</span>}
             </p>
           </section>
         )}

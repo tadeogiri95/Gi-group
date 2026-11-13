@@ -218,8 +218,19 @@ export function movimientosDeGrilla(grilla = []) {
       cuenta: null, desde: crono[0]?.fecha || null, hasta: crono[crono.length - 1]?.fecha || null,
     };
   }
-  return { movimientos: [], error: "No encontré los títulos: hace falta Fecha, Descripción y Débito/Crédito (o Importe)." };
+  return { movimientos: [], error: "No encontré los títulos: hace falta Fecha, Descripción (o Concepto) y Débito/Crédito, Ingreso/Egreso o Importe." };
 }
+
+/**
+ * La planilla de ejemplo para poner al día una caja (13/11, parte 7): se abre
+ * con Excel (separada por punto y coma, importes argentinos) y se sube tal cual.
+ */
+export const PLANILLA_EJEMPLO = [
+  "Fecha;Concepto;Ingreso;Egreso",
+  "03/11/2026;Cobro en efectivo Cliente SA;150.000,00;",
+  "04/11/2026;Compra de insumos de limpieza;;12.500,00",
+  "05/11/2026;Retiro para viáticos;;30.000,00",
+].join("\r\n");
 
 /** Un CSV (con coma, punto y coma o tabulación) como grilla. */
 export function grillaDeCsv(texto) {

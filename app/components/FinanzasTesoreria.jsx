@@ -10,6 +10,7 @@
 // F3b (176): lo que cargan los responsables desde 📱 Mi caja espera acá
 // ("Para revisar") y "⚙ Mi caja" esconde los tipos que no se les ofrecen.
 // F5a: en la ficha de un banco, "📥 Subir extracto" (FinanzasExtracto.jsx).
+// 13/11 (parte 7): en una caja, "📥 Subir planilla" (la misma pantalla).
 // Parte 8 del 11/11: 🏦 Plazos fijos (FinanzasPlazosFijos.jsx).
 // 12/11: tocando un movimiento de la ficha se ve su detalle, y se corrige o se
 // anula (finanzasCorregir.js); 📈 Inversiones: el FCI con el saldo real y los
@@ -518,6 +519,7 @@ export default function FinanzasTesoreria({ onIr = null } = {}) {
             <>
               <button type="button" className="g-btn g-btn-secondary" onClick={() => setTransferir(una.cuenta)}>⇄ Pasar plata desde esta</button>
               {una.tipo === "banco" && una.moneda !== "USD" && <button type="button" className="g-btn g-btn-secondary" onClick={() => setExtracto(una.cuenta)}>📥 Subir extracto</button>}
+              {["caja", "otro"].includes(una.tipo) && una.moneda !== "USD" && <button type="button" className="g-btn g-btn-secondary" onClick={() => setExtracto(una.cuenta)}>📥 Subir planilla</button>}
             </>
           ) : null} />
       </section>
