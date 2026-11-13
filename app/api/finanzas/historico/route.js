@@ -3,7 +3,8 @@
 //
 //   GET → lo que la pantalla necesita para armar el plan en el navegador:
 //       plan de cuentas, cajas y bancos, proveedores, clientes y lo que ya se
-//       pasó (operaciones vivas de origen "libro" y "saldo_inicial").
+//       pasó (operaciones vivas de origen "libro" y "saldo_inicial"), y lo
+//       que entró a las cajas por otro lado ("otras", para no repetirlo).
 //   POST { accion: "anular", ids } → anula esas operaciones (solo de origen
 //       libro o saldo_inicial). No se borran.
 //   POST { accion: "cargar", operaciones } → carga hasta 400 por vez, ya
@@ -33,7 +34,13 @@ export async function GET(request) {
       leer(sesion, `fin_clientes?empresa_id=eq.${e}&select=id,nombre,alias,activo,unido_a&order=nombre.asc,id.asc`, 10000),
       leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&${ORIGENES}&select=id,origen,origen_id,fecha`, 100000),
     ]);
-    return NextResponse.json({ cuentas, tesoreria, proveedores, clientes, existentes });
+    // 13/11: lo que entró por otro lado (extracto, plazos fijos, pagos…) a
+    // una caja o banco, para no pasarlo dos veces
+    const lista = tesoreria.map((t) => `"${String(t.cuenta).replace(/"/g, "")}"`).join(",");
+    const otras = lista
+      ? await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&origen=not.in.(${ORIGEN_LIBRO},${ORIGEN_SALDO_INICIAL})&or=(${encodeURIComponent(`cuenta_debe.in.(${lista}),cuenta_haber.in.(${lista})`)})&select=id,origen,fecha,total,cuenta_debe,cuenta_haber`, 100000)
+      : [];
+    return NextResponse.json({ cuentas, tesoreria, proveedores, clientes, existentes, otras });
   } catch (err) {
     return errorFinanzas(err, "historico GET");
   }

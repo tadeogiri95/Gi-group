@@ -120,6 +120,7 @@ function PasarHistorico({ onCerrar, onPasado }) {
               <li><b>{miles(plan.nuevas.length)}</b> operaciones nuevas{plan.iguales ? `; ${miles(plan.iguales)} ya estaban` : ""}.</li>
               {plan.anular.length > 0 && <li><b>{plan.anular.length}</b> se anulan: saldos iniciales anteriores y renglones que ya no están igual en el libro.</li>}
               {plan.convertidas > 0 && <li><b>{plan.convertidas}</b> compras que en el libro van contra Ajuste De Capital pasan a Proveedores.</li>}
+              {plan.ya_en_gypi > 0 && <li>{plan.ya_en_gypi} ya estaban en Gypi por otro lado (extracto, plazos fijos, pagos…) y no se repiten.</li>}
               {plan.de_gypi > 0 && <li>{plan.de_gypi} renglones vienen de Gypi y no se repiten.</li>}
               {plan.sin_tipo > 0 && <li>{plan.sin_tipo} no tienen tipo de operación: entran como “SIN TIPO” (se ordenan con los tipos nuevos).</li>}
             </ul>

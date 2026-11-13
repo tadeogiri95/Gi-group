@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import { ORIGEN_SALDO_INICIAL } from "../lib/finanzasProveedores";
+import { ORIGEN_LIBRO } from "../lib/finanzasHistorico";
 import { NOMBRE_GRUPO, ORDEN_TIPOS, movimientosDeCaja, saldosCajasDelLibro, saldosTesoreria, totalesTesoreria } from "../lib/finanzasTesoreria";
 import { paraRevisarMiCaja, tiposParaMiCaja } from "../lib/finanzasMiCaja";
 import SubirExtracto from "./FinanzasExtracto";
@@ -62,6 +63,9 @@ function SaldosIniciales({ datos, onCerrar, onCargados }) {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
   const yaCargados = (datos.operaciones || []).some((o) => o.origen === ORIGEN_SALDO_INICIAL);
+  // 13/11: con el histórico del libro pasado, el saldo de las cajas ya sale de
+  // ahí; un saldo inicial encima lo cuenta dos veces
+  const conHistorico = (datos.operaciones || []).some((o) => o.origen === ORIGEN_LIBRO);
   const resultado = useMemo(() => (grilla ? saldosCajasDelLibro(grilla, fecha, datos.tesoreria) : null), [grilla, fecha, datos.tesoreria]);
   const filas = useMemo(() => (resultado?.filas || [])
     .map((f) => ({ ...f, caja: datos.tesoreria.find((t) => t.cuenta === f.cuenta) }))
@@ -105,7 +109,12 @@ function SaldosIniciales({ datos, onCerrar, onCargados }) {
           Subí el libro (.xlsx). Se suma todo lo de T-OPERACIONES que entró y salió de cada caja y banco hasta la fecha de corte, y
           cada saldo entra como &quot;SALDO INICIAL&quot; contra Ajuste De Capital. Lo que cargues en Gypi después de esa fecha sigue desde ahí.
         </p>
-        {yaCargados && <p className="m-0 text-[13px] text-gypi-amber-ink">⚠ Ya hay saldos iniciales cargados: los de las cajas que cargues ahora se reemplazan.</p>}
+        {conHistorico && (
+          <p role="alert" className="m-0 text-[13px] text-gypi-red">
+            ⚠ Ya pasaste el histórico del libro: el saldo de cada caja ya sale de ahí y un saldo inicial lo contaría dos veces. Para revisar diferencias usá 🧾 Configuración → 🧮 Cuadrar con el libro.
+          </p>
+        )}
+        {!conHistorico && yaCargados && <p className="m-0 text-[13px] text-gypi-amber-ink">⚠ Ya hay saldos iniciales cargados: los de las cajas que cargues ahora se reemplazan.</p>}
         <div className="flex flex-wrap items-end gap-2">
           <label className="g-btn g-btn-secondary cursor-pointer">
             {leyendo ? "Leyendo…" : grilla ? "Elegir otro archivo" : "📂 Subir el libro"}
@@ -132,7 +141,7 @@ function SaldosIniciales({ datos, onCerrar, onCargados }) {
         )}
         <div className="flex justify-end gap-2">
           <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
-          <button type="button" className="g-btn g-btn-primary" disabled={!filas.length || guardando} onClick={cargar}>
+          <button type="button" className="g-btn g-btn-primary" disabled={conHistorico || !filas.length || guardando} onClick={cargar}>
             {guardando ? "Cargando…" : `Cargar ${filas.length} saldos`}
           </button>
         </div>

@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import FinanzasLibroScript from "./FinanzasLibroScript";
 import FinanzasHistorico from "./FinanzasHistorico";
+import FinanzasCuadrar from "./FinanzasCuadrar";
 import FinanzasTipos from "./FinanzasTipos";
 import { HOJA_FLUJO, HOJA_OPERACIONES, TABLAS_FIN, TIPOS_TESORERIA, leerLibro } from "../lib/finanzas";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
@@ -352,6 +353,7 @@ export default function FinanzasConfig() {
       <CopiarLibro nombres={nombres} onCopiado={cargar} />
       {!vacio && <FinanzasLibroScript />}
       {!vacio && <FinanzasHistorico onPasado={cargar} />}
+      {!vacio && <FinanzasCuadrar onCambio={cargar} />}
       {!vacio && <FinanzasTipos onPasado={cargar} />}
 
       {!vacio && (

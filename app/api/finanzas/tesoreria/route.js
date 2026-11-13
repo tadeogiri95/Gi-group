@@ -24,6 +24,7 @@ import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { FECHA } from "../../../lib/finanzasOperaciones";
 import { ORIGEN_SALDO_INICIAL } from "../../../lib/finanzasProveedores";
+import { ORIGEN_LIBRO } from "../../../lib/finanzasHistorico";
 import { cuentaAjusteDe, operacionSaldoInicialCaja, validarTransferencia } from "../../../lib/finanzasTesoreria";
 import { CLAVE_MI_CAJA, ORIGEN_MI_CAJA, cambioDeTipoMiCaja, leerConfigMiCaja, tiposParaMiCaja } from "../../../lib/finanzasMiCaja";
 
@@ -72,6 +73,10 @@ async function saldosIniciales(sesion, d) {
     leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,activa`),
     leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre`),
   ]);
+  // 13/11: con el histórico del libro pasado, el saldo ya sale de ahí (un
+  // saldo inicial encima lo contaba dos veces: la apertura de junio de Credicoop)
+  const conHistorico = await sbGet(`fin_operaciones?empresa_id=eq.${e}&origen=eq.${ORIGEN_LIBRO}&anulada_at=is.null&select=id,origen&limit=1`, { sesion, silent: true, fallback: [] });
+  if ((conHistorico || []).some((o) => o.origen === ORIGEN_LIBRO)) return NextResponse.json({ error: "Ya pasaste el histórico del libro: el saldo de cada caja ya sale de ahí. Para revisar diferencias usá Configuración → Cuadrar con el libro." }, { status: 400 });
   const cuentaAjuste = cuentaAjusteDe(cuentas);
   if (!cuentaAjuste) return NextResponse.json({ error: "Falta la cuenta \"Ajuste De Capital\" en el plan de cuentas: copiá el libro en Configuración." }, { status: 400 });
   const tc = Number(d.tipo_cambio);
