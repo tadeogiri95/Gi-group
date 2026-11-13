@@ -99,6 +99,7 @@ export function NuevoAsiento({ datos, inicial, onCerrar, onGuardado }) {
           Para registrar algo que no pasó por una caja (un saldo inicial, una reclasificación, una amortización) o para corregir el saldo de una cuenta.
           Va siempre en pesos y se puede corregir o anular después.
         </p>
+        {inicial.como && <p className="m-0 p-2 rounded-lg bg-gypi-green/10 text-[13px] text-gypi-text">✨ Gypi propone: {inicial.como}. Revisalo y corregilo si hace falta.</p>}
         {inicial.tipo === "SALDO INICIAL" && (
           <p className="m-0 text-[13px] text-gypi-amber-ink">
             Te propongo el saldo inicial que deja la cuenta en cero, el día antes de su primer movimiento. Si ese día había más (por ejemplo, títulos que todavía tenés), poné el importe real.
