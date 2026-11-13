@@ -111,15 +111,55 @@ export function renglonesDelLibro(grilla) {
   return { filas };
 }
 
+const ORIGENES_HISTORICO = new Set([ORIGEN_LIBRO, ORIGEN_SALDO_INICIAL]);
+const diasEntre = (a, b) => Math.abs(Math.round((Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86400000));
+
+/**
+ * Saca de las operaciones por pasar las que ya están en Gypi con otro origen
+ * en la misma caja (mismo lado, importe y hasta 3 días). Las otras
+ * operaciones traen id, fecha, total, cuenta_debe y cuenta_haber.
+ * @returns {{ nuevas: object[], yaEnGypi: number }}
+ */
+export function sinLoYaCargado(ops = [], otras = [], cajas = new Map()) {
+  if (!otras.length) return { nuevas: ops, yaEnGypi: 0 };
+  const lado = (o) => (cajas.has(o.cuenta_debe) ? `d${o.cuenta_debe}` : cajas.has(o.cuenta_haber) ? `h${o.cuenta_haber}` : null);
+  const por = new Map();
+  for (const x of otras) {
+    for (const l of [cajas.has(x.cuenta_debe) ? `d${x.cuenta_debe}` : null, cajas.has(x.cuenta_haber) ? `h${x.cuenta_haber}` : null]) {
+      if (!l) continue;
+      const k = `${l}|${Math.round(Math.abs(Number(x.total) || 0) * 100)}`;
+      if (!por.has(k)) por.set(k, []);
+      por.get(k).push(x);
+    }
+  }
+  const usadas = new Set();
+  const nuevas = [];
+  let yaEnGypi = 0;
+  for (const o of ops) {
+    const l = lado(o);
+    let mejor = null;
+    if (l) {
+      for (const x of por.get(`${l}|${Math.round(o.total * 100)}`) || []) {
+        if (usadas.has(x.id)) continue;
+        const d = diasEntre(x.fecha, o.fecha);
+        if (d <= 3 && (!mejor || d < mejor.d)) mejor = { x, d };
+      }
+    }
+    if (mejor) { usadas.add(mejor.x.id); yaEnGypi++; } else nuevas.push(o);
+  }
+  return { nuevas, yaEnGypi };
+}
+
 const esDeBalance = (codigo) => /^0[123]\./.test(String(codigo || ""));
 const esDeGypi = (ref) => String(ref || "").toUpperCase().startsWith(PREFIJO_OPERACION);
 
 /**
  * Qué hay que hacer para dejar Gypi como el libro desde una fecha.
- * @param {{ grilla: string[][], desde: string, cuentas: object[], tesoreria: object[], proveedores: object[], clientes: object[], existentes: { id: number, origen: string, origen_id: string }[], tc?: Record<string, number> }} d
+ * @param {{ grilla: string[][], desde: string, cuentas: object[], tesoreria: object[], proveedores: object[], clientes: object[], existentes: { id: number, origen: string, origen_id: string }[], otras?: object[], tc?: Record<string, number> }} d
+ *   otras: las operaciones vivas de otros orígenes que tocan cajas y bancos (id, fecha, total, cuenta_debe, cuenta_haber, origen).
  *   tc: tipo de cambio por mes ("AAAA-MM") para las operaciones en dólares, y "apertura" para lo anterior.
  */
-export function planHistorico({ grilla, desde = DESDE_HISTORICO, cuentas = [], tesoreria = [], proveedores = [], clientes = [], existentes = [], tc = {} }) {
+export function planHistorico({ grilla, desde = DESDE_HISTORICO, cuentas = [], tesoreria = [], proveedores = [], clientes = [], existentes = [], otras = [], tc = {} }) {
   const leido = renglonesDelLibro(grilla);
   if (leido.error) return { error: leido.error };
   const codigos = new Set(cuentas.map((c) => c.codigo));
@@ -232,7 +272,11 @@ export function planHistorico({ grilla, desde = DESDE_HISTORICO, cuentas = [], t
 
   // ─── Qué ya está ───
   const vivas = new Map(existentes.filter((x) => x.origen === ORIGEN_LIBRO).map((x) => [x.origen_id, x]));
-  const nuevas = operaciones.filter((o) => !vivas.has(o.origen_id));
+  const porPasar = operaciones.filter((o) => !vivas.has(o.origen_id));
+  // 13/11: lo que ya entró a Gypi por otro lado (extracto, planilla de plazos
+  // fijos, un pago o cobro de Gypi…) no se repite: misma caja, mismo lado,
+  // mismo importe y hasta 3 días de diferencia (el más cercano, una vez cada uno).
+  const { nuevas, yaEnGypi } = sinLoYaCargado(porPasar, otras.filter((x) => !ORIGENES_HISTORICO.has(x.origen)), cajas);
   const claves = new Set(operaciones.map((o) => o.origen_id));
   const anular = [
     // Del libro, que ya no están (borradas o cambiadas)
@@ -243,7 +287,8 @@ export function planHistorico({ grilla, desde = DESDE_HISTORICO, cuentas = [], t
   return {
     desde, fecha_apertura: fechaApertura,
     apertura, nuevas, anular,
-    iguales: operaciones.length - nuevas.length,
+    iguales: operaciones.length - porPasar.length,
+    ya_en_gypi: yaEnGypi,
     total_libro: operaciones.length,
     de_gypi: deGypi,
     convertidas: convertidas.length,
@@ -255,7 +300,6 @@ export function planHistorico({ grilla, desde = DESDE_HISTORICO, cuentas = [], t
   };
 }
 
-const ORIGENES_HISTORICO = new Set([ORIGEN_LIBRO, ORIGEN_SALDO_INICIAL]);
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? centavos(n) : NaN; };
 
