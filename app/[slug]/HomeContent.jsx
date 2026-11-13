@@ -391,9 +391,17 @@ export default function HomeContent() {
       {/* Dentro de una sección de "Más" el título lo pone la sección, con "← Más" */}
       {!isChat && screen !== "home" && !(screen === "config" && seccionMas) && (
         <div className="safe-top px-[18px] pt-4 pb-2.5 shrink-0">
+          {/* En la computadora Equipo y Permisos están en "Personal" del menú de la
+              izquierda, no en Más: ahí el "← Más" no va (solo-cel, 13/11) */}
           {uIsGer && DESDE_MAS.has(screen) && (
-            <button onClick={() => setScreen("config")} className="min-h-[44px] -ml-1 mb-1 px-1 bg-transparent border-none cursor-pointer text-[15px] font-semibold text-gypi-text">
+            <button onClick={() => setScreen("config")} className="solo-cel min-h-[44px] -ml-1 mb-1 px-1 bg-transparent border-none cursor-pointer text-[15px] font-semibold text-gypi-text">
               ← Más
+            </button>
+          )}
+          {/* Mi documentación del operario se abre desde Mi cuenta (13/11) */}
+          {!uIsGer && screen === "documentos" && (
+            <button onClick={() => setScreen("cuenta")} className="min-h-[44px] -ml-1 mb-1 px-1 bg-transparent border-none cursor-pointer text-[15px] font-semibold text-gypi-text">
+              ← Mi cuenta
             </button>
           )}
           {screen === "ger-actividad" && (

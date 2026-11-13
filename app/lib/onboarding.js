@@ -93,7 +93,9 @@ export function diasRestantes(creadaEl, ahora = Date.now()) {
  * `hay` = { ubicacion, horario, equipo, equipoActivo, ot, fichada, pieza }.
  * El último paso es la primera pieza escaneada: "Iniciar tarea" ya no existe
  * (el avance se mide escaneando las piezas de cada OT).
- * `ir` es la pantalla de gestión donde se resuelve.
+ * `ir` es la pantalla de gestión donde se resuelve. La primera OT va a
+ * Producción → OT (13/11: "config:proyectos" abría Más, porque con las OT
+ * contratadas esa sección no existe).
  */
 export function pasosActivacion(hay = {}) {
   return [
@@ -101,7 +103,7 @@ export function pasosActivacion(hay = {}) {
     { id: "horario", titulo: "Asignar el horario de trabajo", detalle: "Con el horario se calculan las tardanzas y las horas.", hecho: !!hay.horario, ir: "equipo:horarios" },
     { id: "equipo", titulo: "Cargar a tu equipo", detalle: "Uno por uno, con un archivo o desde el asistente.", hecho: !!hay.equipo, ir: "equipo" },
     { id: "equipoActivo", titulo: "Que tu equipo entre a la app", detalle: "Imprimí los QR de activación desde Equipo.", hecho: !!hay.equipoActivo, ir: "equipo" },
-    { id: "ot", titulo: "Crear la primera OT", detalle: "El avance se mide escaneando las piezas de cada OT.", hecho: !!hay.ot, ir: "config:proyectos" },
+    { id: "ot", titulo: "Crear la primera OT", detalle: "El avance se mide escaneando las piezas de cada OT.", hecho: !!hay.ot, ir: "proyectos:ot" },
     { id: "fichada", titulo: "Primera fichada", detalle: "Alguien de tu equipo ficha su entrada.", hecho: !!hay.fichada, ir: null },
     { id: "pieza", titulo: "Primera pieza escaneada", detalle: "Pegá la planilla de piezas de una OT y escaneá una etiqueta.", hecho: !!hay.pieza, ir: "proyectos" },
   ];

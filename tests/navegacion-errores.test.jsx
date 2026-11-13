@@ -71,3 +71,20 @@ test("el Panel abre Flota y Maquinaria en Alertas sin chocar con las pestañas",
   assert.match(b, /"flota-alertas": "flota"/);
   assert.match(b, /seccion === "flota-alertas" \? "alertas" : "vehiculos"/);
 });
+
+// Parte 3 (13/11): los arreglos chicos
+test("primeros pasos: «Crear la primera OT» va a Producción → OT", async () => {
+  const { pasosActivacion } = await import("../app/lib/onboarding.js");
+  assert.equal(pasosActivacion().find((p) => p.id === "ot").ir, "proyectos:ot");
+});
+
+test("operario: Mi documentación tiene «← Mi cuenta»; en la PC Equipo y Permisos sin «← Más»", () => {
+  const home = leer("[slug]/HomeContent.jsx");
+  assert.match(home, /!uIsGer && screen === "documentos" && \(\s*<button onClick=\{\(\) => setScreen\("cuenta"\)\}/);
+  assert.match(home, /className="solo-cel [^"]*">\s*← Más/);
+});
+
+test("Finanzas → Configuración no se rompe si faltan listas", async () => {
+  const s = leer("components/FinanzasConfig.jsx");
+  assert.match(s, /cuentas: d\.cuentas \|\| \[\], tipos: d\.tipos \|\| \[\], tesoreria: d\.tesoreria \|\| \[\], centros: d\.centros \|\| \[\]/);
+});
