@@ -318,12 +318,13 @@ test("/api/finanzas/resultados — estima las OT terminadas sin precio con sus n
       match: (u) => u.includes("/rest/v1/proyectos"),
       respond: (u) => {
         pedidos.push(decodeURIComponent(u));
-        return { status: 200, body: u.includes("id=in.") ? [{ id: 3, ot: "7001", estado: "cerrado", created_at: "2026-09-01T12:00:00Z" }, { id: 4, ot: "7002", estado: "cerrado", created_at: "2026-09-01T12:00:00Z" }, { id: 5, ot: "7003", estado: "activo", created_at: "2026-09-01T12:00:00Z" }] : [...PROYECTOS, { id: 3, division: "MUEBLES" }, { id: 4, division: "MUEBLES" }] };
+        if (u.includes("fecha_entrega=gte.")) return { status: 200, body: [{ id: 3, ot: "7001", estado: "cerrado", fecha_entrega: "2026-06-01" }, { id: 6, ot: "6999", estado: "cerrado", created_at: "2025-01-01T12:00:00Z", fecha_entrega: "2026-08-10" }] };
+        return { status: 200, body: u.includes("id=in.") ? [{ id: 3, ot: "7001", estado: "cerrado", created_at: "2026-09-01T12:00:00Z" }, { id: 4, ot: "7002", estado: "cerrado", created_at: "2026-09-01T12:00:00Z" }, { id: 5, ot: "7003", estado: "activo", created_at: "2026-09-01T12:00:00Z" }] : [...PROYECTOS, { id: 3, division: "MUEBLES" }, { id: 4, division: "MUEBLES" }, { id: 6, division: "MUEBLES" }] };
       },
     },
     { match: (u) => u.includes("/rest/v1/fin_centros_costo"), respond: () => ({ status: 200, body: CENTROS }) },
     { match: (u) => u.includes("/rest/v1/precios_ot"), respond: () => ({ status: 200, body: [{ ot: "7002", precio: 100 }] }) },
-    { match: (u) => u.includes("/rest/v1/necesidades_stock"), respond: () => ({ status: 200, body: [{ ot: "7001", sku: "PL1", cantidad: 3 }] }) },
+    { match: (u) => u.includes("/rest/v1/necesidades_stock"), respond: () => ({ status: 200, body: [{ ot: "7001", sku: "PL1", cantidad: 3 }, { ot: "6999", sku: "PL1", cantidad: 1 }] }) },
     { match: (u) => u.includes("/rest/v1/precios_fijos_ot"), respond: () => ({ status: 200, body: [] }) },
     { match: (u) => u.includes("/rest/v1/v_precios_articulos"), respond: () => ({ status: 200, body: [{ sku: "PL1", fecha: "2026-01-01", precio_ars: 30000 }] }) },
     {
@@ -337,7 +338,9 @@ test("/api/finanzas/resultados — estima las OT terminadas sin precio con sus n
   const est = d.filas.find((f) => f.entrega_estimada);
   // 3 × 30.000 = 90.000 de materiales ÷ 0,3 = 300.000 (la 7002 ya tiene precio; la 7003 se reabrió)
   assert.equal(est.valores[11], 300000);
-  assert.deepEqual(d.estimadas_ot, [{ ot: "7001", fecha: "2026-10-12", valor: 300000 }]);
+  // La 6999 se cargó antes del "desde": entra por su fecha de entrega del Plan (agosto). La 7001 queda en la fecha anotada.
+  assert.deepEqual(d.estimadas_ot, [{ ot: "6999", fecha: "2026-08-10", valor: 100000 }, { ot: "7001", fecha: "2026-10-12", valor: 300000 }]);
+  assert.equal(est.valores[9], 100000);
   assert.ok(pedidos.some((p) => p.includes("id=in.(3,4,5)")));
 });
 

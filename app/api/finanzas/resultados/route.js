@@ -11,9 +11,10 @@
 //       entregada (auditoría 12/11, parte 4); las demás entregas, el %.
 //
 // Entregas con valor estimado (13/11): las OT terminadas sin PRECIO en el
-// Plan (fechas en config_sistema "finanzas_entregas_estimadas", las anota la
-// sync de ventas) valen materiales de sus necesidades ÷ 0,3, como en la
-// cuenta corriente de clientes. Van en un renglón aparte de Entregas.
+// Plan valen materiales de sus necesidades ÷ 0,3, como en la cuenta corriente
+// de clientes. El mes: el día que la sync de ventas la vio terminada
+// (config_sistema "finanzas_entregas_estimadas") o, si no la anotó (cargada
+// antes del "desde"), su fecha de entrega del Plan. Van en un renglón aparte de Entregas.
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige). La
 // configuración va en config_sistema.
@@ -63,22 +64,27 @@ async function entregasEstimadas(sesion, desde, hasta) {
   const e = sesion.empresa_id;
   try {
     const [fila] = (await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_ENTREGAS_ESTIMADAS}&select=valor&limit=1`, { silent: true, fallback: [] })) || [];
-    const fechas = Object.entries(fila?.valor?.fechas || {})
-      .map(([k, f]) => ({ id: Number(String(k).slice(1)), fecha: String(f || "") }))
-      .filter((x) => x.id > 0 && x.fecha >= desde && x.fecha <= hasta);
-    if (!fechas.length) return [];
-    const ids = fechas.map((x) => x.id);
-    const proyectos = [];
-    for (let i = 0; i < ids.length; i += 150) proyectos.push(...(await leer(sesion, `proyectos?empresa_id=eq.${e}&id=in.(${ids.slice(i, i + 150).join(",")})&select=id,ot,estado,created_at`, 1000)));
+    const anotadas = new Map(Object.entries(fila?.valor?.fechas || {})
+      .map(([k, f]) => [Number(String(k).slice(1)), String(f || "")])
+      .filter(([id, f]) => id > 0 && f));
+    const ids = [...anotadas].filter(([, f]) => f >= desde && f <= hasta).map(([id]) => id);
+    const proyectos = new Map();
+    for (let i = 0; i < ids.length; i += 150) {
+      for (const p of await leer(sesion, `proyectos?empresa_id=eq.${e}&id=in.(${ids.slice(i, i + 150).join(",")})&select=id,ot,estado,created_at`, 1000)) proyectos.set(Number(p.id), p);
+    }
+    // Las terminadas que Gypi no anotó (cargadas antes del "desde" o de este
+    // cambio): el mes de su fecha de entrega del Plan (13/11, pedido de Tadeo)
+    const viejas = await leer(sesion, `proyectos?empresa_id=eq.${e}&estado=eq.cerrado&fecha_entrega=gte.${desde}&fecha_entrega=lte.${hasta}&select=id,ot,estado,created_at,fecha_entrega`, 20000).catch(() => []);
+    for (const p of viejas) if (!anotadas.has(Number(p.id))) proyectos.set(Number(p.id), p);
+    if (!proyectos.size) return [];
     // Si le pusieron precio desde la última sync, ya no se estima
     const precios = await sbGet(`precios_ot?empresa_id=eq.${e}&select=ot,precio`, { sesion, silent: true, fallback: [] });
     const conPrecio = new Set((precios || []).filter((f) => Number(f.precio) > 0).map((f) => String(f.ot)));
-    const vivos = proyectos.filter((p) => p.estado === "cerrado" && !conPrecio.has(String(p.ot)));
+    const vivos = [...proyectos.values()].filter((p) => p.estado === "cerrado" && !conPrecio.has(String(p.ot)));
     const materiales = await materialesDeOts(sesion, vivos);
-    const fechaDe = new Map(fechas.map((x) => [x.id, x.fecha]));
     return vivos
-      .map((p) => ({ proyecto_id: Number(p.id), ot: String(p.ot), fecha: fechaDe.get(Number(p.id)), valor: valorOt(0, materiales.get(String(p.ot))).valor }))
-      .filter((x) => x.valor > 0);
+      .map((p) => ({ proyecto_id: Number(p.id), ot: String(p.ot), fecha: anotadas.get(Number(p.id)) || String(p.fecha_entrega || ""), valor: valorOt(0, materiales.get(String(p.ot))).valor }))
+      .filter((x) => x.valor > 0 && x.fecha >= desde && x.fecha <= hasta);
   } catch (err) {
     logger.warn(`[finanzas] resultados: entregas estimadas ${err?.message}`);
     return [];
