@@ -14,7 +14,8 @@
 // Plan valen materiales de sus necesidades ÷ 0,3, como en la cuenta corriente
 // de clientes. El mes: el día que la sync de ventas la vio terminada
 // (config_sistema "finanzas_entregas_estimadas") o, si no la anotó (cargada
-// antes del "desde"), su fecha de entrega del Plan. Van en un renglón aparte de Entregas.
+// antes del "desde"), su fecha de entrega del Plan o, si ENTREGA no es una
+// fecha, el último día de su SEMANA. Van en un renglón aparte de Entregas.
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige). La
 // configuración va en config_sistema.
@@ -59,7 +60,7 @@ async function materialesDeEntregas(e, ops, cuentas, otrasIds = []) {
 const MOTIVOS_NO_ESTIMADA = {
   sin_necesidades: "No tiene materiales en Gypi (no pasó por el MRP)",
   sin_precios: "Sus materiales no tienen precio cargado",
-  sin_fecha: "Está terminada pero no tiene fecha de entrega en el Plan",
+  sin_fecha: "Está terminada pero no tiene ENTREGA (con fecha) ni SEMANA en el Plan",
   sin_terminar: "Su fecha de entrega ya pasó pero no está terminada en el Plan (TERMINADO)",
 };
 
@@ -71,7 +72,14 @@ const MOTIVOS_NO_ESTIMADA = {
  */
 async function entregasEstimadas(sesion, desde, hasta) {
   const e = sesion.empresa_id;
-  const COLS = "id,ot,cliente,obra,estado,created_at,fecha_entrega";
+  const COLS = "id,ot,cliente,obra,estado,created_at,fecha_entrega,fecha_objetivo";
+  const COLS_SIN_135 = "id,ot,cliente,obra,estado,created_at,fecha_entrega";
+  // ENTREGA del Plan casi siempre es texto libre: si no es una fecha, va el
+  // último día de la SEMANA (fecha_objetivo, 135). Sin la 135, solo ENTREGA.
+  const enVentana = (a, b) => `or=(and(fecha_entrega.gte.${a},fecha_entrega.lte.${b}),and(fecha_entrega.is.null,fecha_objetivo.gte.${a},fecha_objetivo.lte.${b}))`;
+  const conFecha = async (filtro, a, b) => leer(sesion, `proyectos?empresa_id=eq.${e}&${filtro}&${enVentana(a, b)}&select=${COLS}`, 20000)
+    .catch(() => leer(sesion, `proyectos?empresa_id=eq.${e}&${filtro}&fecha_entrega=gte.${a}&fecha_entrega=lte.${b}&select=${COLS_SIN_135}`, 20000))
+    .catch(() => []);
   try {
     const [fila] = (await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_ENTREGAS_ESTIMADAS}&select=valor&limit=1`, { silent: true, fallback: [] })) || [];
     const anotadas = new Map(Object.entries(fila?.valor?.fechas || {})
@@ -84,15 +92,17 @@ async function entregasEstimadas(sesion, desde, hasta) {
     }
     // Las terminadas que Gypi no anotó (cargadas antes del "desde" o de este
     // cambio): el mes de su fecha de entrega del Plan (13/11, pedido de Tadeo)
-    const viejas = await leer(sesion, `proyectos?empresa_id=eq.${e}&estado=eq.cerrado&fecha_entrega=gte.${desde}&fecha_entrega=lte.${hasta}&select=${COLS}`, 20000).catch(() => []);
+    const viejas = await conFecha("estado=eq.cerrado", desde, hasta);
     for (const p of viejas) if (!anotadas.has(Number(p.id))) proyectos.set(Number(p.id), p);
     // Para la lista de las que no se pudieron estimar: terminadas sin fecha de
     // entrega, y abiertas con la fecha de entrega ya pasada dentro de la ventana
     const hoy = hoyAr();
     const tope = hoy < hasta ? hoy : hasta;
     const [sinFecha, sinTerminar] = await Promise.all([
-      leer(sesion, `proyectos?empresa_id=eq.${e}&estado=eq.cerrado&fecha_entrega=is.null&select=${COLS}`, 20000).catch(() => []),
-      leer(sesion, `proyectos?empresa_id=eq.${e}&estado=neq.cerrado&fecha_entrega=gte.${desde}&fecha_entrega=lte.${tope}&select=${COLS}`, 20000).catch(() => []),
+      leer(sesion, `proyectos?empresa_id=eq.${e}&estado=eq.cerrado&fecha_entrega=is.null&fecha_objetivo=is.null&select=${COLS}`, 20000)
+        .catch(() => leer(sesion, `proyectos?empresa_id=eq.${e}&estado=eq.cerrado&fecha_entrega=is.null&select=${COLS_SIN_135}`, 20000))
+        .catch(() => []),
+      conFecha("estado=neq.cerrado", desde, tope),
     ]);
     // Si le pusieron precio desde la última sync, ya no se estima
     const precios = await sbGet(`precios_ot?empresa_id=eq.${e}&select=ot,precio`, { sesion, silent: true, fallback: [] });
@@ -104,7 +114,7 @@ async function entregasEstimadas(sesion, desde, hasta) {
     const noEstimadas = [];
     const fila_ = (p, fecha, motivo) => ({ ot: String(p.ot), cliente: String(p.cliente || p.obra || "").trim(), fecha, motivo });
     for (const p of vivos) {
-      const fecha = anotadas.get(Number(p.id)) || String(p.fecha_entrega || "");
+      const fecha = anotadas.get(Number(p.id)) || String(p.fecha_entrega || p.fecha_objetivo || "").slice(0, 10);
       if (!(fecha >= desde && fecha <= hasta)) continue;
       const m = materiales.get(String(p.ot));
       const valor = valorOt(0, m).valor;
@@ -112,7 +122,7 @@ async function entregasEstimadas(sesion, desde, hasta) {
       else noEstimadas.push(fila_(p, fecha, !(m?.articulos > 0) ? "sin_necesidades" : "sin_precios"));
     }
     for (const p of sinFecha) if (sinPrecio(p) && !anotadas.has(Number(p.id))) noEstimadas.push(fila_(p, "", "sin_fecha"));
-    for (const p of sinTerminar) if (sinPrecio(p)) noEstimadas.push(fila_(p, String(p.fecha_entrega || ""), "sin_terminar"));
+    for (const p of sinTerminar) if (sinPrecio(p)) noEstimadas.push(fila_(p, String(p.fecha_entrega || p.fecha_objetivo || "").slice(0, 10), "sin_terminar"));
     return { estimadas, noEstimadas };
   } catch (err) {
     logger.warn(`[finanzas] resultados: entregas estimadas ${err?.message}`);
