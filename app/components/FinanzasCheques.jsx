@@ -16,6 +16,7 @@ import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 import { fechaDebito } from "../lib/finanzasDiasHabiles";
 import ElegirProveedor from "./FinanzasElegirProveedor";
+import AvisoRepetidos, { repetidosDe } from "./FinanzasAvisoRepetidos";
 
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
 const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -24,7 +25,7 @@ const MAX_LISTA = 300;
 async function postCheques(body) {
   const res = await apiFetch("/api/finanzas/cheques", { method: "POST", body: JSON.stringify(body) });
   const d = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(d.error || "No se pudo guardar");
+  if (!res.ok) throw Object.assign(new Error(d.error || "No se pudo guardar"), { status: res.status, datos: d });
   return d;
 }
 
@@ -128,15 +129,19 @@ function Detalle({ ch, datos, onCerrar, onCambiado }) {
   const prov = datos.proveedores.find((p) => Number(p.id) === Number(ch.proveedor_id));
   const fila = (k, v) => (v ? <div className="flex justify-between gap-3 py-1 border-t border-gypi-border text-[13px]"><span className="text-gypi-dim">{k}</span><span className="text-right">{v}</span></div> : null);
 
-  async function confirmar() {
+  // 13/11: el débito o el depósito ya está en el banco (de un extracto o a mano)
+  const [repetidos, setRepetidos] = useState(null);
+  async function confirmar(extra = {}) {
     setError(null);
     setGuardando(true);
     try {
-      await postCheques({ accion: "cambiar", id: ch.id, a: accion, fecha, cuenta_banco: cuenta || null, proveedor_id: proveedor ? Number(proveedor) : null });
-      toast.success(`Cheque ${accion === "anular" ? "anulado" : NOMBRE_ACCION[accion].toLowerCase()}`);
+      await postCheques({ accion: "cambiar", id: ch.id, a: accion, fecha, cuenta_banco: cuenta || null, proveedor_id: proveedor ? Number(proveedor) : null, ...extra });
+      toast.success(extra.usar_operacion ? "✅ Cheque unido al movimiento que ya estaba en el banco" : `Cheque ${accion === "anular" ? "anulado" : NOMBRE_ACCION[accion].toLowerCase()}`);
       onCambiado();
     } catch (e) {
-      setError(e.message);
+      const rep = repetidosDe(e.status, e.datos);
+      if (rep) setRepetidos(rep);
+      else setError(e.message);
       setGuardando(false);
     }
   }
@@ -176,10 +181,18 @@ function Detalle({ ch, datos, onCerrar, onCambiado }) {
             ))}
             {accion === "anular" && <p className="m-0 text-[13px] text-gypi-dim">El cheque queda anulado y su operación también. No se borra.</p>}
             {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
-            <div className="flex gap-2">
-              <button type="button" className="g-btn g-btn-secondary flex-1" onClick={() => { setAccion(null); setError(null); }}>Volver</button>
-              <button type="button" className="g-btn g-btn-primary flex-1" disabled={guardando} onClick={confirmar}>{guardando ? "Guardando…" : "Confirmar"}</button>
-            </div>
+            {repetidos ? (
+              <>
+                <p className="m-0 text-[13px]">Si el banco ya trajo este {accion === "debitado" ? "débito" : "depósito"}, tocá <b>Es este</b>: el cheque queda {NOMBRE_ACCION[accion].toLowerCase()} con ese movimiento y no se carga otro.</p>
+                <AvisoRepetidos repetidos={repetidos} ocupado={guardando} onUsar={(id) => confirmar({ usar_operacion: id })} textoUsar="Es este"
+                  textoIgual="Es otro distinto, cargarlo igual" onCargarIgual={() => confirmar({ confirmar_repetido: true })} onCancelar={() => setRepetidos(null)} />
+              </>
+            ) : (
+              <div className="flex gap-2">
+                <button type="button" className="g-btn g-btn-secondary flex-1" onClick={() => { setAccion(null); setError(null); }}>Volver</button>
+                <button type="button" className="g-btn g-btn-primary flex-1" disabled={guardando} onClick={() => confirmar()}>{guardando ? "Guardando…" : "Confirmar"}</button>
+              </div>
+            )}
           </div>
         )}
       </div>

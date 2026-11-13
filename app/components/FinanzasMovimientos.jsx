@@ -28,6 +28,7 @@ import { esDeMantenimiento } from "../lib/finanzasIntegracion";
 import { MARCA_CORREGIDA, dondeSeCambia, puedeAnular, puedeCorregir } from "../lib/finanzasCorregir";
 import CorregirOperacion from "./FinanzasCorregir";
 import DescargarExtracto from "./FinanzasDescargarExtracto";
+import AvisoRepetidos, { repetidosDe } from "./FinanzasAvisoRepetidos";
 import { ORIGENES, asientoDe, cajasDelLado, cuentasDelTipo, filtrarOperaciones, hoyAr, inicioMes, ladoCaja, movimientoCaja, numero, plata, validarOperacion, separaIva } from "../lib/finanzasOperaciones";
 import { cuentaParaElegir, cuentasIniciales } from "../lib/finanzasCuentaElegir";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
@@ -117,7 +118,9 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
   const [cambiarCuentas, setCambiarCuentas] = useState(false);
   const [errores, setErrores] = useState([]);
   const [guardando, setGuardando] = useState(false);
-  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+  // 13/11: el servidor encontró otro igual en esa caja (finanzasRepetidos.js)
+  const [repetidos, setRepetidos] = useState(null);
+  const set = (k) => (e) => { setRepetidos(null); setF((x) => ({ ...x, [k]: e.target.value })); };
 
   const tipo = datos.tipos.find((t) => t.codigo === f.tipo);
   const cajasDebe = cajasDelLado(tipo?.cuenta_debe, datos.tesoreria);
@@ -145,15 +148,17 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
   const total = Math.round((neto + iva + otros) * 100) / 100;
   const vista = { ...f, neto, iva, otros_impuestos: otros, total, tipo_cambio: numero(f.tipo_cambio) || null };
 
-  const guardar = async () => {
+  const guardar = async (confirmarRepetido = false) => {
     const operacion = { ...f, ...(conIva ? {} : { iva: "", otros_impuestos: "" }), proveedor_id: otroNombre ? "" : f.proveedor_id, entidad: f.proveedor_id && !otroNombre ? "" : f.entidad };
     const { errores: e } = validarOperacion(operacion, datos);
     setErrores(e);
     if (e.length) return;
     setGuardando(true);
     try {
-      const res = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "crear", operacion }) });
+      const res = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "crear", operacion, confirmar_repetido: confirmarRepetido }) });
       const d = await res.json().catch(() => ({}));
+      const rep = repetidosDe(res.status, d);
+      if (rep) { setRepetidos(rep); return; }
       if (!res.ok) { setErrores(d.errores || [d.error || "No se pudo guardar"]); return; }
       toast.success("✅ Operación guardada");
       onGuardada();
@@ -316,10 +321,14 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
             {errores.map((e) => <li key={e}>{e}</li>)}
           </ul>
         )}
-        <div className="flex justify-end gap-2 border-t border-gypi-border pt-3">
-          <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
-          <button type="button" className="g-btn g-btn-primary" disabled={guardando || !tipo} onClick={guardar}>{guardando ? "Guardando…" : "Guardar operación"}</button>
-        </div>
+        {repetidos
+          ? <AvisoRepetidos repetidos={repetidos} ocupado={guardando} onCargarIgual={() => guardar(true)} onCancelar={() => setRepetidos(null)} />
+          : (
+            <div className="flex justify-end gap-2 border-t border-gypi-border pt-3">
+              <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
+              <button type="button" className="g-btn g-btn-primary" disabled={guardando || !tipo} onClick={() => guardar()}>{guardando ? "Guardando…" : "Guardar operación"}</button>
+            </div>
+          )}
       </div>
     </Modal>
   );

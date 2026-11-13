@@ -8,8 +8,10 @@
 //       lo de Gypi que no apareció en el banco y el control del saldo.
 //   POST { accion: "confirmar", cuenta, filas: [{ fecha, descripcion,
 //       comprobante, importe, marca, tipo, contra, entidad?, proveedor_id?,
-//       cliente_id? }] } → una operación por renglón (origen "banco"). Lo que
-//       se confirma enseña para la próxima.
+//       cliente_id?, forzar? }] } → una operación por renglón (origen "banco").
+//       Lo que se confirma enseña para la próxima. 13/11: un renglón igual a
+//       algo que ya está en la cuenta (mismo importe, hasta 3 días) da 409
+//       salvo que venga con forzar ("es otro distinto").
 //   POST { accion: "aprender", cuenta, reglas } → suma las reglas que la
 //       pantalla sacó del libro (la hoja T-OPERACIONES se lee en el teléfono o
 //       la computadora: el libro pesa demasiado para subirlo).
@@ -24,9 +26,12 @@ import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { FECHA } from "../../../lib/finanzasOperaciones";
 import { claseDeArchivo, grillaDeArchivo, movimientosDeGrilla, movimientosDePdf } from "../../../lib/finanzasExtracto";
 import {
-  CLAVE_REGLAS_BANCO, DIAS_EMPAREJAR, MAX_MOVIMIENTOS, ORIGEN_BANCO, controlSaldo, emparejarExtracto, entidadDe, juntarReglas,
+  CLAVE_REGLAS_BANCO, DIAS_EMPAREJAR, DIAS_SOSPECHA, MAX_MOVIMIENTOS, ORIGEN_BANCO, controlSaldo, emparejarExtracto, entidadDe, juntarReglas,
   operacionDeMovimiento, parecidosEnGypi, reglasDeConfirmados, repetidosEnCuenta, saldoPorOrigen, sugerir,
 } from "../../../lib/finanzasBanco";
+
+import { respuestaRepetidos } from "../../../lib/finanzasRepetidos";
+import { repetidosEnBase } from "../../../lib/finanzasRepetidosServidor";
 
 export const runtime = "nodejs";
 
@@ -130,6 +135,7 @@ async function leerExtracto(sesion, request) {
       return {
         fecha: f.fecha, comprobante: f.comprobante, descripcion: f.descripcion, importe: f.importe, marca: f.marca,
         op: ops(f.op), ya: f.ya, parecido: ops(parecidos.get(i)),
+        sospecha: f.sospecha ? { nivel: f.sospecha.nivel, motivo: f.sospecha.motivo, parecida: ops(f.sospecha.parecida) } : null,
         sugerencia: s ? { tipo: s.tipo, contra: s.contra, por: s.por, ...entidadDe(s.entidad, { proveedores, clientes }) } : null,
       };
     }),
@@ -173,6 +179,18 @@ async function confirmar(sesion, d) {
     r.forEach((o) => ya.add(o.origen_id));
   }
   const nuevas = ops.filter((o) => !ya.has(o.origen_id));
+  // 13/11: lo que se parece a algo ya cargado en esta cuenta (mismo importe,
+  // hasta 3 días) solo entra con "es otro distinto" en ese renglón
+  const forzadas = new Set(filas.filter((f) => f?.forzar === true).map((f) => String(f.marca)));
+  const { repetidos, nombres } = await repetidosEnBase(sesion, nuevas, { tesoreria: [banco] });
+  const sinOk = repetidos.filter((r) => !forzadas.has(nuevas[r.i].origen_id));
+  if (sinOk.length) {
+    return NextResponse.json({
+      ...respuestaRepetidos(sinOk, nombres),
+      error: `${sinOk.length === 1 ? "Un movimiento se parece" : `${sinOk.length} movimientos se parecen`} a lo que ya está en Gypi (mismo importe, ${DIAS_SOSPECHA} días o menos). Volvé a subir el extracto y tildá "Es otro distinto" solo en los que de verdad faltan.`,
+      marcas: sinOk.map((r) => nuevas[r.i].origen_id),
+    }, { status: 409 });
+  }
   const ahora = new Date().toISOString();
   const quien = await nombreEmpleado(sesion);
   for (let i = 0; i < nuevas.length; i += 500) {

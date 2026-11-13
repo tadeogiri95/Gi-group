@@ -6,7 +6,10 @@
 //      cuenta con el mismo importe (entrada o salida) y fecha cercana (hasta 7
 //      días): el pago a un proveedor, el e-cheq debitado, el cobro por
 //      transferencia. Lo que ya se cargó desde un extracto anterior se
-//      reconoce por su marca (origen_id) y no se repite.
+//      reconoce por su marca (origen_id) y no se repite. Desde el 13/11 lo de
+//      otro extracto también se empareja por importe y fecha (hasta 3 días), y
+//      lo que queda sin pareja pero se parece a algo ya cargado sale como
+//      sospechoso (🔴 mismo día, 🟡 hasta 3 días).
 //   2. Sugerir: lo que falta sale con el tipo y la cuenta de enfrente que se
 //      usaron antes para ese texto del banco. Se aprende del libro
 //      (T-OPERACIONES, la descripción es el texto del extracto) y de lo que se
@@ -19,6 +22,8 @@ import { claveNombre } from "./finanzasProveedores";
 export const ORIGEN_BANCO = "banco";
 export const CLAVE_REGLAS_BANCO = "finanzas_reglas_banco";
 export const DIAS_EMPAREJAR = 7;
+/** Mismo importe hasta estos días = posible repetido (13/11; finanzasRepetidos.js). */
+export const DIAS_SOSPECHA = 3;
 export const MAX_REGLAS = 600;
 export const MAX_MOVIMIENTOS = 2000;
 
@@ -205,35 +210,72 @@ export function movimientoEnCuenta(op, cuenta) {
 }
 
 /**
+ * Un renglón del extracto que no encontró pareja y se parece a una operación
+ * de la cuenta: mismo importe el mismo día (rojo) o hasta 3 días (amarillo).
+ * @returns {{ nivel: "rojo"|"amarillo", motivo: "gypi", parecida: object } | null}
+ */
+export function sospechaDeRenglon(f, operaciones = [], cuenta) {
+  let mejor = null;
+  for (const o of operaciones) {
+    if (o.anulada_at || Math.abs(movimientoEnCuenta(o, cuenta) - f.importe) >= 0.01) continue;
+    const d = dias(o.fecha, f.fecha);
+    if (d > DIAS_SOSPECHA) continue;
+    if (!mejor || d < mejor.d) mejor = { o, d };
+  }
+  return mejor ? { nivel: mejor.d === 0 ? "rojo" : "amarillo", motivo: "gypi", parecida: mejor.o } : null;
+}
+
+/**
  * Empareja el extracto con las operaciones de Gypi de esa cuenta.
  * @param {object[]} movimientos del extracto
  * @param {object[]} operaciones de Gypi (vivas)
  * @param {string} cuenta código de la cuenta del banco
- * @returns {{ filas: object[], sin_banco: object[] }} cada fila = movimiento + { marca, op?: operación de Gypi, ya: true si vino de un extracto anterior }
+ * @returns {{ filas: object[], sin_banco: object[] }} cada fila = movimiento + { marca, op?: operación de Gypi, ya: true si vino de un extracto anterior, sospecha?: sospechaDeRenglon }
  */
 export function emparejarExtracto(movimientos = [], operaciones = [], cuenta) {
   const marcas = marcasExtracto(movimientos, cuenta);
   const deCuenta = operaciones.filter((o) => !o.anulada_at && (o.cuenta_debe === cuenta || o.cuenta_haber === cuenta));
   const usadas = new Set();
   const porMarca = new Map(deCuenta.filter((o) => o.origen === ORIGEN_BANCO && o.origen_id).map((o) => [o.origen_id, o]));
-  const filas = movimientos.map((m, i) => ({ ...m, marca: marcas[i], op: null, ya: false }));
+  const filas = movimientos.map((m, i) => ({ ...m, marca: marcas[i], op: null, ya: false, sospecha: null }));
   // Primero lo que ya se cargó desde un extracto
   for (const f of filas) {
     const o = porMarca.get(f.marca);
     if (o) { f.op = o; f.ya = true; usadas.add(o.id); }
   }
-  // Después por importe y fecha (la más cercana), sin repetir operación
-  for (const f of filas) {
+  // Después por importe y fecha, las parejas más cercanas primero, sin repetir
+  // operación. 13/11: también contra lo cargado de otro extracto (el mismo mes
+  // en PDF y en CSV, o el banco cambió el texto, da otra marca), pero esas
+  // solo hasta 3 días: son del banco y deberían tener la misma fecha
+  const parejas = [];
+  for (const [fi, f] of filas.entries()) {
     if (f.op) continue;
-    let mejor = null;
     for (const o of deCuenta) {
-      if (usadas.has(o.id) || o.origen === ORIGEN_BANCO) continue;
+      if (usadas.has(o.id)) continue;
       if (Math.abs(movimientoEnCuenta(o, cuenta) - f.importe) >= 0.01) continue;
       const d = dias(o.fecha, f.fecha);
-      if (d > DIAS_EMPAREJAR) continue;
-      if (!mejor || d < mejor.d) mejor = { o, d };
+      if (d > (o.origen === ORIGEN_BANCO ? DIAS_SOSPECHA : DIAS_EMPAREJAR)) continue;
+      parejas.push({ fi, o, d });
     }
-    if (mejor) { f.op = mejor.o; usadas.add(mejor.o.id); }
+  }
+  parejas.sort((a, b) => a.d - b.d || a.fi - b.fi || a.o.id - b.o.id);
+  for (const { fi, o } of parejas) {
+    const f = filas[fi];
+    if (f.op || usadas.has(o.id)) continue;
+    f.op = o;
+    usadas.add(o.id);
+  }
+  // 13/11: lo que queda sin pareja pero se parece a algo que ya está (otra del
+  // mismo importe en la cuenta, aunque ya tenga su renglón, o un renglón igual
+  // de este mismo extracto) es sospechoso: no se tilda solo y se carga solo
+  // con "es otro distinto"
+  const vistos = new Map();
+  for (const f of filas) {
+    if (f.op) continue;
+    f.sospecha = sospechaDeRenglon(f, deCuenta, cuenta);
+    const k = `${f.fecha}:${Math.round(f.importe * 100)}`;
+    if (!f.sospecha && vistos.has(k)) f.sospecha = { nivel: "amarillo", motivo: "extracto", parecida: null };
+    vistos.set(k, true);
   }
   // Lo de Gypi del mismo período que no apareció en el banco
   const fechas = movimientos.map((m) => m.fecha).sort();

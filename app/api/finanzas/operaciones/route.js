@@ -4,8 +4,11 @@
 //   GET ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD → operaciones del período (por
 //       defecto el mes en curso) y las listas para cargar una nueva: tipos,
 //       cuentas, cajas y bancos, centros de costo, proveedores y OT.
-//   POST { accion: "crear", operacion } → valida (cuentas, caja, dólares, lo
-//       que pide el tipo) y la guarda.
+//   POST { accion: "crear", operacion, confirmar_repetido? } → valida (cuentas,
+//       caja, dólares, lo que pide el tipo) y la guarda. Si en la misma caja ya
+//       hay otra por el mismo importe con hasta 3 días (13/11), responde 409
+//       con los repetidos hasta que venga confirmar_repetido (lo mismo en
+//       gasto y corregir).
 //   POST { accion: "gasto", gasto } → un gasto devengado con o sin factura (y
 //       su pago, si ya se pagó): reglas en app/lib/finanzasGastos.js.
 //       Con proveedor sin tipo guardado, el tipo queda guardado para la próxima.
@@ -49,6 +52,7 @@ import { esDeMantenimiento, grupoDeVinculo, vinculoValido } from "../../../lib/f
 import { avisoRepetido } from "../../../lib/finanzasComprobantes";
 import { buscarComprobanteRepetido } from "../../../lib/finanzasComprobantesServidor";
 import { randomUUID } from "node:crypto";
+import { frenoRepetidos, repetidosEnBase } from "../../../lib/finanzasRepetidosServidor";
 import { MARCA_CORREGIDA, MAX_ANULAR_JUNTAS, SE_ANULAN, operacionCorregida, puedeCorregir } from "../../../lib/finanzasCorregir";
 
 const ANULABLES = `origen=in.(${[...SE_ANULAN].filter((o) => o !== ORIGEN_GASTO).join(",")})`;
@@ -198,8 +202,14 @@ export async function POST(request) {
   const e = sesion.empresa_id;
   try {
     if (d.accion === "crear") {
-      const { op, errores } = validarOperacion(d.operacion, await listas(sesion));
+      const ctx = await listas(sesion);
+      const { op, errores } = validarOperacion(d.operacion, ctx);
       if (errores.length) return NextResponse.json({ error: errores.join(" "), errores }, { status: 400 });
+      // 13/11: mismo importe en la misma caja y fecha cerca = sospechoso (finanzasRepetidos.js)
+      if (d.confirmar_repetido !== true) {
+        const freno = frenoRepetidos(await repetidosEnBase(sesion, [op], { tesoreria: ctx.tesoreria }));
+        if (freno) return freno;
+      }
       const ahora = new Date().toISOString();
       const [fila] = await sbPost("fin_operaciones", {
         ...op, empresa_id: e, cargada_por_nombre: await nombreEmpleado(sesion), created_at: ahora, updated_at: ahora,
@@ -213,6 +223,10 @@ export async function POST(request) {
       if (errores.length) return NextResponse.json({ error: errores.join(" "), errores }, { status: 400 });
       const repetida = await facturaRepetida(sesion, d.gasto);
       if (repetida) return NextResponse.json({ error: `${avisoRepetido(repetida, "Esa factura")} Si estaba mal, anulala y cargala de nuevo.` }, { status: 409 });
+      if (d.confirmar_repetido !== true) {
+        const freno = frenoRepetidos(await repetidosEnBase(sesion, ops, { tesoreria: ctx.tesoreria }));
+        if (freno) return freno;
+      }
       let grupo = `g${randomUUID().replace(/-/g, "").slice(0, 12)}`;
       // Parte 9: unido a un arreglo de Flota o Maquinaria, con una clave fija
       if (d.gasto?.vinculo) {
@@ -275,6 +289,11 @@ export async function POST(request) {
       const cuentas = (await sbGetAll(`fin_cuentas?empresa_id=eq.${e}&select=codigo`, { sesion, maxFilas: 5000 })).data || [];
       const { nueva, errores } = operacionCorregida(op, d.cambios || {}, { cuentas });
       if (errores.length) return NextResponse.json({ error: errores.join(" "), errores }, { status: 400 });
+      // Si cambia la fecha o el importe, que no quede igual a otra (la que se corrige no cuenta)
+      if (d.confirmar_repetido !== true) {
+        const freno = frenoRepetidos(await repetidosEnBase(sesion, [nueva], { excluir: [id] }));
+        if (freno) return freno;
+      }
       const ahora = new Date().toISOString();
       const quien = await nombreEmpleado(sesion);
       // Primero se anula la vieja (si otro la anuló recién, no se carga la nueva)

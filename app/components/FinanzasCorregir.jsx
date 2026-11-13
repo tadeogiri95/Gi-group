@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { SelectBuscable } from "./ui";
+import AvisoRepetidos, { repetidosDe } from "./FinanzasAvisoRepetidos";
 import { useToast } from "./ui/Toast";
 
 function campo(label, input) {
@@ -35,6 +36,7 @@ export default function CorregirOperacion({ op, cuentas = [], onCancelar, onCorr
     descripcion: op.descripcion || "", referencia: op.referencia || "", tipo_cambio: op.tipo_cambio ? String(op.tipo_cambio) : "",
   });
   const [guardando, setGuardando] = useState(false);
+  const [repetidos, setRepetidos] = useState(null);
   const cambiar = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const nombreCuenta = (c) => cuentas.find((x) => x.codigo === c)?.nombre || c;
   const opciones = (actual) => [
@@ -42,15 +44,17 @@ export default function CorregirOperacion({ op, cuentas = [], onCancelar, onCorr
     ...(actual && !cuentas.some((c) => c.codigo === actual) ? [{ codigo: actual, nombre: actual }] : []),
   ];
 
-  async function guardar() {
+  async function guardar(confirmarRepetido = false) {
     const total = leerImporte(f.total);
     if (!(total > 0)) { toast.error("El importe tiene que ser mayor a cero"); return; }
     setGuardando(true);
     try {
       const cambios = { fecha: f.fecha, total, cuenta_debe: f.cuenta_debe, cuenta_haber: f.cuenta_haber, descripcion: f.descripcion, referencia: f.referencia };
       if (op.moneda === "USD") cambios.tipo_cambio = leerImporte(f.tipo_cambio);
-      const res = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "corregir", id: op.id, cambios }) });
+      const res = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "corregir", id: op.id, cambios, confirmar_repetido: confirmarRepetido }) });
       const d = await res.json().catch(() => ({}));
+      const rep = repetidosDe(res.status, d);
+      if (rep) { setRepetidos(rep); return; }
       if (!res.ok) throw new Error(d.error || "No se pudo corregir");
       toast.success("✅ Corregida: la anterior queda anulada");
       onCorregida(d.operacion);
@@ -84,10 +88,14 @@ export default function CorregirOperacion({ op, cuentas = [], onCancelar, onCorr
       {(f.cuenta_debe !== op.cuenta_debe || f.cuenta_haber !== op.cuenta_haber) && (
         <p className="m-0 text-[12px] text-gypi-dim">Queda: entra a {nombreCuenta(f.cuenta_debe)} y sale de {nombreCuenta(f.cuenta_haber)}.</p>
       )}
-      <div className="flex justify-end gap-2">
-        <button type="button" className="g-btn g-btn-secondary" onClick={onCancelar}>Cancelar</button>
-        <button type="button" className="g-btn g-btn-primary" disabled={guardando} onClick={guardar}>{guardando ? "Guardando…" : "Guardar corrección"}</button>
-      </div>
+      {repetidos
+        ? <AvisoRepetidos repetidos={repetidos} ocupado={guardando} textoIgual="Es otro distinto, corregirla igual" onCargarIgual={() => guardar(true)} onCancelar={() => setRepetidos(null)} />
+        : (
+          <div className="flex justify-end gap-2">
+            <button type="button" className="g-btn g-btn-secondary" onClick={onCancelar}>Cancelar</button>
+            <button type="button" className="g-btn g-btn-primary" disabled={guardando} onClick={() => guardar()}>{guardando ? "Guardando…" : "Guardar corrección"}</button>
+          </div>
+        )}
     </section>
   );
 }

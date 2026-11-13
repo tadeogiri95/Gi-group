@@ -198,11 +198,11 @@ const pedir = async (rol, metodo, body) => api[metodo](new Request("http://local
   method: metodo, headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token(rol)}` }, ...(body ? { body: JSON.stringify(body) } : {}),
 }));
 
-function mockApi() {
+function mockApi(enBanco = []) {
   const insertado = [];
   const config = { filas: [] };
   const tabla = { fin_tesoreria: TESORERIA, fin_tipos_operacion: TIPOS, fin_cuentas: CUENTAS, empleados: [{ nombre: "Tadeo" }] };
-  const ops = [...DEL_LIBRO.filter((o) => !o.anulada_at)];
+  const ops = [...DEL_LIBRO.filter((o) => !o.anulada_at), ...enBanco];
   global.fetch = createFetchMock([
     ...authPassHandlers(),
     { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
@@ -320,4 +320,19 @@ test("Plazos fijos — lista, aviso de vencidos e importar la planilla del banco
   const cargar = enviado.find((b) => b.accion === "cargar");
   assert.deepEqual(cargar.omitir, ["10000001"]);
   assert.equal(cargar.fechas["10000003"], "2026-10-15");
+});
+
+test("/api/finanzas/plazos-fijos — lo que el extracto ya trajo (el rescate con el interés en un renglón) no se carga sin OK (13/11)", async () => {
+  const rescate = { id: 70, fecha: "2026-11-03", tipo: "OTROS INGRESOS", total: 2080000, total_ars: 2080000, cuenta_debe: BANCO, cuenta_haber: "04.01.09.001.001", descripcion: "PF RESCATE", origen: "banco" };
+  const { insertado } = mockApi([rescate]);
+  const ver = await (await pedir("gerencial", "POST", { accion: "ver", plazos: [P2], banco: BANCO, cuenta_pf: PF, exportado: "2026-10-29" })).json();
+  assert.equal(ver.filas[0].repetidos.length, 1);
+  assert.match(ver.filas[0].repetidos[0], /🔴 Ya hay en BANCO CREDICOOP CTA CTE .* el mismo día/);
+  const sinOk = await pedir("gerencial", "POST", { accion: "cargar", plazos: [P2], banco: BANCO, cuenta_pf: PF, exportado: "2026-10-29" });
+  assert.equal(sinOk.status, 409);
+  assert.deepEqual((await sinOk.json()).certificados, ["10000002"]);
+  assert.equal(insertado.length, 0);
+  const conOk = await pedir("gerencial", "POST", { accion: "cargar", plazos: [P2], banco: BANCO, cuenta_pf: PF, exportado: "2026-10-29", forzar: ["10000002"] });
+  assert.equal(conOk.status, 200);
+  assert.ok(insertado.length > 0);
 });

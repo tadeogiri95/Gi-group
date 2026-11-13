@@ -150,7 +150,7 @@ const pedir = async (rol, metodo, body, query = "") => api[metodo](new Request(`
   method: metodo, headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token(rol)}` }, ...(body ? { body: JSON.stringify(body) } : {}),
 }));
 
-function mockApi({ cheques = [PROPIO, TERCERO], sin174 = false, libro = [] } = {}) {
+function mockApi({ cheques = [PROPIO, TERCERO], sin174 = false, libro = [], enBanco = [] } = {}) {
   const escrito = [];
   const leido = [];
   global.fetch = createFetchMock([
@@ -180,6 +180,8 @@ function mockApi({ cheques = [PROPIO, TERCERO], sin174 = false, libro = [] } = {
     {
       match: (u) => u.includes("/rest/v1/fin_operaciones"),
       respond: (u, o) => {
+        // Lo que ya está en el banco (13/11: control de repetidos)
+        if (!o?.method || o.method === "GET") { leido.push(u); return { status: 200, body: enBanco }; }
         const body = o?.body ? JSON.parse(o.body) : null;
         escrito.push({ tabla: "fin_operaciones", url: u, metodo: o?.method || "GET", body });
         return { status: 201, body: [{ id: 77, ...body }] };
@@ -227,6 +229,31 @@ test("/api/finanzas/cheques — debitado: el cambio solo vale si el cheque sigue
   assert.equal(escrito[2].body.op_cierre_id, 77);
   mockApi({ cheques: [{ ...PROPIO, estado: "debitado" }] });
   assert.equal((await pedir("gerencial", "POST", { accion: "cambiar", id: 10, a: "debitado", fecha: "2026-11-10" })).status, 400);
+});
+
+test("/api/finanzas/cheques — debitado que ya trajo el extracto: avisa, se une a ese movimiento o se carga igual (13/11)", async () => {
+  const delExtracto = { id: 900, fecha: "2026-11-10", tipo: "PAGO ECHEQ", descripcion: "ECHEQ 28887495", origen: "banco", total: 1600000, total_ars: 1600000, cuenta_debe: "02.01.02.001.001", cuenta_haber: "01.01.01.003.002" };
+  let { escrito } = mockApi({ enBanco: [delExtracto] });
+  let res = await pedir("gerencial", "POST", { accion: "cambiar", id: 10, a: "debitado", fecha: "2026-11-10" });
+  assert.equal(res.status, 409);
+  const d = await res.json();
+  assert.equal(d.repetidos[0].nivel, "rojo");
+  assert.equal(d.repetidos[0].parecidas[0].id, 900);
+  assert.equal(escrito.length, 0, "no se tocó nada");
+  // "Es este": el cheque queda debitado con el movimiento del extracto, sin cargar otro
+  ({ escrito } = mockApi({ enBanco: [delExtracto] }));
+  res = await pedir("gerencial", "POST", { accion: "cambiar", id: 10, a: "debitado", fecha: "2026-11-10", usar_operacion: 900 });
+  assert.equal(res.status, 200);
+  assert.equal(escrito.filter((x) => x.tabla === "fin_operaciones").length, 0);
+  assert.equal(escrito[1].body.op_cierre_id, 900);
+  // Otro movimiento que no se ofreció no sirve
+  mockApi({ enBanco: [delExtracto] });
+  assert.equal((await pedir("gerencial", "POST", { accion: "cambiar", id: 10, a: "debitado", fecha: "2026-11-10", usar_operacion: 5 })).status, 409);
+  // "Es otro distinto": se carga igual
+  ({ escrito } = mockApi({ enBanco: [delExtracto] }));
+  res = await pedir("gerencial", "POST", { accion: "cambiar", id: 10, a: "debitado", fecha: "2026-11-10", confirmar_repetido: true });
+  assert.equal(res.status, 200);
+  assert.equal(escrito.filter((x) => x.tabla === "fin_operaciones" && x.metodo === "POST").length, 1);
 });
 
 test("/api/finanzas/cheques — anular anula la operación del alta (no se borra)", async () => {

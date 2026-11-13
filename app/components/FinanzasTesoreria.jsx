@@ -14,6 +14,8 @@
 // 12/11: tocando un movimiento de la ficha se ve su detalle, y se corrige o se
 // anula (finanzasCorregir.js); 📈 Inversiones: el FCI con el saldo real y los
 // títulos con láminas y cotización (FinanzasInversiones.jsx).
+// 13/11: 🔎 Posibles repetidos busca en todas las cajas lo que parece cargado
+// dos veces; las cargas avisan 🔴/🟡 antes de guardar (finanzasRepetidos.js).
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -22,11 +24,13 @@ import { ORIGEN_SALDO_INICIAL } from "../lib/finanzasProveedores";
 import { ORIGEN_LIBRO } from "../lib/finanzasHistorico";
 import { NOMBRE_GRUPO, ORDEN_TIPOS, movimientosDeCaja, saldosCajasDelLibro, saldosTesoreria, totalesTesoreria } from "../lib/finanzasTesoreria";
 import { paraRevisarMiCaja, tiposParaMiCaja } from "../lib/finanzasMiCaja";
-import SubirExtracto from "./FinanzasExtracto";
+import SubirExtracto, { Repetidos } from "./FinanzasExtracto";
+import { repetidosEnCuenta } from "../lib/finanzasBanco";
 import PlazosFijos from "./FinanzasPlazosFijos";
 import Inversiones from "./FinanzasInversiones";
 import { Detalle } from "./FinanzasMovimientos";
 import DescargarExtracto from "./FinanzasDescargarExtracto";
+import AvisoRepetidos, { repetidosDe } from "./FinanzasAvisoRepetidos";
 import { Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
@@ -37,7 +41,7 @@ const MAX_MOVIMIENTOS = 300;
 async function postTesoreria(body) {
   const res = await apiFetch("/api/finanzas/tesoreria", { method: "POST", body: JSON.stringify(body) });
   const d = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(d.error || "No se pudo guardar");
+  if (!res.ok) throw Object.assign(new Error(d.error || "No se pudo guardar"), { status: res.status, datos: d });
   return d;
 }
 
@@ -159,19 +163,22 @@ function Transferir({ datos, desdeInicial = "", onCerrar, onHecho }) {
   const [f, setF] = useState({ desde: desdeInicial, hacia: "", importe: "", fecha: hoyAr(), tipo_cambio: "", descripcion: "" });
   const [error, setError] = useState(null);
   const [guardando, setGuardando] = useState(false);
-  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+  const [repetidos, setRepetidos] = useState(null);
+  const set = (k) => (e) => { setRepetidos(null); setF((x) => ({ ...x, [k]: e.target.value })); };
   const desde = vivas.find((t) => t.cuenta === f.desde);
   const usd = desde?.moneda === "USD";
 
-  async function guardar() {
+  async function guardar(confirmarRepetido = false) {
     setError(null);
     setGuardando(true);
     try {
-      await postTesoreria({ accion: "transferir", ...f, importe: numero(f.importe), tipo_cambio: usd ? numero(f.tipo_cambio) : null });
+      await postTesoreria({ accion: "transferir", ...f, importe: numero(f.importe), tipo_cambio: usd ? numero(f.tipo_cambio) : null, confirmar_repetido: confirmarRepetido });
       toast.success("Listo: la plata pasó de caja");
       onHecho();
     } catch (e) {
-      setError(e.message);
+      const rep = repetidosDe(e.status, e.datos);
+      if (rep) setRepetidos(rep);
+      else setError(e.message);
       setGuardando(false);
     }
   }
@@ -199,10 +206,14 @@ function Transferir({ datos, desdeInicial = "", onCerrar, onHecho }) {
         </div>
         {campo("Nota (opcional)", <input className="g-input w-full" aria-label="Nota" maxLength={300} value={f.descripcion} onChange={set("descripcion")} />)}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
-        <div className="flex justify-end gap-2">
-          <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
-          <button type="button" className="g-btn g-btn-primary" disabled={guardando || !f.desde || !f.hacia} onClick={guardar}>{guardando ? "Guardando…" : "Pasar la plata"}</button>
-        </div>
+        {repetidos
+          ? <AvisoRepetidos repetidos={repetidos} ocupado={guardando} onCargarIgual={() => guardar(true)} onCancelar={() => setRepetidos(null)} />
+          : (
+            <div className="flex justify-end gap-2">
+              <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
+              <button type="button" className="g-btn g-btn-primary" disabled={guardando || !f.desde || !f.hacia} onClick={() => guardar()}>{guardando ? "Guardando…" : "Pasar la plata"}</button>
+            </div>
+          )}
       </div>
     </Modal>
   );
@@ -390,6 +401,39 @@ function RevisarMiCaja({ datos, pendientes, onCerrar, onCambio }) {
 
 /* ─── Pantalla ───────────────────────────────────────────────────────── */
 
+/* ─── 🔎 Posibles repetidos en todas las cajas (13/11) ──────────────────── */
+
+/** Por caja, los grupos del mismo importe con 3 días o menos entre uno y otro (repetidosEnCuenta). */
+export function repetidosPorCaja(operaciones = [], tesoreria = []) {
+  return tesoreria
+    .filter((t) => t.activa !== false)
+    .map((t) => ({ caja: t, grupos: repetidosEnCuenta(operaciones, t.cuenta) }))
+    .filter((x) => x.grupos.length)
+    .sort((a, b) => a.caja.nombre.localeCompare(b.caja.nombre));
+}
+
+function PosiblesRepetidos({ datos, porCaja, onCerrar, onCambio }) {
+  const [detalle, setDetalle] = useState(null);
+  return (
+    <Modal open onClose={onCerrar} title="🔎 Posibles repetidos" maxWidth={980}>
+      <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
+        <p className="m-0 text-[13px] text-gypi-dim">
+          En cada caja y banco, los movimientos por el mismo importe con 3 días o menos de diferencia. 🔴 = dos el mismo día (muy sospechoso), 🟡 = a pocos días.
+          Puede ser algo que de verdad se repitió (dos comisiones iguales): revisá antes de anular. Lo anulado queda tachado y deja de sumar.
+        </p>
+        {!porCaja.length && <p className="m-0 p-3 rounded-lg bg-gypi-green/10">✅ No encontré movimientos repetidos en ninguna caja ni banco.</p>}
+        {porCaja.map(({ caja, grupos }) => (
+          <Repetidos key={caja.cuenta} grupos={grupos} titulo={caja.nombre} abierto={porCaja.length === 1} onVer={setDetalle} onAnuladas={onCambio} />
+        ))}
+        <div className="flex justify-end">
+          <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cerrar</button>
+        </div>
+      </div>
+      {detalle && <Detalle op={detalle} datos={datos} onCerrar={() => setDetalle(null)} onAnulada={() => { setDetalle(null); onCambio(); }} />}
+    </Modal>
+  );
+}
+
 export default function FinanzasTesoreria() {
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState(null);
@@ -400,6 +444,7 @@ export default function FinanzasTesoreria() {
   const [verRevisar, setVerRevisar] = useState(false);
   const [verConfig, setVerConfig] = useState(false);
   const [extracto, setExtracto] = useState(null);
+  const [verRepetidos, setVerRepetidos] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -417,6 +462,8 @@ export default function FinanzasTesoreria() {
   const saldos = useMemo(() => (datos ? saldosTesoreria(datos.operaciones, datos.tesoreria) : []), [datos]);
   const totales = useMemo(() => totalesTesoreria(saldos), [saldos]);
   const pendientes = useMemo(() => paraRevisarMiCaja(datos?.operaciones), [datos]);
+  const porCaja = useMemo(() => (datos ? repetidosPorCaja(datos.operaciones, datos.tesoreria) : []), [datos]);
+  const nRepetidos = porCaja.reduce((n, x) => n + x.grupos.length, 0);
 
   if (error) return <p role="alert" className="m-[18px] text-[14px] text-gypi-red">⚠ {error}</p>;
   if (!datos) return <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div>;
@@ -435,6 +482,9 @@ export default function FinanzasTesoreria() {
         <button type="button" className="g-btn g-btn-primary" onClick={() => setTransferir("")}>⇄ Pasar plata</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setIniciales(true)}>📥 Cargar saldos iniciales</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setVerConfig(true)}>⚙ Mi caja</button>
+        <button type="button" className={`g-btn ${nRepetidos ? "g-btn-primary" : "g-btn-secondary"}`} onClick={() => setVerRepetidos(true)}>
+          🔎 Posibles repetidos{nRepetidos ? ` (${nRepetidos})` : ""}
+        </button>
       </div>
       {pendientes.length > 0 && (
         <button type="button" onClick={() => setVerRevisar(true)}
@@ -476,6 +526,7 @@ export default function FinanzasTesoreria() {
         </label>
       )}
 
+      {verRepetidos && <PosiblesRepetidos datos={datos} porCaja={porCaja} onCerrar={() => setVerRepetidos(false)} onCambio={cargar} />}
       {cajaFicha && <Ficha caja={cajaFicha} datos={datos} onCambio={cargar} onCerrar={() => setFicha(null)} onTransferir={() => { setTransferir(cajaFicha.cuenta); setFicha(null); }} onExtracto={() => { setExtracto(cajaFicha.cuenta); setFicha(null); }} />}
       {extracto && <SubirExtracto caja={saldos.find((s) => s.cuenta === extracto) || { cuenta: extracto, nombre: extracto }} datos={datos} onCerrar={() => setExtracto(null)} onCargado={() => { setExtracto(null); cargar(); }} />}
       {transferir !== null && <Transferir datos={datos} desdeInicial={transferir} onCerrar={() => setTransferir(null)} onHecho={() => { setTransferir(null); cargar(); }} />}
