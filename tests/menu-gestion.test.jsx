@@ -147,7 +147,7 @@ test("U-12 — los primeros pasos abren la sección justa", () => {
   const ir = Object.fromEntries(pasosActivacion().map((p) => [p.id, p.ir]));
   assert.equal(ir.ubicacion, "config:ubicaciones");
   assert.equal(ir.horario, "equipo:horarios");
-  assert.equal(ir.ot, "config:proyectos");
+  assert.equal(ir.ot, "proyectos:ot");
   assert.deepEqual(partirDestino("config:ubicaciones"), { pantalla: "config", seccion: "ubicaciones" });
   assert.deepEqual(partirDestino("equipo"), { pantalla: "equipo", seccion: null });
   const home = readFileSync(new URL("../app/[slug]/HomeContent.jsx", import.meta.url), "utf8");

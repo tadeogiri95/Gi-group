@@ -325,7 +325,8 @@ export default function FinanzasConfig() {
       const res = await apiFetch("/api/finanzas");
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "No se pudo cargar Finanzas");
-      setDatos(d);
+      // Si alguna lista no vino, vacía: la pantalla no se rompe (13/11)
+      setDatos({ ...d, cuentas: d.cuentas || [], tipos: d.tipos || [], tesoreria: d.tesoreria || [], centros: d.centros || [] });
       setError(null);
     } catch (e) {
       setError(e.message);
