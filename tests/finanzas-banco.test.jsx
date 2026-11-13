@@ -165,6 +165,27 @@ test("emparejar — mismo importe y fecha cercana, una operación por renglón; 
   assert.deepEqual(sin_banco.map((o) => o.id), [4]);
 });
 
+test("emparejar (13/11) — lo de otro extracto con otra marca se reconoce por importe y fecha; lo igual sin pareja es sospechoso", () => {
+  const otroFormato = [
+    { id: 8, fecha: "2026-09-01", tipo: "PAGO GASTOS BANCARIOS", cuenta_debe: COM, cuenta_haber: BANCO, total_ars: 600, origen: "banco", origen_id: "otra:marca:1" },
+    { id: 9, fecha: "2026-08-27", tipo: "PAGO GASTOS BANCARIOS", cuenta_debe: COM, cuenta_haber: BANCO, total_ars: 600, origen: "banco", origen_id: "otra:marca:2" },
+  ];
+  const { filas } = emparejarExtracto(MOVS, otroFormato, BANCO);
+  assert.deepEqual(filas.map((f) => f.op?.id ?? null), [null, 8, null, null], "la del extracto anterior a 5 días no se usa: solo hasta 3");
+  assert.deepEqual(filas[2].sospecha && [filas[2].sospecha.nivel, filas[2].sospecha.parecida.id], ["rojo", 8], "la segunda comisión igual el mismo día");
+  assert.equal(filas[0].sospecha, null);
+  // Dos renglones iguales del mismo extracto sin nada en Gypi: el segundo queda en amarillo
+  const { filas: solos } = emparejarExtracto(MOVS, [], BANCO);
+  assert.deepEqual(solos.map((f) => f.sospecha?.motivo ?? null), [null, null, "extracto", null]);
+  // La pareja más cercana gana aunque el renglón venga después
+  const { filas: cerca } = emparejarExtracto(
+    [{ fecha: "2026-09-05", descripcion: "A", importe: -100 }, { fecha: "2026-09-02", descripcion: "B", importe: -100 }],
+    [{ id: 1, fecha: "2026-09-02", cuenta_debe: COM, cuenta_haber: BANCO, total_ars: 100, origen: "manual" }], BANCO,
+  );
+  assert.deepEqual(cerca.map((f) => f.op?.id ?? null), [null, 1]);
+  assert.equal(cerca[0].sospecha.nivel, "amarillo");
+});
+
 test("la operación de un renglón — el banco al debe si entra y al haber si sale", () => {
   const sale = operacionDeMovimiento({ ...MOVS[0], marca: "m1", tipo: "PAGO EFECTIVO A PROVEEDORES M.P", contra: PROV, proveedor_id: 9, entidad: "VINY" }, BANCO);
   assert.deepEqual([sale.cuenta_debe, sale.cuenta_haber, sale.total, sale.total_ars, sale.proveedor_id, sale.origen, sale.origen_id, sale.referencia], [PROV, BANCO, 1633500, 1633500, 9, "banco", "m1", "1"]);
@@ -258,6 +279,21 @@ test("/api/finanzas/banco — confirmar: una operación por renglón, sin repeti
   assert.equal((await pedir("gerencial", { accion: "confirmar", cuenta: BANCO, filas: [{ ...fila, tipo: "NO EXISTE" }] })).status, 400);
   assert.equal((await pedir("gerencial", { accion: "confirmar", cuenta: BANCO, filas: [{ ...fila, contra: BANCO }] })).status, 400, "contra el mismo banco no");
   assert.equal((await pedir("gerencial", { accion: "confirmar", cuenta: BANCO, filas: [{ ...fila, marca: "x;drop" }] })).status, 400);
+});
+
+test("/api/finanzas/banco — confirmar (13/11): lo igual a algo de la cuenta solo entra con forzar", async () => {
+  const yaEsta = { id: 40, fecha: "2026-09-01", tipo: "PAGO IMPUESTO", origen: "manual", total: 95.5, total_ars: 95.5, cuenta_debe: IMP, cuenta_haber: BANCO };
+  let escrito = mockApi({ opsCuenta: [yaEsta] });
+  const fila = { fecha: "2026-09-01", descripcion: "Impuesto", comprobante: null, importe: -95.5, marca: "abc123:1", tipo: "PAGO IMPUESTO", contra: IMP };
+  const r = await pedir("gerencial", { accion: "confirmar", cuenta: BANCO, filas: [fila] });
+  assert.equal(r.status, 409);
+  const d = await r.json();
+  assert.deepEqual(d.marcas, ["abc123:1"]);
+  assert.match(d.error, /Un movimiento se parece/);
+  assert.equal(escrito.filter((x) => x.tabla === "fin_operaciones").length, 0);
+  escrito = mockApi({ opsCuenta: [yaEsta] });
+  assert.equal((await pedir("gerencial", { accion: "confirmar", cuenta: BANCO, filas: [{ ...fila, forzar: true }] })).status, 200);
+  assert.equal(escrito.filter((x) => x.tabla === "fin_operaciones").length, 1);
 });
 
 test("/api/finanzas/banco — aprender guarda solo lo que tiene forma de regla", async () => {

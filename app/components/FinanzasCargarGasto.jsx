@@ -16,6 +16,7 @@ import { MAX_ARCHIVO_B64 } from "../lib/facturasSueltas";
 import { fotoBase64 } from "../lib/foto";
 import { LETRAS, cuentasDeuda, deudaDelTipo, fechaDevengado, operacionesGasto, tiposDeGasto } from "../lib/finanzasGastos";
 import ElegirProveedor from "./FinanzasElegirProveedor";
+import AvisoRepetidos, { repetidosDe } from "./FinanzasAvisoRepetidos";
 import { Chip, Modal, SelectBuscable } from "./ui";
 import { useToast } from "./ui/Toast";
 
@@ -74,6 +75,8 @@ export default function CargarGasto({ datos, inicial = {}, arreglo = null, onCer
   const [cambiarCuenta, setCambiarCuenta] = useState(false);
   const [mostrarErrores, setMostrarErrores] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  // 13/11: el pago es igual a otro de esa caja (finanzasRepetidos.js)
+  const [repetidos, setRepetidos] = useState(null);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
 
   const proveedores = useMemo(
@@ -177,13 +180,15 @@ export default function CargarGasto({ datos, inicial = {}, arreglo = null, onCer
   const total = Math.round(((Number(gasto.neto) || 0) + (Number(gasto.iva) || 0) + (Number(gasto.otros_impuestos) || 0)) * 100) / 100;
   const fechaOp = fechaDevengado(f.fecha_factura, f.mes);
 
-  const guardar = async () => {
+  const guardar = async (confirmarRepetido = false) => {
     setMostrarErrores(true);
     if (errores.length) return;
     setGuardando(true);
     try {
-      const res = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "gasto", gasto }) });
+      const res = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "gasto", gasto, confirmar_repetido: confirmarRepetido }) });
       const d = await res.json().catch(() => ({}));
+      const rep = repetidosDe(res.status, d);
+      if (rep) { setRepetidos(rep); return; }
       if (!res.ok) throw new Error(d.error || "No se pudo guardar el gasto");
       toast.success(f.pagado ? "✅ Gasto y pago guardados" : "✅ Gasto guardado: queda la deuda");
       onGuardada();
@@ -382,10 +387,14 @@ export default function CargarGasto({ datos, inicial = {}, arreglo = null, onCer
             {errores.map((e) => <li key={e}>{e}</li>)}
           </ul>
         )}
-        <div className="flex justify-end gap-2 border-t border-gypi-border pt-3">
-          <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
-          <button type="button" className="g-btn g-btn-primary" disabled={guardando} onClick={guardar}>{guardando ? "Guardando…" : "Guardar gasto"}</button>
-        </div>
+        {repetidos
+          ? <AvisoRepetidos repetidos={repetidos} ocupado={guardando} onCargarIgual={() => guardar(true)} onCancelar={() => setRepetidos(null)} />
+          : (
+            <div className="flex justify-end gap-2 border-t border-gypi-border pt-3">
+              <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
+              <button type="button" className="g-btn g-btn-primary" disabled={guardando} onClick={() => guardar()}>{guardando ? "Guardando…" : "Guardar gasto"}</button>
+            </div>
+          )}
       </div>
     </Modal>
   );

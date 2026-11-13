@@ -25,7 +25,7 @@ const MAX_FILAS = 400;
 async function postBanco(body) {
   const res = await apiFetch("/api/finanzas/banco", { method: "POST", body: JSON.stringify(body) });
   const d = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(d.error || "No se pudo guardar");
+  if (!res.ok) throw Object.assign(new Error(d.error || "No se pudo guardar"), { datos: d });
   return d;
 }
 
@@ -85,7 +85,7 @@ function SaldoGypi({ saldo, banco, hasta }) {
 }
 
 /** Operaciones de la cuenta que parecen cargadas dos veces: se elige cuáles anular. */
-function Repetidos({ grupos, onVer, onAnuladas }) {
+export function Repetidos({ grupos, onVer, onAnuladas, titulo = "🔁 Posibles repetidos en Gypi", abierto = false }) {
   const toast = useToast();
   const [elegidas, setElegidas] = useState(() => new Set());
   const [anulando, setAnulando] = useState(false);
@@ -108,12 +108,14 @@ function Repetidos({ grupos, onVer, onAnuladas }) {
     setAnulando(false);
   };
   return (
-    <details className="rounded-lg border border-gypi-amber/40 bg-gypi-amber/10 p-2 text-[13px]">
-      <summary className="cursor-pointer font-semibold text-gypi-amber-ink">🔁 Posibles repetidos en Gypi ({grupos.length})</summary>
+    <details className="rounded-lg border border-gypi-amber/40 bg-gypi-amber/10 p-2 text-[13px]" open={abierto || undefined}>
+      <summary className="cursor-pointer font-semibold text-gypi-amber-ink">{titulo} ({grupos.length})</summary>
       <p className="m-0 mt-2 text-gypi-dim">Mismo importe y hasta 3 días de diferencia en esta cuenta. Tildá las que sobran: se anulan. ⭐ = la que conviene dejar: la copiada del libro si la hay (al anular la otra, el libro también queda bien), si no la del extracto o la más vieja.</p>
       <ul className="list-none m-0 mt-1 p-0 flex flex-col gap-2">
         {grupos.map((g) => (
           <li key={g.ops.map((o) => o.id).join("-")} className="border-t border-gypi-border pt-1">
+            {/* 13/11: 🔴 si hay dos el mismo día, 🟡 si están a pocos días */}
+            {g.ops.some((o, i) => g.ops.findIndex((x) => x.fecha === o.fecha) !== i) ? "🔴 " : "🟡 "}
             <b className="font-mono">{plata(g.importe, "ARS")}</b> · {g.ops.length} veces
             <ul className="list-none m-0 p-0">
               {g.ops.map((o) => (
@@ -135,6 +137,27 @@ function Repetidos({ grupos, onVer, onAnuladas }) {
         <button type="button" className="g-btn g-btn-primary disabled:opacity-50" disabled={!elegidas.size || anulando} onClick={anular}>{anulando ? "Anulando…" : `🗑 Anular ${elegidas.size} elegidas`}</button>
       </div>
     </details>
+  );
+}
+
+/**
+ * 13/11: el renglón se parece a algo que ya está (🔴 mismo importe el mismo
+ * día, 🟡 hasta 3 días). Solo se carga tildándolo a propósito.
+ */
+function AvisoSospecha({ f, caja, onVer }) {
+  const rojo = f.sospecha.nivel === "rojo";
+  const p = f.sospecha.parecida;
+  return (
+    <span role="note" className={`block mt-1 p-1.5 rounded text-[12px] text-gypi-text ${rojo ? "bg-gypi-red/10 border border-gypi-red/40" : "bg-gypi-amber/10 border border-gypi-amber/40"}`}>
+      <b>{rojo ? "🔴 Muy sospechoso" : "🟡 Posible repetido"}:</b>{" "}
+      {f.sospecha.motivo === "extracto"
+        ? "hay otro renglón igual (misma fecha e importe) en este mismo extracto."
+        : p
+          ? <>en Gypi ya hay {plata(movimientoEnCuenta(p, caja.cuenta), "ARS")} el {fechaCorta(p.fecha)} · {p.tipo} ({origenCorto(p)}).</>
+          : "en Gypi ya hay un movimiento por el mismo importe en esos días."}
+      {" "}No se carga salvo que tildes la casilla: <b>es otro distinto</b>.
+      {p && <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[12px] ml-1" onClick={() => onVer(p)}>Ver</button>}
+    </span>
   );
 }
 
@@ -173,7 +196,8 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
       setRes(d);
       setFilas(d.filas.map((f, i) => ({
         ...f, i,
-        elegida: !f.op && Boolean(f.sugerencia),
+        // 13/11: lo sospechoso (igual a algo de Gypi) no se tilda solo
+        elegida: !f.op && Boolean(f.sugerencia) && !f.sospecha,
         tipo: f.sugerencia?.tipo || "",
         contra: f.sugerencia?.contra ? etiquetaCuenta(f.sugerencia.contra) : "",
         entidad: f.sugerencia?.entidad || "",
@@ -218,11 +242,12 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
   const elegirTipo = (f, codigo) => {
     const t = tipos.find((x) => x.codigo === codigo);
     const contra = codigoDe(f.contra) || contraDeTipo(t, f.importe, caja.cuenta);
-    cambiar(f.i, { tipo: codigo, contra: etiquetaCuenta(contra), elegida: Boolean(codigo) });
+    cambiar(f.i, { tipo: codigo, contra: etiquetaCuenta(contra), elegida: Boolean(codigo) && (!f.sospecha || f.elegida) });
   };
 
   const repetidas = useMemo(() => new Set((res?.repetidos || []).flatMap((g) => g.ops.filter((o) => o.id !== g.queda).map((o) => o.id))), [res]);
   const pendientes = filas.filter((f) => !f.op);
+  const sospechosas = pendientes.filter((f) => f.sospecha).length;
   const ya = filas.filter((f) => f.op);
   const elegidas = pendientes.filter((f) => f.elegida);
   const incompletas = elegidas.filter((f) => !f.tipo || !nombreCuenta.has(codigoDe(f.contra)));
@@ -254,11 +279,15 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
         filas: elegidas.map((f) => ({
           fecha: f.fecha, descripcion: f.descripcion, comprobante: f.comprobante, importe: f.importe, marca: f.marca,
           tipo: f.tipo, contra: codigoDe(f.contra), entidad: f.entidad || null, proveedor_id: f.proveedor_id, cliente_id: f.cliente_id,
+          forzar: Boolean(f.sospecha),
         })),
       });
       toast.success(`Se cargaron ${d.cargadas} movimientos${d.repetidas ? ` (${d.repetidas} ya estaban)` : ""}`);
       onCargado();
     } catch (e) {
+      // 13/11: el servidor encontró algo igual que la pantalla no vio (se cargó recién): esos quedan sospechosos y sin tildar
+      const marcas = new Set(e.datos?.marcas || []);
+      if (marcas.size) setFilas((fs) => fs.map((f) => (marcas.has(f.marca) ? { ...f, elegida: false, sospecha: f.sospecha || { nivel: "rojo", motivo: "gypi", parecida: null } } : f)));
       setError(e.message);
       setGuardando(false);
     }
@@ -281,6 +310,7 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
           <>
             <p className="m-0">
               {res.filas.length} movimientos del {fechaCorta(res.desde)} al {fechaCorta(res.hasta)} · <b className="text-gypi-green">✓ {ya.length} ya en Gypi</b> · <b>{pendientes.length} para cargar</b>
+              {sospechosas > 0 && <> · <b className="text-gypi-red">{sospechosas} sospechosos (no se cargan sin tu OK)</b></>}
             </p>
             {res.control && (
               <p className={`m-0 text-[13px] ${res.control.ok ? "text-gypi-green" : "text-gypi-red"}`}>
@@ -329,9 +359,10 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado }) {
               <tbody>
                 {pendientes.slice(0, MAX_FILAS).map((f) => (
                   <tr key={f.i} className="border-t border-gypi-border align-top">
-                    <td className="py-1"><input type="checkbox" aria-label={`Cargar renglón ${f.i + 1}`} checked={f.elegida} onChange={(e) => cambiar(f.i, { elegida: e.target.checked })} /></td>
+                    <td className="py-1"><input type="checkbox" aria-label={f.sospecha ? `Es otro distinto: cargar renglón ${f.i + 1} igual` : `Cargar renglón ${f.i + 1}`} checked={f.elegida} onChange={(e) => cambiar(f.i, { elegida: e.target.checked })} /></td>
                     <td className="py-1 min-w-[220px]">
                       <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(f.fecha)}</span> {f.descripcion}
+                      {f.sospecha && <AvisoSospecha f={f} caja={caja} onVer={setDetalle} />}
                       {f.entidad && <span className="block text-[12px] text-gypi-dim">{f.entidad}{f.sugerencia?.por === "cuit" ? " · por CUIT" : ""}</span>}
                       {f.parecido && (
                         <span className="block mt-1 p-1.5 rounded bg-gypi-amber/10 text-[12px] text-gypi-text">

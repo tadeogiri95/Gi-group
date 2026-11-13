@@ -20,7 +20,7 @@ import { useToast } from "./ui/Toast";
 async function postPf(body) {
   const res = await apiFetch("/api/finanzas/plazos-fijos", { method: "POST", body: JSON.stringify(body) });
   const d = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(d.error || "No se pudo completar");
+  if (!res.ok) throw Object.assign(new Error(d.error || "No se pudo completar"), { datos: d });
   return d;
 }
 
@@ -86,7 +86,14 @@ function Importar({ datos, onCerrar, onCargado }) {
     let vivo = true;
     setOcupado(true);
     postPf({ accion: "ver", plazos: leido.plazos, banco, cuenta_pf: cuentaPf, exportado: leido.exportado })
-      .then((d) => { if (vivo) { setPlan(d); setError(null); } })
+      .then((d) => {
+        if (!vivo) return;
+        setPlan(d);
+        setError(null);
+        // 13/11: lo que parece estar ya en el banco arranca sin tildar
+        const dudosos = (d.filas || []).filter((f) => f.repetidos?.length).map((f) => f.plazo.certificado);
+        if (dudosos.length) setOmitir((s) => new Set([...s, ...dudosos]));
+      })
       .catch((e) => { if (vivo) { setPlan(null); setError(e.message); } })
       .finally(() => { if (vivo) setOcupado(false); });
     return () => { vivo = false; };
@@ -101,7 +108,8 @@ function Importar({ datos, onCerrar, onCargado }) {
     setError(null);
     setOcupado(true);
     try {
-      const d = await postPf({ accion: "cargar", plazos: leido.plazos, banco, cuenta_pf: cuentaPf, exportado: leido.exportado, fechas, omitir: [...omitir] });
+      const d = await postPf({ accion: "cargar", plazos: leido.plazos, banco, cuenta_pf: cuentaPf, exportado: leido.exportado, fechas, omitir: [...omitir],
+        forzar: conOps.filter((f) => f.repetidos?.length && !omitir.has(f.plazo.certificado)).map((f) => f.plazo.certificado) });
       toast.success(d.cargadas ? `✅ Se cargaron ${d.cargadas} ${d.cargadas === 1 ? "operación" : "operaciones"} de plazos fijos` : "✅ Lista de plazos fijos al día: no había nada para cargar");
       onCargado();
     } catch (e) {
@@ -180,7 +188,15 @@ function Importar({ datos, onCerrar, onCargado }) {
                       <td className="px-2 py-1 whitespace-nowrap">{fechaPf(p.vencimiento)}</td>
                       <td className="px-2 py-1 text-right font-mono whitespace-nowrap">{plata(p.depositado, p.moneda)}</td>
                       <td className="px-2 py-1 text-right font-mono whitespace-nowrap">{plata(p.interes, p.moneda)}</td>
-                      <td className="px-2 py-1">{queSeCarga(f)}</td>
+                      <td className="px-2 py-1">
+                        {queSeCarga(f)}
+                        {f.repetidos?.length > 0 && (
+                          <span role="note" className="block mt-1 p-1.5 rounded bg-gypi-red/10 border border-gypi-red/40 text-[12px]">
+                            {f.repetidos.map((t) => <span key={t} className="block">{t}</span>)}
+                            Quedó sin tildar. Tildalo solo si es otro distinto.
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -209,14 +225,16 @@ function Vencidos({ pendientes, onCerrar, onHecho }) {
   const toast = useToast();
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState(null);
-  async function registrar() {
+  const [repetido, setRepetido] = useState(false);
+  async function registrar(confirmar = false) {
     setOcupado(true);
     setError(null);
     try {
-      const d = await postPf({ accion: "vencidos" });
+      const d = await postPf({ accion: "vencidos", ...(confirmar ? { confirmar_repetido: true } : {}) });
       toast.success(`✅ ${d.plazos} ${d.plazos === 1 ? "plazo fijo volvió" : "plazos fijos volvieron"} al banco, con el interés aparte`);
       onHecho();
     } catch (e) {
+      setRepetido(Boolean(e.datos?.repetido));
       setError(e.message);
       setOcupado(false);
     }
@@ -239,7 +257,9 @@ function Vencidos({ pendientes, onCerrar, onHecho }) {
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" className="g-btn g-btn-secondary" disabled={ocupado} onClick={onCerrar}>Cerrar</button>
-          <button type="button" className="g-btn g-btn-primary" disabled={ocupado} onClick={registrar}>{ocupado ? "Registrando…" : "Registrar"}</button>
+          {repetido
+            ? <button type="button" className="g-btn g-btn-primary" disabled={ocupado} onClick={() => registrar(true)}>{ocupado ? "Registrando…" : "Es otro distinto, registrarlo igual"}</button>
+            : <button type="button" className="g-btn g-btn-primary" disabled={ocupado} onClick={() => registrar()}>{ocupado ? "Registrando…" : "Registrar"}</button>}
         </div>
       </div>
     </Modal>

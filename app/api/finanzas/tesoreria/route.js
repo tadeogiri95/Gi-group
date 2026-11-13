@@ -9,6 +9,8 @@
 //       Capital. Si ya tenía uno, se reemplaza (el viejo queda anulado).
 //   POST { accion: "transferir", desde, hacia, importe, fecha, tipo_cambio?, descripcion? }
 //       → TRANSFERENCIA ENTRE CAJAS entre dos cajas o bancos de la misma moneda.
+//       Con otra igual en alguna de las dos cajas (13/11), 409 con los
+//       repetidos hasta que venga confirmar_repetido.
 //   F3b (Mi caja, 176):
 //   POST { accion: "config_mi_caja", ocultos: { gastos: [códigos], ingresos: [códigos] } }
 //       → qué tipos de operación esconde Mi caja (el resto se ofrece).
@@ -26,6 +28,7 @@ import { FECHA } from "../../../lib/finanzasOperaciones";
 import { ORIGEN_SALDO_INICIAL } from "../../../lib/finanzasProveedores";
 import { ORIGEN_LIBRO } from "../../../lib/finanzasHistorico";
 import { cuentaAjusteDe, operacionSaldoInicialCaja, validarTransferencia } from "../../../lib/finanzasTesoreria";
+import { frenoRepetidos, repetidosEnBase } from "../../../lib/finanzasRepetidosServidor";
 import { CLAVE_MI_CAJA, ORIGEN_MI_CAJA, cambioDeTipoMiCaja, leerConfigMiCaja, tiposParaMiCaja } from "../../../lib/finanzasMiCaja";
 
 const COLUMNAS = "id,fecha,tipo,proveedor_id,cliente_id,entidad,proyecto_id,centro_costo,neto,iva,otros_impuestos,total,moneda,tipo_cambio,total_ars,cuenta_debe,cuenta_haber,descripcion,referencia,origen,origen_id,estado,cargada_por_nombre,anulada_at,anulada_por_nombre,created_at";
@@ -109,6 +112,10 @@ async function transferir(sesion, d) {
   const tesoreria = await leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,activa`);
   const { op, errores } = validarTransferencia(d, tesoreria);
   if (errores.length) return NextResponse.json({ error: errores[0], errores }, { status: 400 });
+  if (d.confirmar_repetido !== true) {
+    const freno = frenoRepetidos(await repetidosEnBase(sesion, [op], { tesoreria }));
+    if (freno) return freno;
+  }
   const ahora = new Date().toISOString();
   const quien = await nombreEmpleado(sesion);
   const [o] = (await sbPost("fin_operaciones", { ...op, empresa_id: e, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora }, { sesion })) || [];

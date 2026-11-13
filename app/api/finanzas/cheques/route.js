@@ -7,7 +7,10 @@
 //       proveedor) o recibido (de un cliente), con su operación.
 //   POST { accion: "cambiar", id, a, fecha, cuenta_banco?, proveedor_id? } →
 //       debitado, depositado, entregado, rechazado o anular; cada uno con su
-//       operación (anular anula la del alta).
+//       operación (anular anula la del alta). Si el banco ya tiene un
+//       movimiento igual (13/11), 409 con los repetidos: usar_operacion = id
+//       une el cheque a ese movimiento sin cargar otro; confirmar_repetido
+//       carga uno nuevo igual.
 //   POST { accion: "copiar_libro", filas } → los vivos de R-CHEQUES, sin
 //       operación (ya están en el libro). Los ya copiados no se repiten.
 //
@@ -21,6 +24,7 @@ import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { ESTADOS_CHEQUE, TIPOS_CHEQUE, cambioDeEstado, operacionAlta, validarCheque } from "../../../lib/finanzasCheques";
 import { hoyAr } from "../../../lib/finanzasOperaciones";
+import { frenoRepetidos, repetidosEnBase } from "../../../lib/finanzasRepetidosServidor";
 
 const MAX_COPIAR = 2000;
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
@@ -106,13 +110,31 @@ async function cambiar(sesion, d) {
   }
   const r = cambioDeEstado(ch, d.a, { fecha: d.fecha, cuenta_banco: d.cuenta_banco || null, proveedor }, ctx);
   if (r.error) return NextResponse.json({ error: r.error }, { status: 400 });
+  // 13/11: el débito o el depósito que ya está en el banco (de un extracto o
+  // cargado a mano) no se carga otra vez: se usa ese movimiento ("usar_operacion")
+  // o, si es otro distinto, se confirma ("confirmar_repetido")
+  let usar = null;
+  if (r.op) {
+    // Solo el banco o la caja: la cartera de cheques tiene muchos del mismo importe
+    const rev = await repetidosEnBase(sesion, [r.op], { tesoreria: ctx.tesoreria.filter((t) => t.tipo === "banco" || t.tipo === "caja") });
+    const ofrecidas = new Set(rev.repetidos.flatMap((x) => x.parecidas.map((p) => Number(p.id))));
+    if (d.usar_operacion != null) {
+      usar = Number(d.usar_operacion);
+      if (!ofrecidas.has(usar)) return NextResponse.json({ error: "Ese movimiento del banco ya no coincide con el cheque. Actualizá la pantalla." }, { status: 409 });
+    } else if (d.confirmar_repetido !== true) {
+      const freno = frenoRepetidos(rev);
+      if (freno) return freno;
+    }
+  }
   const ahora = new Date().toISOString();
   const quien = await nombreEmpleado(sesion);
   // El cambio solo vale si el cheque sigue como lo leímos (dos personas a la vez)
   const [hecho] = (await sbPatch(`fin_cheques?id=eq.${id}&empresa_id=eq.${e}&estado=eq.${ch.estado}`, { ...r.cambios, updated_at: ahora }, { sesion })) || [];
   if (!hecho) return NextResponse.json({ error: "El cheque cambió mientras tanto. Actualizá la pantalla." }, { status: 409 });
   let final = hecho;
-  if (r.op) {
+  if (usar) {
+    [final] = (await sbPatch(`fin_cheques?id=eq.${id}&empresa_id=eq.${e}`, { op_cierre_id: usar, updated_at: ahora }, { sesion })) || [hecho];
+  } else if (r.op) {
     const [o] = (await sbPost("fin_operaciones", { ...r.op, empresa_id: e, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora }, { sesion })) || [];
     [final] = (await sbPatch(`fin_cheques?id=eq.${id}&empresa_id=eq.${e}`, { op_cierre_id: o?.id || null, updated_at: ahora }, { sesion })) || [hecho];
   } else if (ch.op_alta_id) {

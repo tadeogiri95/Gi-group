@@ -185,7 +185,7 @@ const pedir = async (rol, metodo, body, query = "") => api[metodo](new Request(`
   method: metodo, headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token(rol)}` }, ...(body ? { body: JSON.stringify(body) } : {}),
 }));
 
-function mockApi({ anulada = false } = {}) {
+function mockApi({ anulada = false, existentes = null } = {}) {
   const escrito = [];
   const leido = [];
   const tabla = { fin_tipos_operacion: TIPOS, fin_cuentas: CUENTAS, fin_tesoreria: TESORERIA, fin_centros_costo: CENTROS, proveedores: PROVEEDORES, proyectos: PROYECTOS };
@@ -203,7 +203,7 @@ function mockApi({ anulada = false } = {}) {
           return { status: 201, body: [{ id: 33, ...JSON.parse(o.body) }] };
         }
         leido.push(u);
-        return { status: 200, body: [{ id: 1, fecha: "2026-11-02", tipo: "COMPRA MP", total: 100, origen: "factura_oc" }] };
+        return { status: 200, body: existentes || [{ id: 1, fecha: "2026-11-02", tipo: "COMPRA MP", total: 100, origen: "factura_oc" }] };
       },
     },
     {
@@ -248,6 +248,28 @@ test("/api/finanzas/operaciones — crear valida en el servidor y guarda quién 
   assert.equal(escrito[0].body.empresa_id, E);
   assert.equal(escrito[0].body.total, 1210);
   assert.equal(escrito[0].body.cargada_por_nombre, "Tadeo");
+});
+
+test("/api/finanzas/operaciones — crear: el mismo importe en la misma caja el mismo día frena hasta confirmar (13/11)", async () => {
+  const pago = { fecha: "2026-11-09", tipo: "PAGO TRANSF", proveedor_id: "5", neto: "5000", cuenta_debe: "02.01.02.001.001", cuenta_haber: "01.01.01.003.002" };
+  const delExtracto = { id: 70, fecha: "2026-11-09", tipo: "PAGO TRANSF", descripcion: "Transf a ACERCO", origen: "banco", total: 5000, total_ars: 5000, cuenta_debe: "02.01.02.001.001", cuenta_haber: "01.01.01.003.002" };
+  let { escrito } = mockApi({ existentes: [delExtracto] });
+  const res = await pedir("gerencial", "POST", { accion: "crear", operacion: pago });
+  assert.equal(res.status, 409);
+  const d = await res.json();
+  assert.match(d.error, /🔴 Ya hay en Banco Credicoop CTA CTE/);
+  assert.deepEqual([d.repetidos[0].nivel, d.repetidos[0].parecidas[0].id, d.repetidos[0].parecidas[0].importe], ["rojo", 70, -5000]);
+  assert.equal(escrito.length, 0);
+  ({ escrito } = mockApi({ existentes: [{ ...delExtracto, fecha: "2026-11-11" }] }));
+  assert.equal((await (await pedir("gerencial", "POST", { accion: "crear", operacion: pago })).json()).repetidos[0].nivel, "amarillo", "a 2 días");
+  ({ escrito } = mockApi({ existentes: [{ ...delExtracto, fecha: "2026-11-13" }] }));
+  assert.equal((await pedir("gerencial", "POST", { accion: "crear", operacion: pago })).status, 200, "a 4 días ya no");
+  ({ escrito } = mockApi({ existentes: [delExtracto] }));
+  assert.equal((await pedir("gerencial", "POST", { accion: "crear", operacion: pago, confirmar_repetido: true })).status, 200);
+  assert.equal(escrito[0].body.total, 5000);
+  // Una compra que no toca ninguna caja no se revisa
+  ({ escrito } = mockApi({ existentes: [delExtracto] }));
+  assert.equal((await pedir("gerencial", "POST", { accion: "crear", operacion: base })).status, 200);
 });
 
 test("/api/finanzas/operaciones — anular no borra: marca quién y cuándo", async () => {
