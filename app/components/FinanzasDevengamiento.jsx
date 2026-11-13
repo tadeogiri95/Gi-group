@@ -9,10 +9,15 @@
 // (aguinaldo, vacaciones, amortizaciones, seguros) vienen propuestos: se
 // abre el asiento ya lleno para confirmarlo o corregirlo. Cada renglón se
 // puede ocultar (⚙) y volver a mostrar.
+//
+// Parte 9 (migración 190, /api/finanzas/meses): 🔒 Cerrar el mes. Cerrado, la
+// base no deja cargar, corregir ni anular nada con fecha de ese mes; 🔓 Reabrir
+// pide el motivo y queda quién y cuándo, con el historial.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { hoyAr, plata } from "../lib/finanzasOperaciones";
 import { GRUPOS_DEVENGAMIENTO } from "../lib/finanzasDevengamiento";
+import { MAX_MOTIVO } from "../lib/finanzasMeses";
 import { Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 import CargarGasto from "./FinanzasCargarGasto";
@@ -21,6 +26,89 @@ import { NuevoAsiento } from "./FinanzasMayor";
 
 const pesos = (n) => plata(n, "ARS");
 const BOTON = { gasto: "＋ Cargar gasto", asiento: "＋ Asiento", sueldos: "👷 Ir a Sueldos", sos: "📄 Subir S.O.S", ventas: "📄 Subir S.O.S ventas" };
+
+const cuando = (at) => (at ? new Date(at).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", dateStyle: "short", timeStyle: "short" }) : "");
+const porQuien = (n) => (n ? ` por ${n}` : "");
+
+/** 🔒 Cerrar o 🔓 Reabrir el mes (reabrir pide el motivo). */
+function CambiarMes({ cierre, onCerrar, onListo }) {
+  const toast = useToast();
+  const reabrir = cierre.cerrado;
+  const [motivo, setMotivo] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState(null);
+  async function confirmar() {
+    if (reabrir && !motivo.trim()) { setError("Escribí el motivo para reabrir el mes"); return; }
+    setError(null);
+    setGuardando(true);
+    try {
+      const res = await apiFetch("/api/finanzas/meses", { method: "POST", body: JSON.stringify({ accion: reabrir ? "reabrir" : "cerrar", mes: cierre.mes, motivo }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "No se pudo guardar");
+      toast.success(reabrir ? `🔓 Reabriste ${cierre.nombre}` : `🔒 Cerraste ${cierre.nombre}`);
+      onListo();
+    } catch (e) {
+      setError(e.message);
+      setGuardando(false);
+    }
+  }
+  return (
+    <Modal open onClose={onCerrar} title={reabrir ? `🔓 Reabrir ${cierre.nombre}` : `🔒 Cerrar ${cierre.nombre}`} maxWidth={520}>
+      <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
+        {reabrir ? (
+          <>
+            <p className="m-0">Al reabrirlo se puede volver a cargar, corregir y anular en {cierre.nombre}. Queda anotado quién lo reabrió, cuándo y por qué.</p>
+            <label className="flex flex-col gap-1 font-semibold">
+              Motivo
+              <textarea className="g-input min-h-[80px] font-normal" value={motivo} maxLength={MAX_MOTIVO} onChange={(e) => setMotivo(e.target.value)} aria-label="Motivo para reabrir" placeholder="Ej.: faltaba la factura de luz" />
+            </label>
+          </>
+        ) : (
+          <p className="m-0">Con {cierre.nombre} cerrado nadie puede cargar, corregir ni anular nada con fecha de ese mes: ni lo devengado ni los movimientos de cajas y bancos. Se puede reabrir después, con un motivo.</p>
+        )}
+        {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
+          <button type="button" className="g-btn g-btn-primary" disabled={guardando} onClick={confirmar}>
+            {guardando ? "Guardando…" : reabrir ? "🔓 Reabrir" : "🔒 Cerrar el mes"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** El mes cerrado (o reabierto) con su historial. */
+function EstadoMes({ cierre, onCambiar }) {
+  const historial = [...cierre.historial].reverse();
+  if (!cierre.cerrado && !historial.length) return null;
+  return (
+    <section aria-label="Cierre del mes" className={`rounded-lg border p-3 text-[13px] ${cierre.cerrado ? "border-gypi-border bg-gypi-border/20" : "border-gypi-amber/40 bg-gypi-amber/10"}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="flex-1 min-w-[220px]">
+          {cierre.cerrado ? (
+            <><b>🔒 {cierre.nombre} está cerrado</b> desde el {cuando(cierre.cerrado_at)}{porQuien(cierre.cerrado_por_nombre)}. No se puede cargar, corregir ni anular nada con fecha de este mes.</>
+          ) : (
+            <><b>🔓 {cierre.nombre} se reabrió</b> el {cuando(cierre.reabierto_at)}{porQuien(cierre.reabierto_por_nombre)}{cierre.motivo ? `. Motivo: ${cierre.motivo}` : ""}</>
+          )}
+        </span>
+        {cierre.cerrado && <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[13px]" onClick={onCambiar}>🔓 Reabrir</button>}
+      </div>
+      {historial.length > 0 && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-gypi-dim">Historial ({historial.length})</summary>
+          <ul className="list-none m-0 mt-1 p-0 flex flex-col gap-0.5">
+            {historial.map((h, i) => (
+              <li key={`${h.at}-${i}`}>
+                {h.accion === "cerrar" ? "🔒 Cerrado" : "🔓 Reabierto"} el {cuando(h.at)}{porQuien(h.por)}{h.motivo ? `. Motivo: ${h.motivo}` : ""}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
+  );
+}
 
 /** El CSV de ventas del S.O.S: se guarda el total de cada mes y se compara con las entregas. */
 function SubirVentas({ onCerrar, onSubido }) {
@@ -70,6 +158,7 @@ export default function FinanzasDevengamiento({ onIr = null }) {
   const [asiento, setAsiento] = useState(null);
   const [sos, setSos] = useState(false);
   const [ventas, setVentas] = useState(false);
+  const [cambiarMes, setCambiarMes] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -126,11 +215,14 @@ export default function FinanzasDevengamiento({ onIr = null }) {
     const it = porId.get(f.item);
     if (it) cargarItem(it);
   }
-  const listo = () => { setGasto(null); setAsiento(null); setSos(false); setVentas(false); cargar(); };
+  const listo = () => { setGasto(null); setAsiento(null); setSos(false); setVentas(false); setCambiarMes(false); cargar(); };
 
   if (error) return <p role="alert" className="m-[18px] text-[14px] text-gypi-red">⚠ {error}</p>;
   if (!datos) return <Spinner />;
   const ocultos = datos.items.filter((i) => i.oculto);
+  // Con el mes cerrado no se carga nada (la base tampoco lo deja)
+  const cerrado = Boolean(datos.cierre?.cerrado);
+  const sinCargar = cerrado ? { disabled: true, title: "El mes está cerrado" } : {};
 
   return (
     <div className="p-[18px] flex flex-col gap-3 text-[14px] text-gypi-text">
@@ -139,6 +231,9 @@ export default function FinanzasDevengamiento({ onIr = null }) {
           Mes
           <input type="month" className="g-input" value={mes} max={datos.hoy.slice(0, 7)} onChange={(e) => e.target.value && setMes(e.target.value)} aria-label="Mes" />
         </label>
+        {datos.cierre && !cerrado && (
+          <button type="button" className="g-btn g-btn-secondary" onClick={() => setCambiarMes(true)}>🔒 Cerrar {datos.cierre.nombre}</button>
+        )}
         {ocultos.length > 0 && (
           <button type="button" className="g-btn g-btn-secondary ml-auto" aria-pressed={verOcultos} onClick={() => setVerOcultos((v) => !v)}>
             ⚙ {verOcultos ? "Esconder los ocultos" : `Ver los ocultos (${ocultos.length})`}
@@ -149,6 +244,8 @@ export default function FinanzasDevengamiento({ onIr = null }) {
         Devengar es anotar cada cosa en el mes en que pasó, aunque se pague o se cobre en otro. Acá está todo lo que una pyme tiene que devengar en {datos.nombre}, con lo que ya está cargado.
       </p>
 
+      {datos.cierre && <EstadoMes cierre={datos.cierre} onCambiar={() => setCambiarMes(true)} />}
+
       <section aria-label="Falta este mes" className={`rounded-lg border p-3 ${datos.falta.length ? "border-gypi-amber/40 bg-gypi-amber/10" : "border-gypi-green/30 bg-gypi-green/10"}`}>
         <b>{datos.falta.length ? `⚠ Falta este mes (${datos.falta.length})` : `✅ No falta nada de lo que se carga todos los meses en ${datos.nombre}`}</b>
         {datos.falta.length > 0 && (
@@ -156,7 +253,7 @@ export default function FinanzasDevengamiento({ onIr = null }) {
             {datos.falta.map((f) => (
               <li key={f.id} className="flex flex-wrap items-center gap-2">
                 <span className="flex-1 min-w-[200px]">{f.texto}</span>
-                <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[13px]" onClick={() => accionFalta(f)}>
+                <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[13px]" {...sinCargar} onClick={() => accionFalta(f)}>
                   {f.accion === "sueldos" ? "👷 Ir a Sueldos" : f.accion === "sos" || f.accion === "ventas" ? "📄 Subir" : f.accion === "proponer" ? "✨ Ver propuesta" : "＋ Cargar"}
                 </button>
               </li>
@@ -198,12 +295,12 @@ export default function FinanzasDevengamiento({ onIr = null }) {
                   </span>
                   <span className="flex flex-wrap gap-1.5">
                     {it.recurrente && it.propuesta && (
-                      <button type="button" className="g-btn g-btn-primary !py-0.5 !px-2 text-[13px]" onClick={() => proponer(it)}>✨ Proponer</button>
+                      <button type="button" className="g-btn g-btn-primary !py-0.5 !px-2 text-[13px]" {...sinCargar} onClick={() => proponer(it)}>✨ Proponer</button>
                     )}
                     {BOTON[it.cargar] && !(it.recurrente && it.propuesta && it.cargar === "asiento") && (
-                      <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[13px]" onClick={() => cargarItem(it)}>{BOTON[it.cargar]}</button>
+                      <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[13px]" {...sinCargar} onClick={() => cargarItem(it)}>{BOTON[it.cargar]}</button>
                     )}
-                    {it.cargar === "mantenimiento" && <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[13px]" onClick={() => setGasto({ mes, cuenta_gasto: it.cuentas[0] || "" })}>＋ Cargar gasto</button>}
+                    {it.cargar === "mantenimiento" && <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[13px]" {...sinCargar} onClick={() => setGasto({ mes, cuenta_gasto: it.cuentas[0] || "" })}>＋ Cargar gasto</button>}
                     <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[13px]" aria-label={`${it.oculto ? "Mostrar" : "Ocultar"} ${it.nombre}`} onClick={() => ocultar(it, !it.oculto)}>
                       {it.oculto ? "Mostrar" : "⚙ Ocultar"}
                     </button>
@@ -219,6 +316,7 @@ export default function FinanzasDevengamiento({ onIr = null }) {
       {asiento && <NuevoAsiento datos={datos.listas} inicial={asiento} onCerrar={() => setAsiento(null)} onGuardado={listo} />}
       {sos && <FinanzasSos onCerrar={() => setSos(false)} onImportado={listo} />}
       {ventas && <SubirVentas onCerrar={() => setVentas(false)} onSubido={listo} />}
+      {cambiarMes && datos.cierre && <CambiarMes cierre={datos.cierre} onCerrar={() => setCambiarMes(false)} onListo={listo} />}
     </div>
   );
 }

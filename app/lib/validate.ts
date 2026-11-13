@@ -1,6 +1,7 @@
 import { ZodSchema, ZodError } from "zod";
 import { NextResponse } from "next/server";
 import { CAMPOS_PERMITIDOS } from "./schemas";
+import { mesCerradoDeError, textoMesCerrado } from "./finanzasMeses";
 
 /**
  * Validate body against a Zod schema. Returns { data } on success or { error, response } on failure.
@@ -52,6 +53,9 @@ export function sanitizePostgrestParam(value: string): string {
  * Safe error message for production — never expose internal details.
  */
 export function safeErrorMessage(err: unknown): string {
+  // Un mes cerrado en Finanzas (migración 190): el aviso es para el usuario
+  const mesCerrado = mesCerradoDeError(err);
+  if (mesCerrado) return textoMesCerrado(mesCerrado);
   if (process.env.NODE_ENV === "development") {
     return err instanceof Error ? err.message : "Error desconocido";
   }

@@ -7,6 +7,7 @@ import { safeErrorMessage } from "./validate";
 import { requireModuloSesion } from "./accesosServidor";
 import { logger } from "./logger";
 import { esDuenoFinanzas } from "./finanzas";
+import { mesCerradoDeError, textoMesCerrado } from "./finanzasMeses";
 
 export const FALTA_MIGRACION_FIN = "Para Finanzas falta correr la migración 171 en Supabase.";
 
@@ -23,8 +24,10 @@ export async function sesionDueno(request) {
   return { sesion };
 }
 
-/** Respuesta de error: 409 si falta la migración, 500 si no. */
+/** Respuesta de error: 409 si falta la migración o el mes está cerrado, 500 si no. */
 export function errorFinanzas(err, donde) {
+  const mesCerrado = mesCerradoDeError(err);
+  if (mesCerrado) return NextResponse.json({ error: textoMesCerrado(mesCerrado), mes_cerrado: mesCerrado }, { status: 409 });
   if (faltaMigracion(err)) return NextResponse.json({ error: FALTA_MIGRACION_FIN, falta_migracion: true }, { status: 409 });
   logger.error(`[finanzas] ${donde}`, err);
   return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
