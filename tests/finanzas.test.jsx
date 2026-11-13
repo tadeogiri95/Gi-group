@@ -164,7 +164,7 @@ test("menú — Finanzas solo para el Dueño: ni el Supervisor ni la oficina", (
   assert.ok(empresa.modulos.includes("finanzas"), "viene con las OT");
   assert.equal(esDuenoFinanzas(DUENO), true);
   assert.equal(esDuenoFinanzas(SUPERVISOR), false);
-  assert.deepEqual(opcionesBoton("finanzas", empresa, DUENO).map((o) => o.id), ["fin-inicio", "fin-tesoreria", "fin-pagos", "fin-cheques", "fin-proveedores", "fin-clientes", "fin-sueldos", "fin-personas", "fin-resultados", "fin-flujo", "fin-reporte", "fin-cierre", "fin-config"]);
+  assert.deepEqual(opcionesBoton("finanzas", empresa, DUENO).map((o) => o.id), ["fin-inicio", "fin-tesoreria", "fin-pagos", "fin-cheques", "fin-proveedores", "fin-clientes", "fin-sueldos", "fin-personas", "fin-mayor", "fin-resultados", "fin-flujo", "fin-reporte", "fin-cierre", "fin-config"]);
   for (const u of [SUPERVISOR, OFICINA, null]) {
     assert.equal(conBoton("finanzas", empresa, u), false);
     assert.ok(!seccionesMas({ empresa, usuario: u }).some((s) => s.id === "finanzas"));

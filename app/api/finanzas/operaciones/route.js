@@ -57,6 +57,7 @@ import { buscarComprobanteRepetido } from "../../../lib/finanzasComprobantesServ
 import { randomUUID } from "node:crypto";
 import { frenoRepetidos, repetidosEnBase } from "../../../lib/finanzasRepetidosServidor";
 import { clienteDeOperacion } from "../../../lib/finanzasClientes";
+import { listasFinanzas } from "../../../lib/finanzasListas";
 import { columnasComprobantes, falta187, validarComprobantes } from "../../../lib/finanzasAdjuntos";
 import { MARCA_CORREGIDA, MAX_ANULAR_JUNTAS, SE_ANULAN, operacionCorregida, puedeCorregir } from "../../../lib/finanzasCorregir";
 
@@ -65,19 +66,7 @@ const ANULABLES = `origen=in.(${[...SE_ANULAN].filter((o) => o !== ORIGEN_GASTO)
 const ORIGENES_COMPRA = ["factura_oc", "factura_oc_otra", "factura_suelta"];
 const COLUMNAS = "id,fecha,tipo,proveedor_id,cliente_id,entidad,proyecto_id,centro_costo,neto,iva,otros_impuestos,total,moneda,tipo_cambio,total_ars,cuenta_debe,cuenta_haber,descripcion,referencia,origen,origen_id,estado,cargada_por_nombre,anulada_at,anulada_por_nombre,created_at";
 
-async function listas(sesion) {
-  const e = sesion.empresa_id;
-  const leer = (path) => sbGetAll(path, { sesion, maxFilas: 5000 }).then((r) => r.data);
-  const [tipos, cuentas, tesoreria, centros, proveedores, proyectos] = await Promise.all([
-    leer(`fin_tipos_operacion?empresa_id=eq.${e}&select=codigo,nombre,grupo,cuenta_debe,cuenta_haber,pide_entidad,pide_ot,pide_cc,descripcion,activo&order=codigo.asc`),
-    leer(`fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre,rubro,activa&order=codigo.asc`),
-    leer(`fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,activa&order=cuenta.asc`),
-    leer(`fin_centros_costo?empresa_id=eq.${e}&select=codigo,nombre,division,activo&order=codigo.asc`),
-    leer(`proveedores?empresa_id=eq.${e}&select=id,nombre,cuit,fin_tipo,activo&order=nombre.asc,id.asc`),
-    leer(`proyectos?empresa_id=eq.${e}&select=id,ot,cliente,obra,descripcion,estado&order=id.desc`),
-  ]);
-  return { tipos, cuentas, tesoreria, centros, proveedores, proyectos };
-}
+const listas = listasFinanzas;
 
 /** Los clientes de la lista (sin la 177, ninguno): para dejar el cobro a mano en su cuenta (13/11). */
 async function clientesDe(sesion) {
