@@ -279,3 +279,76 @@ test("Resultados — resumen por división y elegir una", async () => {
   fireEvent.click(screen.getByRole("button", { name: "⚙ Compartidos" }));
   assert.equal(screen.getByLabelText("Porcentaje de MUEBLES").value, "80");
 });
+
+// ─── Entregas con valor estimado (13/11): OT terminadas sin precio en el Plan ───
+
+test("entregas estimadas: renglón aparte por división, cuentan para materiales y no se cuentan dos veces", () => {
+  const estimadas = [
+    { proyecto_id: 3, fecha: "2026-10-12", valor: 500000 },
+    { proyecto_id: 3, fecha: "2025-01-12", valor: 999 }, // fuera de la ventana
+    { proyecto_id: 1, fecha: "2026-10-20", valor: 777 }, // ya tiene su entrega de verdad
+  ];
+  const r = estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: [...PROYECTOS, { id: 3, division: "MUEBLES" }], hasta: "2026-10", entregasEstimadas: estimadas });
+  const est = r.filas.filter((f) => f.entrega_estimada);
+  assert.equal(est.length, 1);
+  assert.equal(est[0].nombre, "Entregas con valor estimado (OT sin precio en el Plan) · MUEBLES");
+  assert.equal(est[0].valores[11], 500000);
+  assert.equal(est[0].estimado, true);
+  assert.equal(r.entregas_estimadas, 1);
+  // Va en Ingresos, después de las entregas con precio
+  const ing = r.filas.filter((f) => f.seccion === "ING" && f.tipo === "linea");
+  assert.equal(ing[ing.length - 1].entrega_estimada, true);
+  assert.equal(r.filas.find((f) => f.id === "ING").valores[11], 1500000);
+  // Materiales: 40 % de todas las entregas (con precio y estimadas)
+  assert.equal(r.filas.find((f) => f.id === "materiales|estimado" || f.nombre.startsWith("Costo de materiales")).valores[11], 600000);
+  // Vista de ALUMINIO: la OT de Muebles no está
+  const alu = estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: [...PROYECTOS, { id: 3, division: "MUEBLES" }], hasta: "2026-10", entregasEstimadas: estimadas, ponderador: PONDERADOR, division: "ALUMINIO" });
+  assert.equal(alu.filas.filter((f) => f.entrega_estimada).length, 0);
+});
+
+test("/api/finanzas/resultados — estima las OT terminadas sin precio con sus necesidades ÷ 0,3", async () => {
+  const pedidos = [];
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
+    { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
+    { match: (u) => u.includes("/rest/v1/fin_cuentas"), respond: () => ({ status: 200, body: CUENTAS }) },
+    { match: (u) => u.includes("/rest/v1/fin_operaciones"), respond: () => ({ status: 200, body: OPS.filter((o) => !o.anulada_at) }) },
+    {
+      match: (u) => u.includes("/rest/v1/proyectos"),
+      respond: (u) => {
+        pedidos.push(decodeURIComponent(u));
+        return { status: 200, body: u.includes("id=in.") ? [{ id: 3, ot: "7001", estado: "cerrado", created_at: "2026-09-01T12:00:00Z" }, { id: 4, ot: "7002", estado: "cerrado", created_at: "2026-09-01T12:00:00Z" }, { id: 5, ot: "7003", estado: "activo", created_at: "2026-09-01T12:00:00Z" }] : [...PROYECTOS, { id: 3, division: "MUEBLES" }, { id: 4, division: "MUEBLES" }] };
+      },
+    },
+    { match: (u) => u.includes("/rest/v1/fin_centros_costo"), respond: () => ({ status: 200, body: CENTROS }) },
+    { match: (u) => u.includes("/rest/v1/precios_ot"), respond: () => ({ status: 200, body: [{ ot: "7002", precio: 100 }] }) },
+    { match: (u) => u.includes("/rest/v1/necesidades_stock"), respond: () => ({ status: 200, body: [{ ot: "7001", sku: "PL1", cantidad: 3 }] }) },
+    { match: (u) => u.includes("/rest/v1/precios_fijos_ot"), respond: () => ({ status: 200, body: [] }) },
+    { match: (u) => u.includes("/rest/v1/v_precios_articulos"), respond: () => ({ status: 200, body: [{ sku: "PL1", fecha: "2026-01-01", precio_ars: 30000 }] }) },
+    {
+      match: (u) => u.includes("/rest/v1/config_sistema"),
+      respond: (u) => ({ status: 200, body: [{ valor: u.includes("finanzas_entregas_estimadas") ? { fechas: { p3: "2026-10-12", p4: "2026-10-13", p5: "2026-10-14" } } : { materiales_pct: 40 } }] }),
+    },
+  ]);
+  const r = await api.GET(new Request("http://localhost/api/finanzas/resultados?hasta=2026-10", { headers: { Authorization: `Bearer ${await token("gerencial")}` } }));
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  const est = d.filas.find((f) => f.entrega_estimada);
+  // 3 × 30.000 = 90.000 de materiales ÷ 0,3 = 300.000 (la 7002 ya tiene precio; la 7003 se reabrió)
+  assert.equal(est.valores[11], 300000);
+  assert.deepEqual(d.estimadas_ot, [{ ot: "7001", fecha: "2026-10-12", valor: 300000 }]);
+  assert.ok(pedidos.some((p) => p.includes("id=in.(3,4,5)")));
+});
+
+test("Resultados — el renglón estimado se ve con otro color y la lista de OT", async () => {
+  const proyectos = [...PROYECTOS, { id: 3, division: "MUEBLES" }];
+  const datos = { hasta: "2026-10", config: { materiales_pct: 40 }, estimadas_ot: [{ ot: "7001", fecha: "2026-10-12", valor: 300000 }], ...estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos, hasta: "2026-10", entregasEstimadas: [{ proyecto_id: 3, fecha: "2026-10-12", valor: 300000 }] }) };
+  global.fetch = async () => new Response(JSON.stringify(datos), { status: 200 });
+  render(<FinanzasResultados />);
+  const celda = await screen.findByText(/Entregas con valor estimado \(OT sin precio en el Plan\) · MUEBLES/);
+  assert.match(celda.closest("tr").className, /bg-gypi-estimado/);
+  assert.ok(screen.getByText(/1 OT terminada sin precio en el Plan de trabajo/));
+  assert.ok(screen.getByText("OT 7001"));
+  assert.ok(screen.getByText("12/10/26"));
+});

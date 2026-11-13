@@ -18,6 +18,13 @@
 //     stock; app/lib/costoReal.js) en lugar del %: a cada entrega le toca la
 //     parte de los materiales de su OT. Las entregas de OT sin materiales
 //     en Gypi siguen con el %.
+//   - Entregas con valor estimado (13/11): las OT terminadas que no tienen
+//     PRECIO en el Plan no tienen entrega anotada. Se suman en un renglón
+//     aparte de Entregas (por división, marcado como estimado) con el mismo
+//     valor que la cuenta corriente de clientes: materiales de sus
+//     necesidades ÷ 0,3 (app/lib/finanzasOtClientes.js). El mes es el día en
+//     que Gypi la vio terminada (como una entrega con precio). Cuentan como
+//     entregas para el costo de materiales.
 //   - IMP_IVA (IVA a pagar / a favor) va aparte y no entra en el resultado.
 //   - Ordenado según NIIF (NIC 1, gastos por función), 10/11: el ingreso son
 //     SOLO las entregas (ING_ENT, menos descuentos y notas de crédito), para
@@ -164,10 +171,10 @@ const esDeResultado = (c) => /resultado/i.test(String(c.rubro || "")) || /^0[45]
 
 /**
  * El estado de resultados.
- * @param {{ ops: object[], cuentas: object[], proyectos?: object[], hasta: string, materialesPct?: number }} d
+ * @param {{ ops: object[], cuentas: object[], proyectos?: object[], hasta: string, materialesPct?: number, entregasEstimadas?: { proyecto_id: number, fecha: string, valor: number }[] }} d
  * @returns {{ meses: string[], filas: object[], sin_linea: object[], para_revisar: number, clasificado: boolean, materiales_estimados: boolean }}
  */
-export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centros = [], hasta, materialesPct = MATERIALES_PCT, ponderador = {}, division = "", materialesOt = null }) {
+export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centros = [], hasta, materialesPct = MATERIALES_PCT, ponderador = {}, division = "", materialesOt = null, entregasEstimadas = [] }) {
   const meses = mesesHasta(hasta);
   const idx = new Map(meses.map((m, i) => [m, i]));
   const porCodigo = new Map(cuentas.map((c) => [c.codigo, c]));
@@ -231,6 +238,31 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
     sumar(op.cuenta_haber, op, -1, f);
   }
 
+  // Entregas sin precio en el Plan, con su valor estimado: renglón aparte por división
+  let estimadasOt = 0;
+  for (const x of entregasEstimadas) {
+    const i = idx.get(String(x.fecha || "").slice(0, 7));
+    const valor = Number(x.valor) || 0;
+    if (i === undefined || !(valor > 0) || !x.proyecto_id) continue;
+    const pid = Number(x.proyecto_id);
+    // Si ya tiene su entrega de verdad (le pusieron precio), no se cuenta dos veces
+    if (entregaOt.has(pid)) continue;
+    const f = factor({ proyecto_id: pid });
+    if (!f) continue;
+    const div = divisionOt.get(pid) || "";
+    const k = `entregas|estimadas|${div}`;
+    let l = lineas.get(k);
+    if (!l) {
+      const nombre = "Entregas con valor estimado (OT sin precio en el Plan)";
+      l = { cuenta: null, linea: "ING_ENT_EST", division: div, nombre: div ? `${nombre} · ${div}` : nombre, seccion: "ING", origen: "ING", grupo: "ENT", estimado: true, entregaEstimada: true, valores: cero() };
+      lineas.set(k, l);
+    }
+    l.valores[i] += valor * f;
+    if (!entregaOt.has(pid)) entregaOt.set(pid, cero());
+    entregaOt.get(pid)[i] += valor * f;
+    estimadasOt += 1;
+  }
+
   // Materiales estimados: un % de las entregas en lugar de las cuentas CMV_MAT
   const pct = Math.max(0, Math.min(100, Number(materialesPct) || 0));
   let estimados = false;
@@ -285,14 +317,14 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
     });
     for (const g of grupos) {
-      const deG = deSec.filter((l) => claveG(l) === g).sort((a, b) => a.linea.localeCompare(b.linea) || String(a.cuenta).localeCompare(String(b.cuenta)) || a.division.localeCompare(b.division));
+      const deG = deSec.filter((l) => claveG(l) === g).sort((a, b) => Number(!!a.entregaEstimada) - Number(!!b.entregaEstimada) || a.linea.localeCompare(b.linea) || String(a.cuenta).localeCompare(String(b.cuenta)) || a.division.localeCompare(b.division));
       const conNombre = nombreGrupo(deG[0].origen, deG[0].grupo);
       if (conNombre || deG.length > 1) {
         const tG = sumaDe(deG);
         filas.push({ tipo: "grupo", id: `${sec.id}_${g}`, seccion: sec.id, nombre: conNombre || deG[0].grupo || "Otros", valores: redondear(tG), total: total(tG) });
       }
       for (const l of deG) {
-        filas.push({ tipo: "linea", id: `${l.cuenta || l.linea}|${l.division}`, seccion: sec.id, grupo: l.grupo, cuenta: l.cuenta, nombre: l.nombre, estimado: !!l.estimado, valores: redondear(l.valores), total: total(l.valores) });
+        filas.push({ tipo: "linea", id: `${l.cuenta || l.linea}|${l.division}`, seccion: sec.id, grupo: l.grupo, cuenta: l.cuenta, nombre: l.nombre, estimado: !!l.estimado, ...(l.entregaEstimada ? { entrega_estimada: true } : {}), valores: redondear(l.valores), total: total(l.valores) });
       }
     }
     const resultado = (id, nombre, vals, base) => {
@@ -315,6 +347,7 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
     para_revisar: paraRevisar,
     clasificado: cuentas.some((c) => c.linea_eerr),
     materiales_estimados: estimados,
+    entregas_estimadas: estimadasOt,
     hay_entregas: [...lineas.values()].some((l) => l.origen === "ING" && l.grupo === "ENT" && l.valores.some((v) => Math.abs(v) >= 0.01)),
   };
 }

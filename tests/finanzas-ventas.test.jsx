@@ -8,6 +8,7 @@ import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/re
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
   planVentas, cuentasVentas, leerConfigVentas, centroDeDivision, fechaCarga, sincronizarVentasOt, ORIGEN_VENTA, ORIGEN_ENTREGA,
+  planEntregasEstimadas,
 } from "../app/lib/finanzasVentas.js";
 
 before(() => {
@@ -199,4 +200,20 @@ test("Clientes — 🧾 Ventas de las OT: se prende con la fecha", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
   await waitFor(() => assert.equal(enviados.length, 1));
   assert.deepEqual(enviados[0], { accion: "config_ventas", activo: true, desde: "2026-11-01" });
+});
+
+test("planEntregasEstimadas: el día en que se vio terminada cada OT sin precio", () => {
+  const config = { activo: true, desde: "2026-10-01" };
+  const proyectos = [
+    { id: 1, ot: "A", estado: "cerrado", created_at: "2026-10-05T12:00:00Z" }, // nueva: hoy
+    { id: 2, ot: "B", estado: "cerrado", created_at: "2026-10-05T12:00:00Z" }, // ya tenía fecha: queda
+    { id: 3, ot: "C", estado: "cerrado", created_at: "2026-10-05T12:00:00Z" }, // tiene precio: sale
+    { id: 4, ot: "D", estado: "activo", created_at: "2026-10-05T12:00:00Z" }, // se reabrió: sale
+    { id: 5, ot: "E", estado: "cerrado", created_at: "2026-09-05T12:00:00Z" }, // antes de "desde"
+  ];
+  const precios = new Map([["C", 1000]]);
+  const r = planEntregasEstimadas({ proyectos, precios, config, fechas: { p2: "2026-10-20", p3: "2026-10-21", p4: "2026-10-22" }, hoy: "2026-11-13" });
+  assert.deepEqual(r.fechas, { p1: "2026-11-13", p2: "2026-10-20" });
+  assert.equal(r.cambio, true);
+  assert.equal(planEntregasEstimadas({ proyectos, precios, config, fechas: r.fechas, hoy: "2026-11-14" }).cambio, false);
 });

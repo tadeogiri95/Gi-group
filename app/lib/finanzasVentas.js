@@ -30,6 +30,13 @@ import { ORIGEN_COBRO, clienteDeOt, cuentasDeudores, emparejarCliente, indiceCli
 import { FECHA, hoyAr } from "./finanzasOperaciones";
 
 export const CLAVE_VENTAS_OT = "finanzas_ventas_ot";
+/**
+ * Las OT terminadas SIN precio en el Plan no tienen entrega (no hay importe).
+ * Para que el estado de resultados las muestre con un valor estimado (13/11)
+ * se guarda el día en que Gypi las vio terminadas, igual que la fecha de una
+ * entrega con precio: config_sistema { fechas: { p<id>: "AAAA-MM-DD" } }.
+ */
+export const CLAVE_ENTREGAS_ESTIMADAS = "finanzas_entregas_estimadas";
 export const ORIGEN_VENTA = "venta_ot";
 export const ORIGEN_ENTREGA = "entrega_ot";
 export const TIPO_VENTA = "VENTA";
@@ -168,6 +175,39 @@ export function planVentas({ proyectos = [], precios, operaciones = [], clientes
 }
 
 /**
+ * El día en que cada OT terminada sin precio quedó "entregada" (13/11). Pura.
+ * Mismas reglas que la entrega con precio: OT cargada desde "desde", cerrada
+ * y la fecha es la primera pasada que la ve así (nunca antes de su carga). Si
+ * la OT se reabre o le ponen precio (ahí va la entrega de verdad), sale.
+ * @returns {{ fechas: Record<string, string>, cambio: boolean }}
+ */
+export function planEntregasEstimadas({ proyectos = [], precios, config, fechas = {}, hoy }) {
+  const precioDe = (ot) => Number(precios instanceof Map ? precios.get(String(ot)) : precios?.[String(ot)]) || 0;
+  const antes = fechas && typeof fechas === "object" ? fechas : {};
+  const nuevas = {};
+  for (const p of proyectos) {
+    const fecha = fechaCarga(p);
+    if (p.estado !== "cerrado" || precioDe(p.ot) > 0) continue;
+    if (!(fecha && config?.desde && fecha >= config.desde)) continue;
+    const id = `p${p.id}`;
+    nuevas[id] = FECHA.test(String(antes[id] || "")) ? antes[id] : hoy < fecha ? fecha : hoy;
+  }
+  const claves = (o) => Object.keys(o).sort().map((k) => `${k}=${o[k]}`).join(",");
+  return { fechas: nuevas, cambio: claves(nuevas) !== claves(antes) };
+}
+
+/** Guarda las fechas de las entregas sin precio, si cambiaron. */
+async function guardarEntregasEstimadas(e, proyectos, precios, config, hoy) {
+  const [fila] = (await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_ENTREGAS_ESTIMADAS}&select=valor&limit=1`, { silent: true, fallback: [] })) || [];
+  const plan = planEntregasEstimadas({ proyectos, precios, config, fechas: fila?.valor?.fechas, hoy });
+  if (!plan.cambio) return Object.keys(plan.fechas).length;
+  const valor = { fechas: plan.fechas };
+  if (fila) await sbPatch(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_ENTREGAS_ESTIMADAS}`, { valor });
+  else await sbPost("config_sistema", { empresa_id: e, clave: CLAVE_ENTREGAS_ESTIMADAS, valor });
+  return Object.keys(plan.fechas).length;
+}
+
+/**
  * Qué OT quedan unidas a qué cliente (proyectos.cliente_id, 184) y qué cobros
  * de una OT se pasan al cliente de la OT (parte 6: manda el de la OT). Pura.
  * @param {object[]} proyectos con id, ot, cliente, cliente_id
@@ -279,6 +319,11 @@ export async function sincronizarVentasOt(empresaId, { hoy = hoyAr() } = {}) {
     for (let i = 0; i < filas.length; i += 500) await sbPost("fin_operaciones", filas.slice(i, i + 500));
     for (const { id, cambios } of plan.corregir) await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null`, { ...cambios, updated_at: ahora });
     for (const { id, motivo } of plan.anular) await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null`, { anulada_at: ahora, anulada_por_nombre: motivo, updated_at: ahora });
+    // Las OT terminadas sin precio: el día de su entrega estimada (13/11)
+    const estimadas = await guardarEntregasEstimadas(e, proyectos, precios, config, hoy).catch((err) => {
+      logger.warn(`[finanzas] no se pudieron anotar las entregas sin precio de ${e}`, err);
+      return 0;
+    });
     // Cada OT unida a su cliente y sus cobros a ese cliente (parte 6; 184)
     const ligado = await ligarClientesOt(e, clientes).catch((err) => {
       logger.warn(`[finanzas] no se pudieron unir las OT a sus clientes en ${e}`, err);
@@ -286,7 +331,7 @@ export async function sincronizarVentasOt(empresaId, { hoy = hoyAr() } = {}) {
     });
     return {
       accion: "hecha", creadas: filas.length, corregidas: plan.corregir.length, anuladas: plan.anular.length,
-      clientes_nuevos: clientes.length - clientesAntes.length, ...ligado,
+      clientes_nuevos: clientes.length - clientesAntes.length, entregas_sin_precio: estimadas, ...ligado,
     };
   } catch (err) {
     // Sin las migraciones 171/177 o la base no respondió: la sync del Plan sigue igual

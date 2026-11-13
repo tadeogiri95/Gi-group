@@ -10,6 +10,11 @@
 //       materiales_real?: true usa el costo real de materiales de cada OT
 //       entregada (auditoría 12/11, parte 4); las demás entregas, el %.
 //
+// Entregas con valor estimado (13/11): las OT terminadas sin PRECIO en el
+// Plan (fechas en config_sistema "finanzas_entregas_estimadas", las anota la
+// sync de ventas) valen materiales de sus necesidades ÷ 0,3, como en la
+// cuenta corriente de clientes. Van en un renglón aparte de Entregas.
+//
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige). La
 // configuración va en config_sistema.
 import { NextResponse } from "next/server";
@@ -19,6 +24,9 @@ import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { hoyAr } from "../../../lib/finanzasOperaciones";
 import { logger } from "../../../lib/logger";
 import { materialesRealesDeOts } from "../../../lib/costoRealServidor";
+import { CLAVE_ENTREGAS_ESTIMADAS } from "../../../lib/finanzasVentas";
+import { materialesDeOts } from "../../../lib/finanzasMaterialesOt";
+import { valorOt } from "../../../lib/finanzasOtClientes";
 import { CLAVE_RESULTADOS, configResultados, estadoResultados, finDeMes, mesesHasta, resumenDivisiones, validarPonderador } from "../../../lib/finanzasResultados";
 
 export const maxDuration = 60;
@@ -30,9 +38,9 @@ const COLUMNAS = "id,fecha,cuenta_debe,cuenta_haber,neto,total,total_ars,proyect
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data);
 
 /** Materiales reales (MRP + de más + compras sin stock) de las OT con entregas en la ventana, por id de OT. */
-async function materialesDeEntregas(e, ops, cuentas) {
+async function materialesDeEntregas(e, ops, cuentas, otrasIds = []) {
   const ent = new Set(cuentas.filter((c) => /^ING_ENT/i.test(String(c.linea_eerr || ""))).map((c) => c.codigo));
-  const ids = [...new Set(ops.filter((o) => o.proyecto_id && (ent.has(o.cuenta_haber) || ent.has(o.cuenta_debe))).map((o) => Number(o.proyecto_id)))].slice(0, 400);
+  const ids = [...new Set([...ops.filter((o) => o.proyecto_id && (ent.has(o.cuenta_haber) || ent.has(o.cuenta_debe))).map((o) => Number(o.proyecto_id)), ...otrasIds])].slice(0, 400);
   if (!ids.length) return new Map();
   try {
     const proyectos = [];
@@ -43,6 +51,37 @@ async function materialesDeEntregas(e, ops, cuentas) {
     // Sin las migraciones del costo o la base no respondió: queda el %
     logger.warn(`[finanzas] resultados: materiales reales ${err?.message}`);
     return null;
+  }
+}
+
+/**
+ * Las OT terminadas sin precio en la ventana, con su valor estimado. Si algo
+ * falla, quedan afuera (el estado se arma igual).
+ * @returns {Promise<{ proyecto_id: number, ot: string, fecha: string, valor: number }[]>}
+ */
+async function entregasEstimadas(sesion, desde, hasta) {
+  const e = sesion.empresa_id;
+  try {
+    const [fila] = (await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_ENTREGAS_ESTIMADAS}&select=valor&limit=1`, { silent: true, fallback: [] })) || [];
+    const fechas = Object.entries(fila?.valor?.fechas || {})
+      .map(([k, f]) => ({ id: Number(String(k).slice(1)), fecha: String(f || "") }))
+      .filter((x) => x.id > 0 && x.fecha >= desde && x.fecha <= hasta);
+    if (!fechas.length) return [];
+    const ids = fechas.map((x) => x.id);
+    const proyectos = [];
+    for (let i = 0; i < ids.length; i += 150) proyectos.push(...(await leer(sesion, `proyectos?empresa_id=eq.${e}&id=in.(${ids.slice(i, i + 150).join(",")})&select=id,ot,estado,created_at`, 1000)));
+    // Si le pusieron precio desde la última sync, ya no se estima
+    const precios = await sbGet(`precios_ot?empresa_id=eq.${e}&select=ot,precio`, { sesion, silent: true, fallback: [] });
+    const conPrecio = new Set((precios || []).filter((f) => Number(f.precio) > 0).map((f) => String(f.ot)));
+    const vivos = proyectos.filter((p) => p.estado === "cerrado" && !conPrecio.has(String(p.ot)));
+    const materiales = await materialesDeOts(sesion, vivos);
+    const fechaDe = new Map(fechas.map((x) => [x.id, x.fecha]));
+    return vivos
+      .map((p) => ({ proyecto_id: Number(p.id), ot: String(p.ot), fecha: fechaDe.get(Number(p.id)), valor: valorOt(0, materiales.get(String(p.ot))).valor }))
+      .filter((x) => x.valor > 0);
+  } catch (err) {
+    logger.warn(`[finanzas] resultados: entregas estimadas ${err?.message}`);
+    return [];
   }
 }
 
@@ -67,16 +106,19 @@ export async function GET(request) {
       leerConfig(e),
       leer(sesion, `fin_centros_costo?empresa_id=eq.${e}&select=codigo,division`).catch(() => []),
     ]);
+    // Las OT terminadas sin precio en el Plan, con su valor estimado (13/11)
+    const estimadas = await entregasEstimadas(sesion, `${meses[0]}-01`, finDeMes(hasta));
     // Costo real de materiales de cada OT entregada (auditoría 12/11, parte 4), si el Dueño lo eligió
-    const materialesOt = config.materiales_real ? await materialesDeEntregas(e, ops || [], cuentas || []) : null;
-    const base = { ops: ops || [], cuentas: cuentas || [], proyectos: proyectos || [], centros: centros || [], hasta, materialesPct: config.materiales_pct, ponderador: config.ponderador, materialesOt };
+    const materialesOt = config.materiales_real ? await materialesDeEntregas(e, ops || [], cuentas || [], estimadas.map((x) => x.proyecto_id)) : null;
+    const base = { ops: ops || [], cuentas: cuentas || [], proyectos: proyectos || [], centros: centros || [], hasta, materialesPct: config.materiales_pct, ponderador: config.ponderador, materialesOt, entregasEstimadas: estimadas };
     const pedida = q.get("division") || "";
     const division = Object.keys(config.ponderador).includes(pedida) ? pedida : "";
     const estado = estadoResultados({ ...base, division });
     // Las divisiones de las OT, para armar el ponderador
     const divisiones = [...new Set([...(proyectos || []).map((p) => String(p.division || "").trim()).filter(Boolean), ...Object.keys(config.ponderador)])].sort((a, b) => a.localeCompare(b));
     const por_division = Object.keys(config.ponderador).length ? resumenDivisiones(base) : [];
-    return NextResponse.json({ hasta, config, division, divisiones, por_division, ...estado });
+    const estimadas_ot = estimadas.map(({ ot, fecha, valor }) => ({ ot, fecha, valor })).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.ot.localeCompare(b.ot));
+    return NextResponse.json({ hasta, config, division, divisiones, por_division, estimadas_ot, ...estado });
   } catch (err) {
     if (falta179(err)) return NextResponse.json({ error: FALTA_179, falta_migracion: 179 }, { status: 409 });
     return errorFinanzas(err, "resultados GET");
