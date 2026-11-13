@@ -11,6 +11,7 @@ import { useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { textoOt } from "../lib/nombreOt";
 import { leyendaTipo, nombreTipo } from "../lib/finanzasTipos";
+import ExplicacionConcepto, { leyendaCorta } from "./ExplicacionConcepto";
 import { asientoDe, cajasDelLado, hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import { MAX_ARCHIVO_B64 } from "../lib/facturasSueltas";
 import { fotoBase64 } from "../lib/foto";
@@ -244,12 +245,12 @@ export default function CargarGasto({ datos, inicial = {}, arreglo = null, onCer
                 <option value="">Elegí…</option>
                 {grupos.map((g) => (
                   <optgroup key={g} label={g}>
-                    {tipos.filter((t) => (t.grupo || "Otros") === g).map((t) => <option key={t.codigo} value={t.codigo}>{nombreTipo(t)}</option>)}
+                    {tipos.filter((t) => (t.grupo || "Otros") === g).map((t) => <option key={t.codigo} value={t.codigo} data-detalle={leyendaCorta(leyendaTipo(t))}>{nombreTipo(t)}</option>)}
                   </optgroup>
                 ))}
               </SelectBuscable>
             ))}
-            {tipo && leyendaTipo(tipo) && <p className="-mt-2 text-[12px] leading-snug text-gypi-dim" aria-label="Qué comprende este tipo">ℹ {leyendaTipo(tipo)}</p>}
+            {tipo && leyendaTipo(tipo) && <div className="-mt-2"><ExplicacionConcepto texto={leyendaTipo(tipo)} nombre={nombreTipo(tipo)} /></div>}
             {tipo && String(tipo.grupo || "").toUpperCase() === "COMPRAS" && (
               <p className="m-0 rounded-lg bg-gypi-amber/10 p-2 text-[12px] leading-snug text-gypi-text" aria-label="Materiales al stock">
                 📦 ¿Son materiales que van al stock? Cargá la factura en <b>Compras → 🧾 Facturas y listas</b>: entra sola acá en Finanzas y desde ahí la mandás al stock. Así se carga una sola vez.

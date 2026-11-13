@@ -11,6 +11,7 @@ import { numero, plata, separaIva } from "../lib/finanzasOperaciones";
 import Modal from "./ui/Modal";
 import SelectBuscable from "./ui/SelectBuscable";
 import BotonFoto from "./BotonFoto";
+import ExplicacionConcepto, { leyendaCorta } from "./ExplicacionConcepto";
 import BotonNuevaPersona from "./AltaPersona";
 import { Chip } from "./ui";
 import { ayerDe, conceptosPorUso } from "../lib/finanzasMiCaja";
@@ -308,12 +309,12 @@ function Cargar({ caja, clase, conceptos, hoy, conStock = false, clientes = [], 
                   <option value="">Otro…</option>
                   {porGrupo(resto).map(([g, cs]) => (
                     <optgroup key={g} label={g}>
-                      {cs.map((c) => <option key={c.codigo} value={c.codigo}>{c.nombre}</option>)}
+                      {cs.map((c) => <option key={c.codigo} value={c.codigo} data-detalle={leyendaCorta(c.leyenda)}>{c.nombre}</option>)}
                     </optgroup>
                   ))}
                 </SelectBuscable>
               )}
-              {elegido?.leyenda && <p className="mt-1 mb-0 text-[12px] leading-snug text-gypi-dim">ℹ {elegido.leyenda}</p>}
+              {elegido?.leyenda && <div className="mt-2"><ExplicacionConcepto texto={elegido.leyenda} nombre={elegido.nombre} /></div>}
             </div>
             {pideCliente && (
               <div className="flex flex-col gap-2">

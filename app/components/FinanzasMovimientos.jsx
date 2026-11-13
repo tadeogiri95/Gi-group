@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { textoOt } from "../lib/nombreOt";
 import { leyendaTipo, nombreTipo } from "../lib/finanzasTipos";
+import ExplicacionConcepto, { leyendaCorta } from "./ExplicacionConcepto";
 import { armarAgenda, opcionesAgenda } from "../lib/finanzasPersonas";
 import { useAgenda } from "./FinanzasElegirProveedor";
 import { VentanaAltaPersona } from "./AltaPersona";
@@ -194,13 +195,13 @@ function NuevaOperacion({ datos, onCerrar, onGuardada }) {
               <option value="">Elegí…</option>
               {grupos.map((g) => (
                 <optgroup key={g} label={g}>
-                  {tiposActivos.filter((t) => (t.grupo || "Otros") === g).map((t) => <option key={t.codigo} value={t.codigo}>{nombreTipo(t)}</option>)}
+                  {tiposActivos.filter((t) => (t.grupo || "Otros") === g).map((t) => <option key={t.codigo} value={t.codigo} data-detalle={leyendaCorta(leyendaTipo(t))}>{nombreTipo(t)}</option>)}
                 </optgroup>
               ))}
             </SelectBuscable>
           ))}
         </div>
-        {tipo && leyendaTipo(tipo) && <p className="-mt-2 m-0 text-[13px] leading-snug text-gypi-dim" aria-label="Qué comprende este tipo">ℹ {leyendaTipo(tipo)}</p>}
+        {tipo && leyendaTipo(tipo) && <div className="-mt-2"><ExplicacionConcepto texto={leyendaTipo(tipo)} nombre={nombreTipo(tipo)} /></div>}
 
         {/* En la computadora, dos columnas: a la izquierda de dónde sale y a
             quién; a la derecha cuánto y el detalle (11/11, ventana grande). */}

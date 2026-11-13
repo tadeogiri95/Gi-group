@@ -7,6 +7,8 @@
 // (sin importar mayúsculas ni tildes, cada palabra en cualquier orden). Con
 // las flechas se recorre, Enter elige y Escape cierra. onChange recibe
 // { target: { value } }, como el de un <select>, así no cambia nada más.
+// Un <option data-detalle="…"> muestra debajo una explicación corta, que
+// también se busca (13/11: "nafta" encuentra Combustibles).
 import { Children, Fragment, isValidElement, useId, useMemo, useRef, useState } from 'react';
 
 /** Texto plano de los hijos de un <option> ("{a} · {b}" → "a · b"). */
@@ -27,7 +29,8 @@ export function opcionesDe(children) {
       if (n.type === 'optgroup') { recorrer(n.props.children, n.props.label || null); return; }
       if (n.type === 'option') {
         const label = textoDe(n.props.children);
-        out.push({ value: String(n.props.value ?? label), label, grupo, disabled: Boolean(n.props.disabled) });
+        const detalle = n.props['data-detalle'] ? String(n.props['data-detalle']) : '';
+        out.push({ value: String(n.props.value ?? label), label, grupo, disabled: Boolean(n.props.disabled), ...(detalle ? { detalle } : {}) });
         return;
       }
       if (n.type === Fragment) recorrer(n.props.children, grupo);
@@ -45,7 +48,7 @@ export function filtrarOpciones(opciones, texto) {
   const palabras = normalizar(texto).split(/\s+/).filter(Boolean);
   if (!palabras.length) return opciones;
   return opciones.filter((o) => {
-    const donde = normalizar(`${o.label} ${o.grupo || ''}`);
+    const donde = normalizar(`${o.label} ${o.grupo || ''} ${o.detalle || ''}`);
     return palabras.every((p) => donde.includes(p));
   });
 }
@@ -175,7 +178,12 @@ export default function SelectBuscable({
                   onMouseDown={(e) => { e.preventDefault(); elegir(o); }}
                   onMouseEnter={() => setActiva(i)}
                   className={`px-3 py-2 min-h-[40px] text-[14px] text-gypi-text cursor-pointer ${listaAncha ? 'whitespace-normal break-words leading-snug' : ''} ${i === activa ? 'bg-gypi-surface' : ''} ${o.disabled ? 'opacity-50' : ''} ${marcada ? 'font-semibold' : ''}`}>
-                  {o.label}
+                  {o.detalle ? (
+                    <span className="flex flex-col">
+                      <span>{o.label}</span>
+                      <span className="text-[12px] font-normal leading-snug text-gypi-dim whitespace-normal">{o.detalle}</span>
+                    </span>
+                  ) : o.label}
                 </li>
               </Fragment>
             );
