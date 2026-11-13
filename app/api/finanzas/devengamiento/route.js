@@ -6,6 +6,8 @@
 //       anterior), "Falta este mes", las propuestas de los recurrentes, el
 //       S.O.S ventas contra las entregas y las listas para cargar un gasto o
 //       un asiento ahí mismo.
+//       Trae también si el mes está cerrado (parte 9, migración 190; sin ella,
+//       cierre: null y la pantalla no muestra el botón).
 //   POST { accion: "ocultar", id, oculto } → oculta o vuelve a mostrar un renglón.
 //   POST { accion: "ventas", texto, archivo } → el CSV de ventas del S.O.S:
 //       se guarda el total de cada mes (solo como dato, no es una operación).
@@ -18,6 +20,7 @@ import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { hoyAr } from "../../../lib/finanzasOperaciones";
 import { listasFinanzas } from "../../../lib/finanzasListas";
 import { finDeMes, mesesHasta } from "../../../lib/finanzasResultados";
+import { estadoMes } from "../../../lib/finanzasMeses";
 import { CLAVE_DEVENGAMIENTO, configDevengamiento, devengamientoDelMes, itemDevengamiento, ventasSosPorMes } from "../../../lib/finanzasDevengamiento";
 
 export const maxDuration = 60;
@@ -34,6 +37,16 @@ async function leerConfig(e) {
 async function guardarConfig(e, existe, valor) {
   if (existe) await sbPatch(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_DEVENGAMIENTO}`, { valor });
   else await sbPost("config_sistema", { empresa_id: e, clave: CLAVE_DEVENGAMIENTO, valor });
+}
+
+/** Si el mes está cerrado (null si falta la migración 190). */
+async function cierreDelMes(sesion, mes) {
+  try {
+    const [fila] = (await sbGet(`fin_meses_cerrados?empresa_id=eq.${sesion.empresa_id}&mes=eq.${mes}&select=mes,cerrado,cerrado_at,cerrado_por_nombre,reabierto_at,reabierto_por_nombre,motivo,historial&limit=1`, { sesion })) || [];
+    return estadoMes(mes, fila);
+  } catch {
+    return null;
+  }
 }
 
 /** El plan de cuentas con su renglón del EERR (sin la migración 179, sin él: va por el nombre). */
@@ -55,13 +68,14 @@ export async function GET(request) {
   const mes = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(pedido || "")) ? pedido : hoy.slice(0, 7);
   const desde = `${mesesHasta(mes, 13)[0]}-01`;
   try {
-    const [cuentas, ops, config, listas] = await Promise.all([
+    const [cuentas, ops, config, listas, cierre] = await Promise.all([
       cuentasConLinea(sesion),
       leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&fecha=gte.${desde}&fecha=lte.${finDeMes(mes)}&select=${COLUMNAS}&order=fecha.asc,id.asc`, 200000),
       leerConfig(e),
       listasFinanzas(sesion),
+      cierreDelMes(sesion, mes),
     ]);
-    return NextResponse.json({ ...devengamientoDelMes(mes, { ops, cuentas, config: config.valor, hoy }), hoy, listas });
+    return NextResponse.json({ ...devengamientoDelMes(mes, { ops, cuentas, config: config.valor, hoy }), hoy, listas, cierre });
   } catch (err) {
     return errorFinanzas(err, "devengamiento GET");
   }
