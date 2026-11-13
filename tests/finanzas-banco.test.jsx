@@ -221,6 +221,13 @@ function mockApi({ reglas = null, opsCuenta = [], yaMarcas = [] } = {}) {
     { match: (u) => u.includes("/rest/v1/fin_tipos_operacion"), respond: () => ({ status: 200, body: [{ codigo: "PAGO IMPUESTO" }, { codigo: "COBRO TRANSF" }] }) },
     { match: (u) => u.includes("/rest/v1/fin_cuentas"), respond: () => ({ status: 200, body: [{ codigo: IMP }, { codigo: BANCO }, { codigo: "01.01.02.001.001" }] }) },
     { match: (u) => u.includes("/rest/v1/proveedores"), respond: () => ({ status: 200, body: [] }) },
+    {
+      match: (u) => u.includes("/rest/v1/fin_cargas_banco"),
+      respond: (u, o) => {
+        if (o?.method === "POST") { escrito.push({ tabla: "fin_cargas_banco", body: JSON.parse(o.body) }); return { status: 201, body: [{ id: 5 }] }; }
+        return { status: 200, body: [] };
+      },
+    },
     { match: (u) => u.includes("/rest/v1/fin_clientes"), respond: () => ({ status: 200, body: [{ id: 2, nombre: "BCG", alias: [], activo: true }] }) },
     {
       match: (u) => u.includes("/rest/v1/config_sistema"),
@@ -270,7 +277,9 @@ test("/api/finanzas/banco — confirmar: una operación por renglón, sin repeti
   const fila = { fecha: "2026-09-01", descripcion: "Algo nuevo del banco", comprobante: null, importe: -95.5, marca: "abc123:1", tipo: "PAGO IMPUESTO", contra: IMP };
   const r = await pedir("gerencial", { accion: "confirmar", cuenta: BANCO, filas: [fila, { ...fila, marca: "abc123:2" }] });
   assert.equal(r.status, 200);
-  assert.deepEqual(await r.json(), { ok: true, cargadas: 1, repetidas: 1 });
+  assert.deepEqual(await r.json(), { ok: true, cargadas: 1, repetidas: 1, carga: 5, aviso: null });
+  const carga = escrito.find((x) => x.tabla === "fin_cargas_banco").body;
+  assert.deepEqual([carga.cuenta, carga.cargadas, carga.movimientos, carga.cargada_por_nombre], [BANCO, 1, 2, "Tadeo"], "la carga queda registrada");
   const ops = escrito.find((x) => x.tabla === "fin_operaciones").body;
   assert.deepEqual(ops.map((o) => [o.cuenta_debe, o.cuenta_haber, o.total, o.origen, o.origen_id, o.cargada_por_nombre, o.empresa_id]), [[IMP, BANCO, 95.5, "banco", "abc123:1", "Tadeo", E]]);
   const cfg = escrito.find((x) => x.tabla === "config_sistema");
@@ -349,7 +358,8 @@ test("SubirExtracto — el archivo del banco en 📘 Aprender del libro da un av
   assert.match(problemaDelLibro(new TextEncoder().encode("%PDF-1.4 resumen")), /Archivo del extracto/);
   assert.match(problemaDelLibro(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0])), /contraseña/);
   let pedidos = 0;
-  global.fetch = async () => { pedidos += 1; return new Response("{}", { status: 200 }); };
+  // Al abrir lee las cargas anteriores (GET); lo que no tiene que salir es nada para guardar
+  global.fetch = async (u, o = {}) => { if (o.method === "POST") pedidos += 1; return new Response(JSON.stringify({ cargas: [] }), { status: 200 }); };
   render(<SubirExtracto caja={{ cuenta: BANCO, nombre: "Credicoop" }} datos={{ cuentas: [], tipos: [] }} onCerrar={() => {}} onCargado={() => {}} />);
   fireEvent.change(screen.getByLabelText("Libro contable"), { target: { files: [new File(["FECHA;DESCRIPCION\n20260901;x"], "MOVCTA.csv")] } });
   await waitFor(() => assert.match(screen.getByRole("alert").textContent, /no es el libro contable/));

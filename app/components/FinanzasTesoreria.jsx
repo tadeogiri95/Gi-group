@@ -526,7 +526,7 @@ export default function FinanzasTesoreria({ onIr = null } = {}) {
       {(datos.tesoreria.some((t) => t.tipo === "fci" && t.activa !== false) || (datos.cuentas || []).some((c) => /T[IÍ]TULOS? P[UÚ]BLICOS/i.test(c.nombre || ""))) && <Inversiones onCambio={cambioAca} />}
 
       {verRepetidos && <PosiblesRepetidos datos={datos} porCaja={porCaja} onCerrar={() => setVerRepetidos(false)} onCambio={cambioAca} />}
-      {extracto && <SubirExtracto caja={saldos.find((s) => s.cuenta === extracto) || { cuenta: extracto, nombre: extracto }} datos={datos} onCerrar={() => setExtracto(null)} onCargado={() => { setExtracto(null); cambioAca(); }} />}
+      {extracto && <SubirExtracto caja={saldos.find((s) => s.cuenta === extracto) || { cuenta: extracto, nombre: extracto }} datos={datos} onCerrar={() => setExtracto(null)} onCargado={() => { setExtracto(null); cambioAca(); }} onCambio={cambioAca} />}
       {transferir !== null && <Transferir datos={datos} desdeInicial={transferir} onCerrar={() => setTransferir(null)} onHecho={() => { setTransferir(null); cambioAca(); }} />}
       {verRevisar && <RevisarMiCaja datos={datos} pendientes={pendientes} onCerrar={() => setVerRevisar(false)} onCambio={cambioAca} />}
       {verConfig && <ConfigMiCaja datos={datos} onCerrar={() => setVerConfig(false)} onGuardado={() => { setVerConfig(false); cargar(); }} />}
