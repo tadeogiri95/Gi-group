@@ -47,7 +47,8 @@ import { enviarPushLegajos } from "../../lib/pushGerencia";
 import { logger } from "../../lib/logger";
 import { safeErrorMessage } from "../../lib/validate";
 import { hoyAr, plata } from "../../lib/finanzasOperaciones";
-import { CLAVE_MI_CAJA, ORIGEN_MI_CAJA, PROMPT_TICKET, comprobanteValido, conceptosMiCaja, esquemaTicket, propuestaTicket, referenciaTicket, resumenMiCaja, validarMovimientoMiCaja } from "../../lib/finanzasMiCaja";
+import { conceptoDeOperacion } from "../../lib/finanzasConceptosCaja";
+import { CLAVE_MI_CAJA, ORIGEN_MI_CAJA, PROMPT_TICKET, comprobanteValido, conceptosMiCaja, conceptosMiCajaTodos, nombreNormal, esquemaTicket, propuestaTicket, referenciaTicket, resumenMiCaja, validarMovimientoMiCaja } from "../../lib/finanzasMiCaja";
 import { avisoRepetido, fechaDma } from "../../lib/finanzasComprobantes";
 import { clienteDeOt, indiceClientes } from "../../lib/finanzasClientes";
 import { buscarComprobanteRepetido, buscarMovimientoParecido } from "../../lib/finanzasComprobantesServidor";
@@ -101,7 +102,7 @@ async function conceptos(empresaId) {
     sbGetAll(`fin_tipos_operacion?empresa_id=eq.${empresaId}&select=codigo,nombre,grupo,descripcion,cuenta_debe,cuenta_haber,activo&order=codigo.asc`, { maxFilas: 2000 }).then((r) => r.data),
     sbGetAll(`fin_cuentas?empresa_id=eq.${empresaId}&select=codigo,nombre&order=codigo.asc`, { maxFilas: 2000 }).then((r) => r.data || []).catch(() => []),
   ]);
-  return { lista: conceptosMiCaja(cfg?.[0]?.valor, tipos, cuentas), tipos };
+  return { lista: conceptosMiCaja(cfg?.[0]?.valor, tipos, cuentas), tipos, todos: conceptosMiCajaTodos(tipos, cuentas) };
 }
 
 /**
@@ -159,7 +160,7 @@ export async function GET(request) {
     const cajas = await misCajas(sesion);
     if (!cajas.length) return NextResponse.json({ cajas: [] });
     const e = sesion.empresa_id;
-    const [{ lista, tipos }, ops] = await Promise.all([
+    const [{ lista, tipos, todos }, ops] = await Promise.all([
       conceptos(e),
       sbGetAll(`fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&or=(cuenta_debe.in.(${enLista(cajas)}),cuenta_haber.in.(${enLista(cajas)}))&select=${COLUMNAS},comprobante_url&order=fecha.asc,id.asc`, { maxFilas: 20000 })
         .catch((err) => {
@@ -169,7 +170,9 @@ export async function GET(request) {
         })
         .then((r) => r.data),
     ]);
-    const nombres = new Map(tipos.map((t) => [t.codigo, t.nombre || t.codigo]));
+    const nombres = new Map(tipos.map((t) => [t.codigo, nombreNormal(t.nombre || t.codigo)]));
+    // 14/11: cada movimiento con el nombre de su concepto de caja ("Combustible")
+    const nombreDe = todos.fijos ? (op, caja) => conceptoDeOperacion(op, caja.cuenta, todos)?.nombre || null : null;
     // Pases entre personas: nunca frenan Mi caja si algo falla
     const [{ tesoreria, personal }, { pases }] = await Promise.all([
       cajasConResponsable(e).catch(() => ({ tesoreria: [], personal: [] })),
@@ -177,7 +180,7 @@ export async function GET(request) {
     ]);
     const deCadaUno = pasesDe(pases, soloPropias(cajas).map((c) => c.cuenta));
     return NextResponse.json({
-      cajas: cajas.map((c) => ({ ...resumenMiCaja(ops, c, nombres), propia: c.propia !== false, destinos: c.propia !== false ? destinosPase(c, tesoreria, personal) : [] })),
+      cajas: cajas.map((c) => ({ ...resumenMiCaja(ops, c, nombres, nombreDe), propia: c.propia !== false, destinos: c.propia !== false ? destinosPase(c, tesoreria, personal) : [] })),
       titular: cajas.some((c) => c.propia === false),
       // Con Stock, el ticket de materiales se puede mandar al stock (11/11)
       con_stock: !(await requireModuloSesion(sesion, "stock").catch(() => true)),
