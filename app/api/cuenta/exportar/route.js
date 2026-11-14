@@ -3,12 +3,14 @@
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
 import { sbGet, sbGetAll } from "../../../lib/sbHelpers";
-import { TABLAS_EXPORTAR, aCsv, armarZip, leeme, sinSecretos } from "../../../lib/exportar";
+import { TABLAS_EXPORTAR, TABLAS_SIN_ID, aCsv, armarZip, leeme, sinSecretos } from "../../../lib/exportar";
 import { limiteExcedido } from "../../../lib/rateLimit";
 import { logAudit } from "../../../lib/audit";
 import { logger } from "../../../lib/logger";
 
 export const runtime = "nodejs";
+// 14/11: ~90 tablas
+export const maxDuration = 60;
 
 const MAX_FILAS_TABLA = 200000;
 
@@ -30,16 +32,22 @@ export async function GET(request) {
   const tablas = [{ nombre: "empresa", filas: 1 }];
   const fallidas = [];
   const truncadas = [];
-  // De a una tabla: no hay apuro y no se satura la base
-  for (const tabla of TABLAS_EXPORTAR) {
+  // De a 4 tablas por vez (14/11: son ~90): rápido sin saturar la base
+  const leerTabla = async (tabla) => {
     try {
-      const { data, truncado } = await sbGetAll(`${tabla}?empresa_id=eq.${e}&select=*&order=id.asc`, { maxFilas: MAX_FILAS_TABLA });
-      archivos[`${tabla}.csv`] = aCsv(data);
-      tablas.push({ nombre: tabla, filas: data.length });
-      if (truncado) truncadas.push(tabla);
+      const { data, truncado } = await sbGetAll(`${tabla}?empresa_id=eq.${e}&select=*${TABLAS_SIN_ID.has(tabla) ? "" : "&order=id.asc"}`, { maxFilas: MAX_FILAS_TABLA });
+      return { tabla, data, truncado };
     } catch (err) {
       logger.error(`[cuenta/exportar] ${tabla}`, err);
-      fallidas.push(tabla);
+      return { tabla, error: true };
+    }
+  };
+  for (let i = 0; i < TABLAS_EXPORTAR.length; i += 4) {
+    for (const r of await Promise.all(TABLAS_EXPORTAR.slice(i, i + 4).map(leerTabla))) {
+      if (r.error) { fallidas.push(r.tabla); continue; }
+      archivos[`${r.tabla}.csv`] = aCsv(r.data);
+      tablas.push({ nombre: r.tabla, filas: r.data.length });
+      if (r.truncado) truncadas.push(r.tabla);
     }
   }
   const fecha = new Date().toISOString().slice(0, 10);

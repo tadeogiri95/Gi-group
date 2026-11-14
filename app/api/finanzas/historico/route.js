@@ -17,7 +17,8 @@ import { sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
-import { LOTE_HISTORICO, ORIGEN_LIBRO, anuladaAMano, limpiarOperacionHistorico } from "../../../lib/finanzasHistorico";
+import { LOTE_HISTORICO, ORIGEN_LIBRO, limpiarOperacionHistorico } from "../../../lib/finanzasHistorico";
+import { leerBaseHistorico } from "../../../lib/finanzasHistoricoBase";
 import { ORIGEN_SALDO_INICIAL } from "../../../lib/finanzasProveedores";
 
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data || []);
@@ -28,23 +29,7 @@ export async function GET(request) {
   if (response) return response;
   const e = sesion.empresa_id;
   try {
-    const [cuentas, tesoreria, proveedores, clientes, existentes] = await Promise.all([
-      leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre&order=codigo.asc`),
-      leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,activa`),
-      leer(sesion, `proveedores?empresa_id=eq.${e}&select=id,nombre&order=nombre.asc,id.asc`, 10000),
-      leer(sesion, `fin_clientes?empresa_id=eq.${e}&select=id,nombre,alias,activo,unido_a&order=nombre.asc,id.asc`, 10000),
-      leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&${ORIGENES}&select=id,origen,origen_id,fecha`, 100000),
-    ]);
-    // 13/11: lo que entró por otro lado (extracto, plazos fijos, pagos…) a
-    // una caja o banco, para no pasarlo dos veces
-    const lista = tesoreria.map((t) => `"${String(t.cuenta).replace(/"/g, "")}"`).join(",");
-    const otras = lista
-      ? await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&origen=not.in.(${ORIGEN_LIBRO},${ORIGEN_SALDO_INICIAL})&or=(${encodeURIComponent(`cuenta_debe.in.(${lista}),cuenta_haber.in.(${lista})`)})&select=id,origen,fecha,total,cuenta_debe,cuenta_haber`, 100000)
-      : [];
-    // 13/11: lo del libro que el Dueño anuló en Gypi, para no volver a pasarlo
-    const anuladasLibro = await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&origen=eq.${ORIGEN_LIBRO}&anulada_at=not.is.null&select=origen_id,anulada_por_nombre`, 100000);
-    const anuladas = [...new Set(anuladasLibro.filter((o) => anuladaAMano(o.anulada_por_nombre)).map((o) => o.origen_id))];
-    return NextResponse.json({ cuentas, tesoreria, proveedores, clientes, existentes, otras, anuladas });
+    return NextResponse.json(await leerBaseHistorico(e, sesion));
   } catch (err) {
     return errorFinanzas(err, "historico GET");
   }

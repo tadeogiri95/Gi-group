@@ -11,9 +11,9 @@ export const GRUPOS_FINANZAS = [
   // 14/11 (etapa 4 de la auditoría de Finanzas integrada): los 6 lugares (el Inicio va solo, arriba)
   { id: "tesoreria", titulo: "Tesorería", opciones: ["fin-tesoreria", "fin-cheques", "fin-inversiones"] },
   { id: "cuentas", titulo: "Cuentas corrientes", opciones: ["fin-clientes", "fin-cuenta-ot", "fin-proveedores", "fin-pagos", "fin-sueldos", "fin-personas", "fin-unificados"] },
-  { id: "contabilidad", titulo: "Contabilidad", opciones: ["fin-mayor", "fin-devengamiento", "fin-sos", "fin-cierre"] },
+  { id: "contabilidad", titulo: "Contabilidad", opciones: ["fin-mayor", "fin-devengamiento", "fin-sos", "fin-libro"] },
   { id: "informes", titulo: "Informes", opciones: ["fin-resultados", "fin-patrimonio", "fin-flujo", "fin-reporte"] },
-  { id: "ajustes", titulo: "Ajustes", opciones: ["fin-config"] },
+  { id: "ajustes", titulo: "Ajustes", opciones: ["fin-config", "fin-cierre"] },
 ];
 
 /** Para qué sirve cada pantalla, en una línea (las tarjetas del Inicio). */
@@ -31,7 +31,8 @@ export const DETALLE_FINANZAS = {
   "fin-patrimonio": "Lo que tiene y lo que debe la empresa, la liquidez y de dónde salió la plata",
   "fin-flujo": "Cuánta plata entra y sale, y lo que viene",
   "fin-reporte": "Resumen para el contador o los socios",
-  "fin-cierre": "Gypi contra el libro y stock valorizado",
+  "fin-cierre": "Control: Gypi contra el libro y stock valorizado",
+  "fin-libro": "Lo cargado a mano en el libro de Google: incorporarlo a Gypi o ignorarlo",
   "fin-config": "Plan de cuentas, tipos y revisión contable",
   "fin-inversiones": "Plazos fijos, FCI y títulos",
   "fin-cuenta-ot": "Lo vendido, cobrado y lo que falta de cada OT",
@@ -47,7 +48,7 @@ const sumarDias = (fecha, n) => { const d = new Date(`${fecha}T12:00:00Z`); d.se
  * pantalla (ir) y dice cuántos son y por cuánto.
  * @returns {{ id, texto, ir, cantidad, importe?, tono: "rojo"|"ambar"|"normal" }[]}
  */
-export function pendientesFinanzas({ hoy, revisar = [], ordenes = [], cheques = [], costos = 0, costosTotal = 0, plazosVencidos = 0, feriados = null, sinFactura = 0 }) {
+export function pendientesFinanzas({ hoy, revisar = [], ordenes = [], cheques = [], costos = 0, costosTotal = 0, plazosVencidos = 0, feriados = null, sinFactura = 0, libroManual = 0 }) {
   const out = [];
   const plural = (n, uno, varios) => (n === 1 ? uno : varios.replace("N", String(n)));
   const miCaja = revisar.filter((o) => o.origen === "mi_caja");
@@ -90,6 +91,10 @@ export function pendientesFinanzas({ hoy, revisar = [], ordenes = [], cheques = 
       id: "estimadas", ir: "fin-tesoreria", cantidad: estimadas.length, importe: centavos(estimadas.reduce((s, o) => s + Number(o.total || 0), 0)), tono: "normal",
       texto: plural(estimadas.length, "1 OT entregada sin precio en el Plan: confirmá su entrega estimada en Movimientos (Solo para revisar)", "N OT entregadas sin precio en el Plan: confirmá sus entregas estimadas en Movimientos (Solo para revisar)"),
     });
+  }
+  // Etapa 7 (14/11): lo cargado a mano en el libro de Google que Gypi no tiene
+  if (libroManual > 0) {
+    out.push({ id: "libro_manual", ir: "fin-libro", cantidad: libroManual, tono: "ambar", texto: plural(libroManual, "1 renglón cargado a mano en el libro de Google: incorporalo a Gypi o ignoralo", "N renglones cargados a mano en el libro de Google: incorporalos a Gypi o ignoralos") });
   }
   if (otras.length) {
     out.push({ id: "revisar", ir: "fin-tesoreria", cantidad: otras.length, tono: "normal", texto: plural(otras.length, "1 operación para revisar", "N operaciones para revisar") });
