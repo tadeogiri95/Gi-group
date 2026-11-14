@@ -64,7 +64,7 @@ export const BOTONES_GESTION = {
       { id: "fin-proveedores", label: "Proveedores", modulo: "finanzas", soloDueno: true },
       { id: "fin-clientes", label: "Clientes", modulo: "finanzas", soloDueno: true },
       { id: "fin-sueldos", label: "Sueldos", modulo: "finanzas", soloDueno: true },
-      { id: "fin-personas", label: "Personas", modulo: "finanzas", soloDueno: true },
+      { id: "fin-personas", label: "Agenda", modulo: "finanzas", soloDueno: true },
       // 13/11 (pedido de Tadeo): el mayor de cada cuenta y los asientos de registro y ajuste
       { id: "fin-mayor", label: "Mayor de cuentas", modulo: "finanzas", soloDueno: true },
       // 13/11 (parte 8 del plan de Tesorería): todo lo que se devenga en el mes

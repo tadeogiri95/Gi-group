@@ -22,7 +22,7 @@ export const DETALLE_FINANZAS = {
   "fin-proveedores": "Cuánto se le debe a cada uno",
   "fin-clientes": "Cuánto nos debe cada uno y cobros",
   "fin-sueldos": "Liquidar y pagar sueldos",
-  "fin-personas": "Agenda única de clientes y proveedores",
+  "fin-personas": "Agenda única: clientes, proveedores y empleados, cada uno una vez",
   "fin-mayor": "Movimientos y saldo de cada cuenta contable; asientos de registro y de ajuste",
   "fin-devengamiento": "Lo que hay que devengar cada mes, lo que falta y las provisiones",
   "fin-resultados": "Ganancia o pérdida por mes",

@@ -1,7 +1,8 @@
 'use client';
-// app/components/FinanzasPersonas.jsx — Finanzas → 📇 Personas (parte 4 del
+// app/components/FinanzasPersonas.jsx — Finanzas → 📇 Agenda (parte 4 del
 // plan del 11/11; migración 180; /api/finanzas/personas; reglas en
-// app/lib/finanzasPersonas.js).
+// app/lib/finanzasPersonas.js). Desde el 14/11 (Agenda única, migración
+// 191) también están los empleados, y cada persona muestra sus roles.
 //
 // Una sola agenda con los clientes, los proveedores y la gente de la hoja
 // PERSONAS del Plan de trabajo, sin repetidos. Se busca, se filtra por
@@ -12,7 +13,7 @@
 // misma persona escrita distinto.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
-import { CAMPOS_PERSONA, NOMBRE_CAMPO, datosFaltantes, rolPersona } from "../lib/finanzasPersonas";
+import { CAMPOS_PERSONA, NOMBRE_CAMPO, datosFaltantes, rolPersona, rolesPersona } from "../lib/finanzasPersonas";
 import { normalizar } from "./ui/SelectBuscable";
 import { olvidarAgenda } from "./FinanzasElegirProveedor";
 import { Chip, Modal, Spinner } from "./ui";
@@ -33,10 +34,16 @@ const FILTROS = [
   { id: "todos", nombre: "Todos", ver: () => true },
   { id: "proveedores", nombre: "Proveedores", ver: (e) => !!e.proveedor_id },
   { id: "clientes", nombre: "Clientes", ver: (e) => !!e.cliente_id },
+  { id: "empleados", nombre: "Empleados", ver: (e) => !!e.empleado_id },
   { id: "faltan", nombre: "Faltan datos", ver: (e) => datosFaltantes(e).length > 0 },
 ];
 
-const COLOR_ROL = { "Proveedor y cliente": "text-gypi-cyan", Proveedor: "text-gypi-amber-ink", Cliente: "text-gypi-green-ink", Agenda: "text-gypi-dim" };
+const COLOR_UNO = { Proveedor: "text-gypi-amber-ink", Cliente: "text-gypi-green-ink", Empleado: "text-gypi-violet" };
+/** Un solo rol con su color; varios en celeste; ninguno en gris. */
+const colorRol = (e) => {
+  const r = rolesPersona(e);
+  return r.length > 1 ? "text-gypi-cyan" : COLOR_UNO[r[0]] || "text-gypi-dim";
+};
 
 /* ─── Ficha ─────────────────────────────────────────────────────────── */
 
@@ -76,7 +83,7 @@ function Ficha({ entrada, onCerrar, onGuardada }) {
       <div className="flex flex-col gap-3">
         {entrada && (
           <p className="m-0 text-[13px] text-gypi-dim">
-            <span className={`font-semibold ${COLOR_ROL[rolPersona(entrada)]}`}>{rolPersona(entrada)}</span>
+            <span className={`font-semibold ${colorRol(entrada)}`}>{rolPersona(entrada)}</span>
             {entrada.id_planilla ? ` · ID ${entrada.id_planilla} en PERSONAS` : ""}
             {entrada.alias?.length ? ` · también escrito como: ${entrada.alias.join(", ")}` : ""}
           </p>
@@ -91,7 +98,8 @@ function Ficha({ entrada, onCerrar, onGuardada }) {
         {campo("contacto", "Contacto (otra persona, teléfono)", { maxLength: 200 })}
         {campo("notas", "Notas")}
         {faltan.length > 0 && <p className="m-0 text-[12px] text-gypi-amber-ink">Faltan: {faltan.map((c) => NOMBRE_CAMPO[c]).join(", ")}</p>}
-        {(entrada?.proveedor_id || entrada?.cliente_id) && <p className="m-0 text-[12px] text-gypi-dim">Lo que guardes se copia también a su ficha de {[entrada.proveedor_id && "proveedor", entrada.cliente_id && "cliente"].filter(Boolean).join(" y de ")}.</p>}
+        {(entrada?.proveedor_id || entrada?.cliente_id) && <p className="m-0 text-[12px] text-gypi-dim">Lo que guardes se copia también a su ficha de {[entrada.proveedor_id && "proveedor", entrada.cliente_id && "cliente"].filter(Boolean).join(" y de ")}. Lo que se cambie allá también llega acá.</p>}
+        {entrada?.empleado_id && <p className="m-0 text-[12px] text-gypi-dim">Es empleado: su puesto, horario y usuario se cambian en Personal → Equipo.</p>}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
@@ -252,6 +260,10 @@ export default function FinanzasPersonas() {
 
   return (
     <div className="flex-1 overflow-y-auto px-[18px] pb-6">
+      <p className="m-0 mb-2 text-[13px] text-gypi-dim">
+        Una sola lista con clientes, proveedores y empleados. Cada persona está una vez, con todos sus roles, y lo que cambies acá o en Compras se ve en todos lados.
+      </p>
+      {datos.falta_migracion === 191 && <p role="alert" className="m-0 mb-2 text-[13px] text-gypi-amber-ink">⚠ Para sumar a los empleados y que los cambios de Compras lleguen solos, falta correr la migración 191 en Supabase.</p>}
       <div className="flex flex-wrap items-center gap-2 mb-2">
         <button type="button" className="g-btn g-btn-primary" onClick={() => setFicha("nueva")}>＋ Nueva persona</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setPegar(true)}>📋 Pegar desde PERSONAS</button>
@@ -266,7 +278,7 @@ export default function FinanzasPersonas() {
       ) : (
         <>
           <p className="mb-2 text-[13px] text-gypi-dim">{lista.length} persona{lista.length === 1 ? "" : "s"}{lista.length > MAX_LISTA ? ` (se ven las primeras ${MAX_LISTA}: buscá para encontrar el resto)` : ""}</p>
-          <ul className="list-none m-0 p-0 flex flex-col gap-1.5" aria-label="Personas">
+          <ul className="list-none m-0 p-0 flex flex-col gap-1.5" aria-label="Agenda">
             {lista.slice(0, MAX_LISTA).map((e) => {
               const faltan = datosFaltantes(e);
               const rol = rolPersona(e);
@@ -275,7 +287,7 @@ export default function FinanzasPersonas() {
                   <button type="button" onClick={() => setFicha(e)} className="w-full text-left min-h-[48px] px-3 py-2 rounded-lg border border-gypi-border bg-gypi-surface cursor-pointer">
                     <span className="flex items-baseline gap-2 text-[14px] text-gypi-text">
                       <span className="font-semibold flex-1 min-w-0 truncate">{e.nombre}</span>
-                      <span className={`text-[12px] font-semibold ${COLOR_ROL[rol]}`}>{rol}</span>
+                      <span className={`text-[12px] font-semibold ${colorRol(e)}`}>{rol}</span>
                     </span>
                     <span className="block text-[12px] text-gypi-dim truncate">
                       {[e.cuit && `CUIT ${e.cuit}`, e.telefono, e.email].filter(Boolean).join(" · ") || "Sin datos"}
