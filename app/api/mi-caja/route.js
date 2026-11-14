@@ -48,6 +48,8 @@ import { logger } from "../../lib/logger";
 import { safeErrorMessage } from "../../lib/validate";
 import { hoyAr, plata } from "../../lib/finanzasOperaciones";
 import { conceptoDeOperacion } from "../../lib/finanzasConceptosCaja";
+import { cuentaAnticipos, leerFijos, resumenAnticipos } from "../../lib/finanzasAnticipos";
+import { CLAVE_SUELDOS } from "../../lib/finanzasSueldos";
 import { CLAVE_MI_CAJA, ORIGEN_MI_CAJA, PROMPT_TICKET, comprobanteValido, conceptosMiCaja, conceptosMiCajaTodos, nombreNormal, esquemaTicket, propuestaTicket, referenciaTicket, resumenMiCaja, validarMovimientoMiCaja } from "../../lib/finanzasMiCaja";
 import { avisoRepetido, fechaDma } from "../../lib/finanzasComprobantes";
 import { clienteDeOt, indiceClientes } from "../../lib/finanzasClientes";
@@ -102,7 +104,7 @@ async function conceptos(empresaId) {
     sbGetAll(`fin_tipos_operacion?empresa_id=eq.${empresaId}&select=codigo,nombre,grupo,descripcion,cuenta_debe,cuenta_haber,activo&order=codigo.asc`, { maxFilas: 2000 }).then((r) => r.data),
     sbGetAll(`fin_cuentas?empresa_id=eq.${empresaId}&select=codigo,nombre&order=codigo.asc`, { maxFilas: 2000 }).then((r) => r.data || []).catch(() => []),
   ]);
-  return { lista: conceptosMiCaja(cfg?.[0]?.valor, tipos, cuentas), tipos, todos: conceptosMiCajaTodos(tipos, cuentas) };
+  return { lista: conceptosMiCaja(cfg?.[0]?.valor, tipos, cuentas), tipos, cuentas, todos: conceptosMiCajaTodos(tipos, cuentas) };
 }
 
 /**
@@ -160,7 +162,7 @@ export async function GET(request) {
     const cajas = await misCajas(sesion);
     if (!cajas.length) return NextResponse.json({ cajas: [] });
     const e = sesion.empresa_id;
-    const [{ lista, tipos, todos }, ops] = await Promise.all([
+    const [{ lista, tipos, cuentas, todos }, ops] = await Promise.all([
       conceptos(e),
       sbGetAll(`fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&or=(cuenta_debe.in.(${enLista(cajas)}),cuenta_haber.in.(${enLista(cajas)}))&select=${COLUMNAS},comprobante_url&order=fecha.asc,id.asc`, { maxFilas: 20000 })
         .catch((err) => {
@@ -179,12 +181,15 @@ export async function GET(request) {
       leerListaPases(e).catch(() => ({ pases: [] })),
     ]);
     const deCadaUno = pasesDe(pases, soloPropias(cajas).map((c) => c.cuenta));
+    // 14/11: el dueño con sueldo fijo ve sus anticipos del mes y lo que queda por liquidar
+    const anticipos = await anticiposDelDueno(sesion, { ops, cuentas, cajas: soloPropias(cajas) }).catch(() => null);
     return NextResponse.json({
       cajas: cajas.map((c) => ({ ...resumenMiCaja(ops, c, nombres, nombreDe), propia: c.propia !== false, destinos: c.propia !== false ? destinosPase(c, tesoreria, personal) : [] })),
       titular: cajas.some((c) => c.propia === false),
       // Con Stock, el ticket de materiales se puede mandar al stock (11/11)
       con_stock: !(await requireModuloSesion(sesion, "stock").catch(() => true)),
       conceptos: lista, hoy: hoyAr(), ...deCadaUno,
+      ...(anticipos ? { anticipos_sueldo: anticipos } : {}),
       ...(lista.ingresos.some((c) => c.pide_cliente) ? listasParaPantalla(await clientesYOt(e)) : {}),
     });
   } catch (err) {
@@ -192,6 +197,17 @@ export async function GET(request) {
     logger.error("[mi-caja] GET", err);
     return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
+}
+
+/** Anticipos por combustible del mes y sueldo a liquidar del que tiene sueldo fijo (finanzasAnticipos). */
+async function anticiposDelDueno(sesion, { ops, cuentas, cajas }) {
+  const cuentaAnticipo = cuentaAnticipos(cuentas);
+  if (!cuentaAnticipo || !cajas.length || !sesion.empleado_id) return null;
+  const cfg = await sbGet(`config_sistema?empresa_id=eq.${sesion.empresa_id}&clave=eq.${CLAVE_SUELDOS}&select=valor&limit=1`, { silent: true, fallback: [] });
+  const sueldo = leerFijos(cfg?.[0]?.valor?.fijos)[String(sesion.empleado_id)];
+  if (!sueldo) return null;
+  const { data: descuentos } = await sbGetAll(`fin_operaciones?empresa_id=eq.${sesion.empresa_id}&origen=eq.pago_sueldo&anulada_at=is.null&origen_id=like.*:${encodeURIComponent(sesion.empleado_id)}:a*&select=id,total,total_ars,origen_id,anulada_at`, { maxFilas: 2000 });
+  return resumenAnticipos({ ops, descuentos: descuentos || [], cuentaAnticipo, cajas: cajas.map((c) => c.cuenta), sueldo, empleadoId: sesion.empleado_id, hoy: hoyAr() });
 }
 
 async function nombreEmpleado(sesion) {
