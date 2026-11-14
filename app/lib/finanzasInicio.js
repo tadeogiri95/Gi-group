@@ -12,7 +12,7 @@ export const GRUPOS_FINANZAS = [
   { id: "tesoreria", titulo: "Tesorería", opciones: ["fin-tesoreria", "fin-cheques", "fin-inversiones"] },
   { id: "cuentas", titulo: "Cuentas corrientes", opciones: ["fin-clientes", "fin-cuenta-ot", "fin-proveedores", "fin-pagos", "fin-sueldos", "fin-personas", "fin-unificados"] },
   { id: "contabilidad", titulo: "Contabilidad", opciones: ["fin-mayor", "fin-devengamiento", "fin-sos", "fin-cierre"] },
-  { id: "informes", titulo: "Informes", opciones: ["fin-resultados", "fin-flujo", "fin-reporte"] },
+  { id: "informes", titulo: "Informes", opciones: ["fin-resultados", "fin-patrimonio", "fin-flujo", "fin-reporte"] },
   { id: "ajustes", titulo: "Ajustes", opciones: ["fin-config"] },
 ];
 
@@ -28,6 +28,7 @@ export const DETALLE_FINANZAS = {
   "fin-mayor": "Movimientos y saldo de cada cuenta contable; asientos de registro y de ajuste",
   "fin-devengamiento": "Lo que hay que devengar cada mes, lo que falta y las provisiones",
   "fin-resultados": "Ganancia o pérdida por mes",
+  "fin-patrimonio": "Lo que tiene y lo que debe la empresa, la liquidez y de dónde salió la plata",
   "fin-flujo": "Cuánta plata entra y sale, y lo que viene",
   "fin-reporte": "Resumen para el contador o los socios",
   "fin-cierre": "Gypi contra el libro y stock valorizado",

@@ -79,6 +79,8 @@ export const BOTONES_GESTION = {
       { id: "fin-cierre", label: "Cierre de mes", modulo: "finanzas", soloDueno: true },
       // Informes
       { id: "fin-resultados", label: "Resultados", modulo: "finanzas", soloDueno: true },
+      // 14/11 (etapa 6): situación patrimonial, liquidez y orígenes y aplicaciones de fondos
+      { id: "fin-patrimonio", label: "Situación patrimonial", modulo: "finanzas", soloDueno: true },
       { id: "fin-flujo", label: "Flujo de caja", modulo: "finanzas", soloDueno: true },
       { id: "fin-reporte", label: "Reporte financiero", modulo: "finanzas", soloDueno: true },
       // Ajustes
@@ -90,7 +92,7 @@ export const BOTONES_GESTION = {
 /** El ícono de cada opción (menú de la izquierda y tarjetas del Inicio de Finanzas). */
 export const ICONO_GESTION = {
   vivo: "🟢", ot: "📋", reportes: "📊", instalaciones: "🔧", planificacion: "📅", minuta: "📝",
-  stock: "📦", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-clientes": "👥", "fin-sueldos": "👷", "fin-proveedores": "🏭", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-mayor": "📚", "fin-devengamiento": "📆", "fin-resultados": "📊", "fin-flujo": "💵", "fin-reporte": "📑", "fin-cierre": "🔍", "fin-config": "🧾", "fin-inversiones": "📈", "fin-cuenta-ot": "📋", "fin-unificados": "🔗", "fin-sos": "📄",
+  stock: "📦", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-clientes": "👥", "fin-sueldos": "👷", "fin-proveedores": "🏭", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-mayor": "📚", "fin-devengamiento": "📆", "fin-resultados": "📊", "fin-patrimonio": "⚖️", "fin-flujo": "💵", "fin-reporte": "📑", "fin-cierre": "🔍", "fin-config": "🧾", "fin-inversiones": "📈", "fin-cuenta-ot": "📋", "fin-unificados": "🔗", "fin-sos": "📄",
 };
 
 /** Pestañas de un botón para esta empresa: sin lo apagado, lo que pide el
