@@ -38,6 +38,7 @@ import FinanzasDevengamiento from "../FinanzasDevengamiento";
 import FinanzasPagos from "../FinanzasPagos";
 import FinanzasPersonas from "../FinanzasPersonas";
 import FinanzasInicio from "../FinanzasInicio";
+import { InversionesPagina, VentanaComoPagina } from "../FinanzasPaginas";
 import { GRUPOS_FINANZAS } from "../../lib/finanzasInicio";
 
 /**
@@ -119,6 +120,8 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {!bloqueado && actual.id === "fin-pagos" && <FinanzasPagos />}
         {!bloqueado && actual.id === "fin-personas" && <FinanzasPersonas />}
         {!bloqueado && actual.id === "fin-config" && <FinanzasConfig />}
+        {!bloqueado && actual.id === "fin-inversiones" && <InversionesPagina />}
+        {!bloqueado && ["fin-cuenta-ot", "fin-sos", "fin-unificados"].includes(actual.id) && <VentanaComoPagina id={actual.id} onIr={setOpcion} />}
         </ErrorBoundary>
       </div>
     </div>

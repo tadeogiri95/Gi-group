@@ -1,7 +1,15 @@
 'use client';
-import { useEffect, useRef } from 'react';
+import { createContext, useContext, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useEscape } from '../../hooks/useEscape';
+
+/**
+ * 14/11 (etapa 4 de Finanzas): una ventana que pasa a ser una pantalla del
+ * menú (Cuenta por OT, S.O.S, Cliente y proveedor) se muestra en la página,
+ * sin fondo oscuro ni cruz. Solo la primera: las ventanas que abre adentro
+ * siguen siendo ventanas.
+ */
+export const ModalEnPagina = createContext(false);
 
 export default function Modal({
   open,
@@ -18,11 +26,12 @@ export default function Modal({
   const ancho = maxWidth ?? (grande ? 1120 : 480);
   const dialogRef = useRef(null);
   const contentRef = useRef(null);
+  const enPagina = useContext(ModalEnPagina);
 
-  useEscape(onClose, open && closable);
+  useEscape(onClose, open && closable && !enPagina);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || enPagina) return;
     const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
     const handler = (e) => {
       if (e.key !== 'Tab' || !contentRef.current) return;
@@ -41,14 +50,14 @@ export default function Modal({
   }, [open]);
 
   useEffect(() => {
-    if (open) {
+    if (open && !enPagina) {
       document.body.style.overflow = 'hidden';
       return () => { document.body.style.overflow = ''; };
     }
   }, [open]);
 
   useEffect(() => {
-    if (!open || !contentRef.current) return;
+    if (!open || enPagina || !contentRef.current) return;
     const focusable = contentRef.current.querySelectorAll(
       'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
     );
@@ -56,6 +65,15 @@ export default function Modal({
   }, [open]);
 
   if (!open) return null;
+
+  if (enPagina) {
+    return (
+      <section aria-label={title || undefined} className="flex-1 overflow-y-auto px-[18px] pb-6">
+        {title && <h2 className="m-0 mb-3 text-[17px] font-bold text-gypi-text font-heading">{title}</h2>}
+        <ModalEnPagina.Provider value={false}>{children}</ModalEnPagina.Provider>
+      </section>
+    );
+  }
 
   // 11/11: va al final de la página (portal). Adentro de una tarjeta que se
   // mueve al pasar el mouse o tocarla (card-hover usa transform), un
