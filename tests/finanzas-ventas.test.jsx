@@ -217,3 +217,22 @@ test("planEntregasEstimadas: el día en que se vio terminada cada OT sin precio"
   assert.equal(r.cambio, true);
   assert.equal(planEntregasEstimadas({ proyectos, precios, config, fechas: r.fechas, hoy: "2026-11-14" }).cambio, false);
 });
+
+test("sincronizarVentasOt — etapa 5: la OT terminada sin precio queda como entrega estimada para revisar", async () => {
+  const escrito = mockBase({ proyectos: [OT(2, { estado: "cerrado" })] });
+  const base = global.fetch;
+  global.fetch = async (url, o = {}) => {
+    const u = String(url);
+    const json = (b) => new Response(JSON.stringify(b), { status: 200 });
+    if (u.includes("/rest/v1/necesidades_stock")) return json([{ ot: "M-2", sku: "A1", cantidad: 10 }]);
+    if (u.includes("/rest/v1/precios_fijos_ot")) return json([{ ot: "M-2", sku: "A1", precio_ars: 300 }]);
+    if (u.includes("/rest/v1/v_precios_articulos")) return json([]);
+    return base(url, o);
+  };
+  const r = await sincronizarVentasOt(E, { hoy: "2026-11-14" });
+  assert.equal(r.accion, "hecha");
+  assert.equal(r.estimadas.creadas, 1);
+  assert.match(r.consumos.error, /Costo De Mercaderia Vendida/, "sin la cuenta de costo no anota el consumo");
+  const est = escrito.filter((x) => x.tabla === "fin_operaciones" && x.metodo === "POST").flatMap((x) => x.body).find((x) => x.origen === "entrega_estimada");
+  assert.deepEqual([est.estado, est.total, est.cliente_id, est.origen_id, est.cuenta_haber], ["para_revisar", 10000, 2, "p2", CTAS.entregas]);
+});

@@ -17,12 +17,13 @@ const enTandas = async (xs, n, fn) => {
 
 /**
  * Costo de materiales de cada OT (de a tandas, sin guardar).
- * @param {object} sesion la del usuario (con su empresa_id)
+ * @param {object|null} sesion la del usuario (con su empresa_id); null = con la llave del servidor (la sync)
  * @param {object[]} proyectos con ot y created_at
+ * @param {string} [empresaId] la empresa, cuando no hay sesión
  * @returns {Promise<Map<string, { total: number, sinPrecio: number, articulos: number }>>} por código de OT
  */
-export async function materialesDeOts(sesion, proyectos) {
-  const e = sesion.empresa_id;
+export async function materialesDeOts(sesion, proyectos, empresaId = sesion?.empresa_id) {
+  const e = empresaId;
   const ots = proyectos.map((p) => String(p.ot));
   if (!ots.length) return new Map();
   const [necesidades, fijos] = await Promise.all([
