@@ -21,7 +21,9 @@ export const SE_CORRIGEN = new Set(["manual", "plazo_fijo", "banco", "mi_caja", 
  */
 // Etapa 5 (14/11): la entrega estimada de una OT sin precio, si el Dueño no la
 // quiere (anulada a mano, Gypi no la vuelve a crear)
-export const SE_ANULAN = new Set([...SE_CORRIGEN, "gasto", "libro", "saldo_inicial", "entrega_estimada"]);
+// 💱 La compra o venta de dólares (14/11) se anula entera (con su diferencia
+// de cotización), no se corrige: se vuelve a cargar
+export const SE_ANULAN = new Set([...SE_CORRIGEN, "gasto", "libro", "saldo_inicial", "entrega_estimada", "dolares"]);
 /** Para revisar que se confirman tal como están (etapa 5). */
 export const SE_CONFIRMAN = new Set(["entrega_estimada"]);
 export const puedeConfirmar = (op) => !!op && !op.anulada_at && op.estado === "para_revisar" && SE_CONFIRMAN.has(op.origen);
@@ -46,6 +48,7 @@ export function dondeSeCambia(op) {
   if (o === "venta_ot" || o === "entrega_ot") return "la OT";
   if (o === "consumo_ot") return "la OT: Gypi lo anota solo cuando se entrega, con su costo real de materiales";
   if (o === "liquidacion" || o === "pago_sueldo") return "Finanzas → Sueldos";
+  if (o === "dolares") return "➕ Cargar → 💱 Comprar o vender dólares: anulala (se anula con su diferencia de cotización) y cargala de nuevo";
   if (o === "saldo_inicial") return "Configuración → 📚 Histórico del libro (la apertura se vuelve a armar al pasarlo)";
   if (o === "libro") return "el libro: corregila o borrala ahí y volvé a pasar el histórico (Configuración → 📚 Histórico del libro), Gypi la actualiza sola";
   return "donde salió";

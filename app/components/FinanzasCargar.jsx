@@ -11,6 +11,7 @@
 //   💸 Pago a un proveedor → la Orden de pago (FinanzasPagos)
 //   💵 Cobro de un cliente → Cobrar (FinanzasClientes)
 //   ⇄ Entre cajas → Pasar plata entre cajas (FinanzasTransferir)
+//   💱 Dólares → Comprar o vender dólares, con la diferencia de cotización (FinanzasDolares, 14/11)
 //   Otra operación → el formulario general (FinanzasNuevaOperacion)
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -18,6 +19,7 @@ import { hoyAr } from "../lib/finanzasOperaciones";
 import CargarGasto from "./FinanzasCargarGasto";
 import { NuevaOperacion } from "./FinanzasNuevaOperacion";
 import Transferir from "./FinanzasTransferir";
+import Dolares from "./FinanzasDolares";
 import { NuevaOrden, leerDatosPagos } from "./FinanzasPagos";
 import { Cobrar } from "./FinanzasClientes";
 import { VentanaAltaPersona } from "./AltaPersona";
@@ -30,6 +32,7 @@ export const DOCUMENTOS = [
   { id: "pago", icono: "💸", nombre: "Pago a un proveedor", detalle: "Orden de pago: efectivo, transferencia, e-cheq o un cheque de la cartera." },
   { id: "cobro", icono: "💵", nombre: "Cobro de un cliente", detalle: "Efectivo, transferencia, dólares o cheque. Suma en su cuenta corriente." },
   { id: "cajas", icono: "⇄", nombre: "Entre cajas y bancos", detalle: "Pasar plata de una caja o banco a otro." },
+  { id: "dolares", icono: "💱", nombre: "Comprar o vender dólares", detalle: "Pesos por dólares o al revés. En una venta, Gypi calcula la ganancia o la pérdida por diferencia de cotización." },
 ];
 
 async function leer(url, error) {
@@ -121,6 +124,7 @@ export function VentanaCargar({ contexto = {}, documentos = null, onPago = null,
     return <Cobrar datos={datos} cliente={cliente} proyectoId={contexto.proyectoId || ""} cajaInicial={contexto.caja || ""} onCerrar={onCerrar} onHecho={hecho} />;
   }
   if (doc === "cajas") return <Transferir datos={datos} desdeInicial={contexto.caja || ""} onCerrar={onCerrar} onHecho={hecho} />;
+  if (doc === "dolares") return <Dolares datos={datos} cajaInicial={contexto.caja || ""} onCerrar={onCerrar} onHecho={hecho} />;
   if (doc === "otra") {
     const inicial = {
       ...(contexto.proveedorId ? { proveedor_id: contexto.proveedorId } : {}),

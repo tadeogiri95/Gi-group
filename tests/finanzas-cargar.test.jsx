@@ -31,7 +31,7 @@ function mock() {
   return pedidos;
 }
 
-test("➕ Cargar — muestra los cuatro documentos y la otra operación", async () => {
+test("➕ Cargar — muestra los documentos y la otra operación", async () => {
   mock();
   render(<BotonCargar />);
   fireEvent.click(screen.getByRole("button", { name: "➕ Cargar" }));

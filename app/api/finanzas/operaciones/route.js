@@ -60,10 +60,12 @@ import { randomUUID } from "node:crypto";
 import { frenoRepetidos, repetidosEnBase } from "../../../lib/finanzasRepetidosServidor";
 import { clienteDeOperacion } from "../../../lib/finanzasClientes";
 import { listasFinanzas } from "../../../lib/finanzasListas";
+import { GRUPO_DOLARES, ORIGEN_DOLARES } from "../../../lib/finanzasDolares";
 import { columnasComprobantes, falta187, validarComprobantes } from "../../../lib/finanzasAdjuntos";
 import { MARCA_CORREGIDA, MAX_ANULAR_JUNTAS, SE_ANULAN, SE_CONFIRMAN, operacionCorregida, puedeCorregir } from "../../../lib/finanzasCorregir";
 
-const ANULABLES = `origen=in.(${[...SE_ANULAN].filter((o) => o !== ORIGEN_GASTO).join(",")})`;
+// El gasto y la compra o venta de dólares se anulan con su grupo (abajo), nunca sueltos
+const ANULABLES = `origen=in.(${[...SE_ANULAN].filter((o) => o !== ORIGEN_GASTO && o !== ORIGEN_DOLARES).join(",")})`;
 
 const ORIGENES_COMPRA = ["factura_oc", "factura_oc_otra", "factura_suelta"];
 const COLUMNAS = "id,fecha,tipo,proveedor_id,cliente_id,entidad,proyecto_id,centro_costo,neto,iva,otros_impuestos,total,moneda,tipo_cambio,total_ars,cuenta_debe,cuenta_haber,descripcion,referencia,origen,origen_id,estado,cargada_por_nombre,anulada_at,anulada_por_nombre,created_at";
@@ -321,6 +323,14 @@ export async function POST(request) {
       if (suya?.origen === ORIGEN_GASTO && /^g[0-9a-f]{12}/.test(String(suya.origen_id || ""))) {
         const grupo = String(suya.origen_id).slice(0, 13);
         const filas = await sbPatch(`fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&origen=eq.${ORIGEN_GASTO}&origen_id=in.(${grupo},${grupo}-p)`, marca, { sesion });
+        if (!filas?.length) return NextResponse.json({ error: "No encontré esa operación o ya estaba anulada" }, { status: 404 });
+        broadcastRefresh(e, "fin_operaciones");
+        return NextResponse.json({ ok: true, operacion: filas.find((f) => f.id === id) || filas[0], anuladas: filas.length });
+      }
+      // 💱 Una venta de dólares se anula junto con su diferencia de cotización
+      if (suya?.origen === ORIGEN_DOLARES && GRUPO_DOLARES.test(String(suya.origen_id || "").slice(0, 13))) {
+        const grupo = String(suya.origen_id).slice(0, 13);
+        const filas = await sbPatch(`fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&origen=eq.${ORIGEN_DOLARES}&origen_id=in.(${grupo},${grupo}-dif)`, marca, { sesion });
         if (!filas?.length) return NextResponse.json({ error: "No encontré esa operación o ya estaba anulada" }, { status: 404 });
         broadcastRefresh(e, "fin_operaciones");
         return NextResponse.json({ ok: true, operacion: filas.find((f) => f.id === id) || filas[0], anuladas: filas.length });
