@@ -17,6 +17,7 @@
 // Las fórmulas del libro (Total, mes, cuentas finales, flujo) se copian del
 // renglón de arriba: el script nunca escribe encima de una fórmula.
 export { generarClave, empresaDeClave, claveValida } from "./planillaMrp";
+import { COLUMNAS_MANUAL, NOTA_MANUAL } from "./finanzasLibroManual";
 
 export const CLAVE_LIBRO_FIN = "finanzas_libro";
 export const PREFIJO_OPERACION = "GY-F-";
@@ -170,6 +171,10 @@ export function scriptLibro({ url, clave }) {
 // CHK_CARGA el control de Ajuste De Capital. Antes deja su copia de respaldo
 // (hojas que terminan en "_bk_cuentas_") y lo que hizo queda en la hoja
 // gypi_cambios_cuentas.
+// Gypi es el libro oficial (14/11): lo que se cargue a mano en T-OPERACIONES
+// no entra solo. En cada vuelta se le manda a Gypi, que muestra lo que le
+// falta para incorporarlo o ignorarlo; acá esos renglones quedan con la celda
+// referencia_externa en amarillo y la nota "No viene de Gypi".
 // Pegalo en un archivo nuevo de Apps Script, guardá y ejecutá
 // instalarLibroGypi una sola vez. Después corre solo cada 15 minutos.
 // La clave es privada: no compartas este código.
@@ -191,6 +196,9 @@ var GYPI_COLS_CHEQUES = [
   ["id_op_origen", "referencia"]
 ];
 var GYPI_FECHAS = { fecha: 1, fecha_transac: 1, fecha_emision: 1, vencimiento: 1 };
+// Lo cargado a mano que se le manda a Gypi y la nota de los que le faltan
+var GYPI_COLS_MANUAL = ${JSON.stringify(COLUMNAS_MANUAL)};
+var GYPI_NOTA_MANUAL = ${JSON.stringify(NOTA_MANUAL)};
 
 function instalarLibroGypi() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
@@ -219,6 +227,11 @@ function pasarLibroGypi() {
       gypiLibroIntentar_(estado, "T-OPERACIONES", function () {
         estado.repetidos = gypiLibroRepetidos_(ops, GYPI_COLS_OPS, "referencia_externa", "GY-F-", "fecha_operación");
       });
+      if (r.manuales_desde) {
+        gypiLibroIntentar_(estado, "Cargado a mano en el libro", function () {
+          gypiLibroManuales_(libro, ops, r.manuales_desde);
+        });
+      }
     }
     var ch = libro.getSheetByName("R-CHEQUES");
     if (ch) {
@@ -488,6 +501,52 @@ function gypiLibroAvisar_(estado) {
     headers: { Authorization: "Bearer " + GYPI_LIBRO_CLAVE },
     payload: JSON.stringify({ accion: "estado", errores: estado.errores, avisos: estado.avisos.slice(0, 50), repetidos: estado.repetidos, borrados: estado.borrados }),
   });
+}
+
+// Lo cargado a mano en T-OPERACIONES: los renglones CONFIRMADO desde la fecha
+// del Histórico van a Gypi (los de antes y los no confirmados van vacíos, para
+// que Gypi cuente los renglones igual que el Histórico). Gypi contesta cuáles
+// le faltan: esos quedan en amarillo con la nota; los que ya entraron (o se
+// ignoraron) vuelven a quedar como estaban.
+function gypiLibroManuales_(libro, hoja, desde) {
+  var col = gypiLibroTitulos_(hoja);
+  var cMarca = col["referencia_externa"];
+  var cEstado = col["estado"];
+  var cFecha = col["fecha_operación"];
+  if (!cMarca || !cEstado || !cFecha) return;
+  var idx = GYPI_COLS_MANUAL.map(function (t) {
+    if (t !== "impuestos") return col[t] || 0;
+    for (var k in col) if (k.indexOf("impuestos") === 0) return col[k];
+    return 0;
+  });
+  var n = gypiLibroUltima_(hoja, cFecha);
+  if (n < 2) return;
+  var tz = libro.getSpreadsheetTimeZone();
+  var texto = function (x) { return x instanceof Date ? Utilities.formatDate(x, tz, "yyyy-MM-dd") : x; };
+  var v = hoja.getRange(2, 1, n - 1, hoja.getLastColumn()).getValues();
+  var filas = v.map(function (f) {
+    if (String(f[cEstado - 1]).trim().toUpperCase() !== "CONFIRMADO") return [];
+    if (String(texto(f[cFecha - 1])) < desde) return [];
+    return idx.map(function (c) { return c ? texto(f[c - 1]) : ""; });
+  });
+  var res = UrlFetchApp.fetch(GYPI_LIBRO_URL, {
+    method: "post", contentType: "application/json", muteHttpExceptions: true,
+    headers: { Authorization: "Bearer " + GYPI_LIBRO_CLAVE },
+    payload: JSON.stringify({ accion: "manuales", grilla: [GYPI_COLS_MANUAL].concat(filas) }),
+  });
+  if (res.getResponseCode() !== 200) throw new Error("Gypi respondió " + res.getResponseCode() + ": " + res.getContentText());
+  var d = JSON.parse(res.getContentText());
+  if (!d.revisado) return;
+  var faltan = {};
+  (d.pendientes || []).forEach(function (f) { faltan[f] = true; });
+  var notas = hoja.getRange(2, cMarca, n - 1, 1).getNotes();
+  for (var i = 0; i < notas.length; i++) {
+    var marcada = notas[i][0] === GYPI_NOTA_MANUAL;
+    if (!!faltan[i + 2] === marcada) continue;
+    var celda = hoja.getRange(i + 2, cMarca);
+    if (faltan[i + 2]) { celda.setNote(GYPI_NOTA_MANUAL); celda.setBackgroundRGB(255, 242, 168); }
+    else { celda.clearNote(); celda.setBackground(null); }
+  }
 }
 
 // Cheques copiados del libro a Gypi: se actualiza el estado y "ENTREGADO A"

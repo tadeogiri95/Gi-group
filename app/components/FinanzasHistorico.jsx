@@ -165,7 +165,7 @@ export default function FinanzasHistorico({ onPasado }) {
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex-1 min-w-[220px]">
           <h3 className="m-0 text-[14px] font-bold text-gypi-text">📚 Histórico del libro</h3>
-          <p className="m-0 text-[13px] text-gypi-dim">Pasa a Gypi todas las operaciones del libro desde una fecha, para que los saldos, el flujo de caja y los resultados salgan de Gypi.</p>
+          <p className="m-0 text-[13px] text-gypi-dim">Pasa a Gypi todas las operaciones del libro desde una fecha, para que los saldos, el flujo de caja y los resultados salgan de Gypi. Alcanza con pasarlo una vez: después, lo que se cargue a mano en el libro aparece solo en Contabilidad → 📗 Libro de Google.</p>
         </div>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setAbierto(true)}>Pasar el histórico</button>
       </div>

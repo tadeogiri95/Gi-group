@@ -156,7 +156,7 @@ test("Inicio — la plata, Para hacer y las tarjetas llevan cada una a su pantal
     pendientes: [{ id: "op_pagar", ir: "fin-pagos", cantidad: 1, importe: 4000, tono: "normal", texto: "1 orden de pago sin pagar" }],
   }), { status: 200 });
   const idas = [];
-  const opciones = OPCIONES_GESTION.finanzas.filter((o) => o.id !== "fin-config");
+  const opciones = OPCIONES_GESTION.finanzas.filter((o) => o.id !== "fin-config" && o.id !== "fin-cierre");
   render(<FinanzasInicio opciones={opciones} onIr={(id) => idas.push(id)} />);
   assert.ok(await screen.findByText("$ 71.000,00"));
   assert.ok(screen.getByText(/Diferencia \$ 70\.000,00/));

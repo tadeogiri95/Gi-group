@@ -168,9 +168,9 @@ test("menú — Finanzas solo para el Dueño: ni el Supervisor ni la oficina", (
     // 14/11 (etapa 4): Inicio · Tesorería · Cuentas corrientes · Contabilidad · Informes · Ajustes
     "fin-inicio", "fin-tesoreria", "fin-cheques", "fin-inversiones",
     "fin-clientes", "fin-cuenta-ot", "fin-proveedores", "fin-pagos", "fin-sueldos", "fin-personas", "fin-unificados",
-    "fin-mayor", "fin-devengamiento", "fin-sos", "fin-cierre",
+    "fin-mayor", "fin-devengamiento", "fin-sos", "fin-libro",
     "fin-resultados", "fin-patrimonio", "fin-flujo", "fin-reporte",
-    "fin-config",
+    "fin-config", "fin-cierre",
   ]);
   for (const u of [SUPERVISOR, OFICINA, null]) {
     assert.equal(conBoton("finanzas", empresa, u), false);

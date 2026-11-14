@@ -20,7 +20,9 @@ test("Finanzas: fuera de Finanzas un solo renglón; adentro, todo por tema", () 
   const fuera = gruposMenu(empresa, dueno, 0, "home").find((g) => g.id === "finanzas").items;
   assert.deepEqual(fuera.map((i) => i.label), ["Inicio y todo Finanzas"]);
   const adentro = gruposMenu(empresa, dueno, 0, "finanzas").find((g) => g.id === "finanzas").items;
-  assert.equal(adentro.length, 20, "20: lo que estaba escondido (etapa 4) y la situación patrimonial (etapa 6, 14/11)");
+  assert.equal(adentro.length, 21, "21: lo que estaba escondido (etapa 4), la situación patrimonial (etapa 6) y el libro de Google (etapa 7, 14/11)");
+  assert.equal(adentro.find((i) => i.opcion === "fin-libro").tema, "Contabilidad");
+  assert.equal(adentro.find((i) => i.opcion === "fin-cierre").tema, "Ajustes");
   assert.equal(adentro[0].tema, undefined, "Inicio va sin tema");
   assert.equal(adentro.find((i) => i.opcion === "fin-flujo").tema, "Informes");
   assert.equal(adentro.find((i) => i.opcion === "fin-inversiones").tema, "Tesorería");

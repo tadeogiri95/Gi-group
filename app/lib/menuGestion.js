@@ -76,7 +76,8 @@ export const BOTONES_GESTION = {
       { id: "fin-mayor", label: "Mayor de cuentas", modulo: "finanzas", soloDueno: true },
       { id: "fin-devengamiento", label: "Devengamiento", modulo: "finanzas", soloDueno: true },
       { id: "fin-sos", label: "Importar S.O.S", modulo: "finanzas", soloDueno: true },
-      { id: "fin-cierre", label: "Cierre de mes", modulo: "finanzas", soloDueno: true },
+      // 14/11 (etapa 7): Gypi es el libro oficial; lo cargado a mano en el libro de Google, para incorporar o ignorar
+      { id: "fin-libro", label: "Libro de Google", modulo: "finanzas", soloDueno: true },
       // Informes
       { id: "fin-resultados", label: "Resultados", modulo: "finanzas", soloDueno: true },
       // 14/11 (etapa 6): situación patrimonial, liquidez y orígenes y aplicaciones de fondos
@@ -85,6 +86,8 @@ export const BOTONES_GESTION = {
       { id: "fin-reporte", label: "Reporte financiero", modulo: "finanzas", soloDueno: true },
       // Ajustes
       { id: "fin-config", label: "Configuración", modulo: "finanzas", soloDueno: true },
+      // Etapa 7: con Gypi como libro oficial, comparar con el libro queda como control
+      { id: "fin-cierre", label: "Cierre de mes", modulo: "finanzas", soloDueno: true },
     ],
   },
 };
@@ -92,7 +95,7 @@ export const BOTONES_GESTION = {
 /** El ícono de cada opción (menú de la izquierda y tarjetas del Inicio de Finanzas). */
 export const ICONO_GESTION = {
   vivo: "🟢", ot: "📋", reportes: "📊", instalaciones: "🔧", planificacion: "📅", minuta: "📝",
-  stock: "📦", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-clientes": "👥", "fin-sueldos": "👷", "fin-proveedores": "🏭", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-mayor": "📚", "fin-devengamiento": "📆", "fin-resultados": "📊", "fin-patrimonio": "⚖️", "fin-flujo": "💵", "fin-reporte": "📑", "fin-cierre": "🔍", "fin-config": "🧾", "fin-inversiones": "📈", "fin-cuenta-ot": "📋", "fin-unificados": "🔗", "fin-sos": "📄",
+  stock: "📦", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-clientes": "👥", "fin-sueldos": "👷", "fin-proveedores": "🏭", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-mayor": "📚", "fin-devengamiento": "📆", "fin-resultados": "📊", "fin-patrimonio": "⚖️", "fin-flujo": "💵", "fin-reporte": "📑", "fin-cierre": "🔍", "fin-libro": "📗", "fin-config": "🧾", "fin-inversiones": "📈", "fin-cuenta-ot": "📋", "fin-unificados": "🔗", "fin-sos": "📄",
 };
 
 /** Pestañas de un botón para esta empresa: sin lo apagado, lo que pide el

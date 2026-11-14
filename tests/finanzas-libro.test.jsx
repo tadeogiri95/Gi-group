@@ -6,6 +6,7 @@ import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import { datosParaLibro, filaOperacion, filaCheque, estadoLibro, scriptLibro, generarClave, CLAVE_LIBRO_FIN } from "../app/lib/finanzasLibro.js";
+import { COLUMNAS_MANUAL, NOTA_MANUAL } from "../app/lib/finanzasLibroManual.js";
 import { CLAVE_LIBRO_FIN as CLAVE_PANTALLA } from "../app/components/FinanzasLibroScript.jsx";
 
 before(() => {
@@ -115,6 +116,8 @@ class Hoja {
       setNote: (x) => { h.notas.set(`${r},${c}`, x); },
       setNotes: (m) => { if (h.fallarNotas) throw new Error("Falla de prueba"); m.forEach((fila, i) => h.notas.set(`${r + i},${c}`, fila[0])); },
       clearNote: () => { for (let i = 0; i < nr; i++) h.notas.delete(`${r + i},${c}`); },
+      setBackgroundRGB: (...rgb) => { h.fondos = h.fondos || new Map(); h.fondos.set(`${r},${c}`, rgb.join(",")); },
+      setBackground: (x) => { h.fondos = h.fondos || new Map(); if (x) h.fondos.set(`${r},${c}`, x); else h.fondos.delete(`${r},${c}`); },
       clearContent: () => celdas((a, b) => { h.v[a - 1][b - 1] = ""; h.f[a - 1][b - 1] = ""; }),
       // Solo lo que se pide: formato (nada acá), listas desplegables o fórmulas
       copyTo: (dest, tipo) => dest._pegar(r, c, nc, tipo),
@@ -156,7 +159,7 @@ function correrScript(hojas, respuesta) {
   const pedidos = [];
   const globales = {
     SpreadsheetApp: {
-      getActiveSpreadsheet: () => ({ getSheetByName: (n) => hojas[n] || null }),
+      getActiveSpreadsheet: () => ({ getSheetByName: (n) => hojas[n] || null, getSpreadsheetTimeZone: () => "America/Argentina/Buenos_Aires" }),
       flush: () => {},
       CopyPasteType: { PASTE_FORMAT: "PASTE_FORMAT", PASTE_DATA_VALIDATION: "PASTE_DATA_VALIDATION", PASTE_FORMULA: "PASTE_FORMULA" },
       DataValidationCriteria: { VALUE_IN_LIST: "VALUE_IN_LIST", VALUE_IN_RANGE: "VALUE_IN_RANGE" },
@@ -164,6 +167,7 @@ function correrScript(hojas, respuesta) {
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },
     UrlFetchApp: { fetch: (url, o) => { pedidos.push({ url, o }); return { getResponseCode: () => 200, getContentText: () => JSON.stringify(respuesta) }; } },
     ScriptApp: {},
+    Utilities: { formatDate: (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` },
   };
   const codigo = scriptLibro({ url: "https://gypi.test/api/finanzas/libro", clave: "gyp_clave" });
   const fn = new Function(...Object.keys(globales), `${codigo}\nreturn pasarLibroGypi;`);
@@ -172,7 +176,8 @@ function correrScript(hojas, respuesta) {
 }
 
 /** Lo que el script le contó a Gypi al terminar la vuelta. */
-const estadoEnviado = (pedidos) => JSON.parse(pedidos.find((p) => p.o.method === "post").o.payload);
+const enviado = (pedidos, accion) => pedidos.filter((p) => p.o.method === "post").map((p) => JSON.parse(p.o.payload)).find((x) => x.accion === accion);
+const estadoEnviado = (pedidos) => enviado(pedidos, "estado");
 
 test("script — agrega lo nuevo con las fórmulas de arriba, reescribe lo cambiado y borra lo anulado", () => {
   const { ops, cheques } = libroDePrueba();
@@ -267,6 +272,29 @@ test("script — borra sus propias marcas repetidas y lista las copias a mano pa
   const foto = JSON.stringify(ops.v);
   correrScript({ "T-OPERACIONES": ops, "R-CHEQUES": cheques }, { ...respuesta, borrar_repetidos: [{ fila: r.fila, copias: 2, firma: r.firma }] });
   assert.equal(JSON.stringify(ops.v), foto);
+});
+
+test("script — lo cargado a mano va a Gypi y lo que le falta queda en amarillo con la nota (etapa 7)", () => {
+  const { ops, cheques } = libroDePrueba();
+  const base = datosParaLibro({ operaciones: [OP, { ...OP, id: 6, updated_at: "v6" }], cuentas: CUENTAS });
+  // Sin fecha del Histórico no se manda nada
+  assert.equal(enviado(correrScript({ "T-OPERACIONES": ops, "R-CHEQUES": cheques }, base), "manuales"), undefined);
+  const pedidos = correrScript({ "T-OPERACIONES": ops, "R-CHEQUES": cheques }, { ...base, manuales_desde: "2025-01-01", revisado: true, pendientes: [2] });
+  const m = enviado(pedidos, "manuales");
+  assert.deepEqual(m.grilla[0], COLUMNAS_MANUAL);
+  assert.equal(m.grilla[1][0], "2025-09-02", "la fecha va como AAAA-MM-DD");
+  assert.equal(m.grilla[1][9], "HORAS");
+  assert.equal(m.grilla.length, 4, "un renglón por renglón del libro, así Gypi los numera igual");
+  assert.equal(ops.notas.get("2,19"), NOTA_MANUAL);
+  assert.equal(ops.fondos.get("2,19"), "255,242,168", "amarillo");
+  assert.equal(ops.notas.get("3,19"), "2026-11-09T10:00:00Z", "los renglones de Gypi no se tocan");
+  // Antes de la fecha del Histórico va vacío
+  const antes = enviado(correrScript({ "T-OPERACIONES": ops, "R-CHEQUES": cheques }, { ...base, manuales_desde: "2026-01-01", revisado: true, pendientes: [2] }), "manuales");
+  assert.deepEqual(antes.grilla[1], []);
+  // Cuando ya entró a Gypi (o se ignoró) se despinta
+  correrScript({ "T-OPERACIONES": ops, "R-CHEQUES": cheques }, { ...base, manuales_desde: "2025-01-01", revisado: true, pendientes: [] });
+  assert.equal(ops.notas.get("2,19"), undefined);
+  assert.equal(ops.fondos.has("2,19"), false);
 });
 
 // ─── Servidor ───

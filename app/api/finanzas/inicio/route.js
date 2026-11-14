@@ -23,6 +23,7 @@ import { CLAVE_QUITADOS, costosMantenimiento, leerQuitados } from "../../../lib/
 import { CLAVE_PLAZOS_FIJOS, leerGuardados, pathOpsPlazos, vencidosPendientes } from "../../../lib/finanzasPlazosFijos";
 import { pendientesFinanzas } from "../../../lib/finanzasInicio";
 import { ESTADOS_OC_RECIBIDA, faltaFacturaOc } from "../../../lib/ordenesCompra";
+import { CLAVE_LIBRO_FIN } from "../../../lib/finanzasLibro";
 
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data || []);
 const leerSiHay = (sesion, path, maxFilas) => leer(sesion, path, maxFilas).catch(() => []);
@@ -41,7 +42,7 @@ export async function GET(request) {
     const tesoreria = await leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,activa`);
     const lista = encodeURIComponent(tesoreria.map((t) => `"${String(t.cuenta).replace(/"/g, "")}"`).join(","));
     const cuentasPf = tesoreria.filter((t) => t.tipo === "plazo_fijo").map((t) => t.cuenta);
-    const [ops, revisar, ordenes, cheques, planificacion, mantenimientos, fallas, gastos, plazos, opsPlazos, recibidas, quitados] = await Promise.all([
+    const [ops, revisar, ordenes, cheques, planificacion, mantenimientos, fallas, gastos, plazos, opsPlazos, recibidas, quitados, libro] = await Promise.all([
       tesoreria.length ? leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&or=(cuenta_debe.in.(${lista}),cuenta_haber.in.(${lista}))&select=fecha,total,total_ars,cuenta_debe,cuenta_haber,estado&order=fecha.asc`, 100000) : [],
       leer(sesion, `fin_operaciones?empresa_id=eq.${e}&estado=eq.para_revisar&anulada_at=is.null&select=id,origen,total`, 2000),
       leerSiHay(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&estado=in.(borrador,para_aprobar,aprobada,rechazada)&select=id,estado,total`),
@@ -55,6 +56,8 @@ export async function GET(request) {
       // Órdenes de compra con mercadería recibida y sin factura (sin el módulo Compras queda vacío)
       leerSiHay(sesion, `ordenes_compra?empresa_id=eq.${e}&estado=in.(${ESTADOS_OC_RECIBIDA.join(",")})&select=id,estado,factura_numero,factura_fecha`, 2000),
       config(e, CLAVE_QUITADOS),
+      // Etapa 7: lo cargado a mano en el libro de Google (lo deja el script)
+      config(e, CLAVE_LIBRO_FIN),
     ]);
     const confirmadas = ops.filter((o) => o.estado !== "para_revisar");
     const totales = totalesTesoreria(saldosTesoreria(confirmadas, tesoreria));
@@ -73,6 +76,7 @@ export async function GET(request) {
       hoy, revisar, ordenes, cheques, feriados: feriadosFinanzas(planificacion),
       costos: costos.length, costosTotal: costos.reduce((s, c) => s + c.costo, 0),
       sinFactura: recibidas.filter(faltaFacturaOc).length,
+      libroManual: Number(libro?.manuales?.total) || 0,
       plazosVencidos: guardados.length ? vencidosPendientes(guardados, opsPlazos, cuentasPf, hoy).length : 0,
     });
     return NextResponse.json({

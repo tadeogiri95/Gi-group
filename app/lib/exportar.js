@@ -5,12 +5,37 @@ import { zipSync, strToU8 } from "fflate";
 // Tablas que se exportan (todas filtradas por empresa_id). Quedan afuera las
 // internas: sesiones, tokens de push, rate limits, métricas y auditoría.
 export const TABLAS_EXPORTAR = [
-  "empleados", "fichadas", "solicitudes", "registro_actividades", "proyectos",
-  "geo_zonas", "geo_registros", "divisiones", "etapas", "turnos_planificados",
-  "notas_calendario", "notificaciones", "reportes_obra", "mensajes_chat",
-  "tipos_documento_requerido", "documentos_exigidos_empleado", "documentos_empleado",
-  "reglas_bot", "suscripciones", "pagos",
+  // Personal
+  "empleados", "fichadas", "solicitudes", "registro_actividades", "divisiones", "etapas", "turnos_planificados",
+  "geo_zonas", "geo_registros", "notas_calendario", "notificaciones", "mensajes_chat",
+  "tipos_documento_requerido", "documentos_exigidos_empleado", "documentos_empleado", "reglas_bot",
+  // Producción e instalación (14/11: el respaldo trae todo lo cargado en Gypi)
+  "proyectos", "plantas", "avance_etapas", "avance_manual_historial", "pasos_pieza", "piezas_ot", "pausas_ot",
+  "horas_ot", "ajustes_tiempo_ot", "retrabajos_ot", "avisos_fin_proceso", "no_conformidades", "destinos_ot",
+  "bultos_ot", "sueltos_ot", "cargas_ot", "actas_ot", "pendientes_obra", "reportes_obra", "reportes_instalacion",
+  "planes_produccion", "plan_produccion_items", "planes_instalacion", "plan_instalacion_items", "informes_produccion",
+  "minutas", "minuta_items", "precios_ot", "precios_fijos_ot", "costos_finales_ot", "costos_empresa",
+  // Stock y compras
+  "articulos_stock", "articulos_alta", "asociaciones_articulos", "movimientos_stock", "remitos_stock", "necesidades_stock",
+  "proveedores", "precios_articulos", "pedidos_compra", "pedidos_compra_cambios", "ordenes_compra", "ordenes_compra_items",
+  "ordenes_compra_cotizaciones", "ordenes_compra_facturas", "recepciones_compra", "recepciones_compra_items",
+  "facturas_sueltas", "facturas_sueltas_renglones",
+  // Flota y maquinaria
+  "vehiculos", "vehiculo_papeles", "vehiculo_checklists", "vehiculo_mantenimientos", "vehiculo_arreglos", "flota_config",
+  "maquinas", "maquina_tareas", "maquina_registros", "maquina_fallas",
+  // Finanzas
+  "fin_cuentas", "fin_tipos_operacion", "fin_centros_costo", "fin_tesoreria", "fin_operaciones", "fin_cheques",
+  "fin_clientes", "fin_personas", "fin_ordenes_pago", "fin_resumenes_pago", "fin_liquidaciones", "fin_cargas_banco",
+  "fin_meses_cerrados",
+  // Cuenta
+  "suscripciones", "pagos",
 ];
+
+/** Las que no tienen columna id: se exportan sin ordenar. */
+export const TABLAS_SIN_ID = new Set([
+  "articulos_stock", "asociaciones_articulos", "costos_empresa", "fin_centros_costo", "fin_cuentas", "fin_meses_cerrados",
+  "fin_tesoreria", "fin_tipos_operacion", "flota_config", "horas_ot", "necesidades_stock", "precios_fijos_ot", "precios_ot",
+]);
 
 // Columnas que nunca salen (secretos, aunque estén hasheados)
 export const COLUMNAS_SECRETAS = new Set([
