@@ -48,7 +48,7 @@ const sumarDias = (fecha, n) => { const d = new Date(`${fecha}T12:00:00Z`); d.se
  * pantalla (ir) y dice cuántos son y por cuánto.
  * @returns {{ id, texto, ir, cantidad, importe?, tono: "rojo"|"ambar"|"normal" }[]}
  */
-export function pendientesFinanzas({ hoy, revisar = [], ordenes = [], cheques = [], costos = 0, costosTotal = 0, plazosVencidos = 0, feriados = null, sinFactura = 0, libroManual = 0 }) {
+export function pendientesFinanzas({ hoy, revisar = [], ordenes = [], cheques = [], costos = 0, costosTotal = 0, plazosVencidos = 0, feriados = null, sinFactura = 0, libroManual = 0, cuentasSinPlan = [] }) {
   const out = [];
   const plural = (n, uno, varios) => (n === 1 ? uno : varios.replace("N", String(n)));
   const miCaja = revisar.filter((o) => o.origen === "mi_caja");
@@ -90,6 +90,15 @@ export function pendientesFinanzas({ hoy, revisar = [], ordenes = [], cheques = 
     out.push({
       id: "estimadas", ir: "fin-tesoreria", cantidad: estimadas.length, importe: centavos(estimadas.reduce((s, o) => s + Number(o.total || 0), 0)), tono: "normal",
       texto: plural(estimadas.length, "1 OT entregada sin precio en el Plan: confirmá su entrega estimada en Movimientos (Solo para revisar)", "N OT entregadas sin precio en el Plan: confirmá sus entregas estimadas en Movimientos (Solo para revisar)"),
+    });
+  }
+  // 14/11 (migración 193): cuentas usadas en operaciones que no están en el plan
+  if (cuentasSinPlan.length) {
+    const ops = cuentasSinPlan.reduce((t, c) => t + (Number(c.operaciones) || 0), 0);
+    const lista = cuentasSinPlan.slice(0, 5).map((c) => c.cuenta).join(", ") + (cuentasSinPlan.length > 5 ? "…" : "");
+    out.push({
+      id: "cuentas_sin_plan", ir: "fin-config", cantidad: ops, tono: "rojo",
+      texto: `${plural(cuentasSinPlan.length, "1 cuenta usada no está en el plan de cuentas", "N cuentas usadas no están en el plan de cuentas")} (${lista}): sumala al plan o corregí sus ${ops === 1 ? "operación" : `${ops} operaciones`} en el Mayor`,
     });
   }
   // Etapa 7 (14/11): lo cargado a mano en el libro de Google que Gypi no tiene
