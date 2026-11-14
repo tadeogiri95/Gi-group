@@ -20,22 +20,25 @@ test("Finanzas: fuera de Finanzas un solo renglón; adentro, todo por tema", () 
   const fuera = gruposMenu(empresa, dueno, 0, "home").find((g) => g.id === "finanzas").items;
   assert.deepEqual(fuera.map((i) => i.label), ["Inicio y todo Finanzas"]);
   const adentro = gruposMenu(empresa, dueno, 0, "finanzas").find((g) => g.id === "finanzas").items;
-  assert.equal(adentro.length, 15, "15 con el Mayor de cuentas y Devengamiento (13/11)");
+  assert.equal(adentro.length, 19, "19 con lo que estaba escondido (etapa 4, 14/11)");
   assert.equal(adentro[0].tema, undefined, "Inicio va sin tema");
-  assert.equal(adentro.find((i) => i.opcion === "fin-flujo").tema, "Cómo vamos");
+  assert.equal(adentro.find((i) => i.opcion === "fin-flujo").tema, "Informes");
+  assert.equal(adentro.find((i) => i.opcion === "fin-inversiones").tema, "Tesorería");
+  assert.equal(adentro.find((i) => i.opcion === "fin-cuenta-ot").tema, "Cuentas corrientes");
+  assert.equal(adentro.find((i) => i.opcion === "fin-sos").tema, "Contabilidad");
 });
 
 test("Finanzas en la computadora: subtítulos por tema", () => {
   render(<MenuLateral empresa={empresa} usuario={dueno} screen="finanzas" seccion="fin-flujo" onIr={() => {}} />);
   const menu = screen.getByRole("complementary", { name: "Menú" });
-  for (const t of ["Día a día", "Con quién trabajamos", "Cómo vamos", "Ajustes"]) assert.ok(within(menu).getByText(t));
+  for (const t of ["Tesorería", "Cuentas corrientes", "Contabilidad", "Informes", "Ajustes"]) assert.ok(within(menu).getByText(t));
   assert.equal(within(menu).getByRole("button", { name: /Flujo de caja/ }).getAttribute("aria-current"), "page");
 });
 
 test("Finanzas en el celular: sin pestañas en su Inicio; afuera, Inicio y las del mismo tema", () => {
   const ops = opcionesBoton("finanzas", empresa, dueno);
   assert.deepEqual(pestanasCelular("finanzas", ops, "fin-inicio"), []);
-  assert.deepEqual(pestanasCelular("finanzas", ops, "fin-flujo").map((o) => o.label), ["Inicio", "Mayor de cuentas", "Devengamiento", "Resultados", "Flujo de caja", "Reporte financiero", "Cierre"]);
+  assert.deepEqual(pestanasCelular("finanzas", ops, "fin-flujo").map((o) => o.label), ["Inicio", "Resultados", "Flujo de caja", "Reporte financiero"]);
   const prod = opcionesBoton("proyectos", empresa, dueno);
   assert.equal(pestanasCelular("proyectos", prod, "ot"), prod, "los otros botones no cambian");
 });

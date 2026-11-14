@@ -55,24 +55,33 @@ export const BOTONES_GESTION = {
     label: "Finanzas",
     detalle: "Cuentas, cajas, bancos y movimientos",
     opciones: [
-      // Parte 10 del 11/11: Inicio primero y el resto por tema (finanzasInicio.js)
+      // Parte 10 del 11/11: Inicio primero y el resto por tema (finanzasInicio.js).
+      // 14/11 (etapa 4 de la auditoría): 6 lugares — Inicio, Tesorería, Cuentas
+      // corrientes, Contabilidad, Informes y Ajustes — y lo que estaba
+      // escondido adentro de otras pantallas con su renglón propio.
       { id: "fin-inicio", label: "Inicio", modulo: "finanzas", soloDueno: true },
-      // 13/11 (parte 3 del plan de Tesorería): Movimientos y Cajas y bancos en una sola
-      { id: "fin-tesoreria", label: "Tesorería", modulo: "finanzas", soloDueno: true },
-      { id: "fin-pagos", label: "Pagos", modulo: "finanzas", soloDueno: true },
+      // Tesorería: 13/11 (parte 3 del plan de Tesorería) Movimientos y Cajas y bancos en una sola
+      { id: "fin-tesoreria", label: "Cajas y bancos", modulo: "finanzas", soloDueno: true },
       { id: "fin-cheques", label: "Cheques", modulo: "finanzas", soloDueno: true },
-      { id: "fin-proveedores", label: "Proveedores", modulo: "finanzas", soloDueno: true },
+      { id: "fin-inversiones", label: "Inversiones", modulo: "finanzas", soloDueno: true },
+      // Cuentas corrientes
       { id: "fin-clientes", label: "Clientes", modulo: "finanzas", soloDueno: true },
+      { id: "fin-cuenta-ot", label: "Cuenta por OT", modulo: "finanzas", soloDueno: true },
+      { id: "fin-proveedores", label: "Proveedores", modulo: "finanzas", soloDueno: true },
+      { id: "fin-pagos", label: "Órdenes de pago", modulo: "finanzas", soloDueno: true },
       { id: "fin-sueldos", label: "Sueldos", modulo: "finanzas", soloDueno: true },
       { id: "fin-personas", label: "Agenda", modulo: "finanzas", soloDueno: true },
-      // 13/11 (pedido de Tadeo): el mayor de cada cuenta y los asientos de registro y ajuste
+      { id: "fin-unificados", label: "Cliente y proveedor", modulo: "finanzas", soloDueno: true },
+      // Contabilidad: 13/11 (pedido de Tadeo) el mayor de cada cuenta y los asientos; lo que se devenga en el mes
       { id: "fin-mayor", label: "Mayor de cuentas", modulo: "finanzas", soloDueno: true },
-      // 13/11 (parte 8 del plan de Tesorería): todo lo que se devenga en el mes
       { id: "fin-devengamiento", label: "Devengamiento", modulo: "finanzas", soloDueno: true },
+      { id: "fin-sos", label: "Importar S.O.S", modulo: "finanzas", soloDueno: true },
+      { id: "fin-cierre", label: "Cierre de mes", modulo: "finanzas", soloDueno: true },
+      // Informes
       { id: "fin-resultados", label: "Resultados", modulo: "finanzas", soloDueno: true },
       { id: "fin-flujo", label: "Flujo de caja", modulo: "finanzas", soloDueno: true },
       { id: "fin-reporte", label: "Reporte financiero", modulo: "finanzas", soloDueno: true },
-      { id: "fin-cierre", label: "Cierre", modulo: "finanzas", soloDueno: true },
+      // Ajustes
       { id: "fin-config", label: "Configuración", modulo: "finanzas", soloDueno: true },
     ],
   },
@@ -81,7 +90,7 @@ export const BOTONES_GESTION = {
 /** El ícono de cada opción (menú de la izquierda y tarjetas del Inicio de Finanzas). */
 export const ICONO_GESTION = {
   vivo: "🟢", ot: "📋", reportes: "📊", instalaciones: "🔧", planificacion: "📅", minuta: "📝",
-  stock: "📦", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-clientes": "👥", "fin-sueldos": "👷", "fin-proveedores": "🏭", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-mayor": "📚", "fin-devengamiento": "📆", "fin-resultados": "📊", "fin-flujo": "💵", "fin-reporte": "📑", "fin-cierre": "🔍", "fin-config": "🧾",
+  stock: "📦", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-clientes": "👥", "fin-sueldos": "👷", "fin-proveedores": "🏭", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-mayor": "📚", "fin-devengamiento": "📆", "fin-resultados": "📊", "fin-flujo": "💵", "fin-reporte": "📑", "fin-cierre": "🔍", "fin-config": "🧾", "fin-inversiones": "📈", "fin-cuenta-ot": "📋", "fin-unificados": "🔗", "fin-sos": "📄",
 };
 
 /** Pestañas de un botón para esta empresa: sin lo apagado, lo que pide el

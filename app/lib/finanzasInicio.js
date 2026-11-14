@@ -8,9 +8,11 @@ import { fechaDebito } from "./finanzasDiasHabiles";
 
 /** Las pantallas de Finanzas agrupadas por tema, en el orden del menú. */
 export const GRUPOS_FINANZAS = [
-  { id: "dia", titulo: "Día a día", opciones: ["fin-tesoreria", "fin-pagos", "fin-cheques"] },
-  { id: "gente", titulo: "Con quién trabajamos", opciones: ["fin-proveedores", "fin-clientes", "fin-sueldos", "fin-personas"] },
-  { id: "numeros", titulo: "Cómo vamos", opciones: ["fin-mayor", "fin-devengamiento", "fin-resultados", "fin-flujo", "fin-reporte", "fin-cierre"] },
+  // 14/11 (etapa 4 de la auditoría de Finanzas integrada): los 6 lugares (el Inicio va solo, arriba)
+  { id: "tesoreria", titulo: "Tesorería", opciones: ["fin-tesoreria", "fin-cheques", "fin-inversiones"] },
+  { id: "cuentas", titulo: "Cuentas corrientes", opciones: ["fin-clientes", "fin-cuenta-ot", "fin-proveedores", "fin-pagos", "fin-sueldos", "fin-personas", "fin-unificados"] },
+  { id: "contabilidad", titulo: "Contabilidad", opciones: ["fin-mayor", "fin-devengamiento", "fin-sos", "fin-cierre"] },
+  { id: "informes", titulo: "Informes", opciones: ["fin-resultados", "fin-flujo", "fin-reporte"] },
   { id: "ajustes", titulo: "Ajustes", opciones: ["fin-config"] },
 ];
 
@@ -30,6 +32,10 @@ export const DETALLE_FINANZAS = {
   "fin-reporte": "Resumen para el contador o los socios",
   "fin-cierre": "Gypi contra el libro y stock valorizado",
   "fin-config": "Plan de cuentas, tipos y revisión contable",
+  "fin-inversiones": "Plazos fijos, FCI y títulos",
+  "fin-cuenta-ot": "Lo vendido, cobrado y lo que falta de cada OT",
+  "fin-unificados": "Quien es cliente y proveedor a la vez: lo que se debe de cada lado",
+  "fin-sos": "Facturas de compra y venta del CSV del S.O.S Contador",
 };
 
 const centavos = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -71,7 +77,7 @@ export function pendientesFinanzas({ hoy, revisar = [], ordenes = [], cheques = 
     });
   }
   if (plazosVencidos > 0) {
-    out.push({ id: "plazos", ir: "fin-tesoreria", cantidad: plazosVencidos, tono: "ambar", texto: plural(plazosVencidos, "1 plazo fijo venció: registrar que volvió al banco", "N plazos fijos vencieron: registrar que volvieron al banco") });
+    out.push({ id: "plazos", ir: "fin-inversiones", cantidad: plazosVencidos, tono: "ambar", texto: plural(plazosVencidos, "1 plazo fijo venció: registrar que volvió al banco", "N plazos fijos vencieron: registrar que volvieron al banco") });
   }
   if (miCaja.length) {
     out.push({ id: "mi_caja", ir: "fin-tesoreria", cantidad: miCaja.length, tono: "normal", texto: plural(miCaja.length, "1 movimiento de Mi caja para revisar", "N movimientos de Mi caja para revisar") });

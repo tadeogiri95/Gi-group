@@ -32,8 +32,6 @@ import { NOMBRE_GRUPO, ORDEN_TIPOS, movimientosDeCaja, saldosCajasDelLibro, sald
 import { paraRevisarMiCaja, tiposParaMiCaja } from "../lib/finanzasMiCaja";
 import SubirExtracto, { Repetidos } from "./FinanzasExtracto";
 import { repetidosEnCuenta } from "../lib/finanzasBanco";
-import PlazosFijos from "./FinanzasPlazosFijos";
-import Inversiones from "./FinanzasInversiones";
 import FinanzasMovimientos, { Detalle } from "./FinanzasMovimientos";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -456,8 +454,10 @@ export default function FinanzasTesoreria({ onIr = null } = {}) {
           ) : null} />
       </section>
 
-      {datos.tesoreria.some((t) => t.tipo === "plazo_fijo" && t.activa !== false) && <PlazosFijos onCambio={cambioAca} />}
-      {(datos.tesoreria.some((t) => t.tipo === "fci" && t.activa !== false) || (datos.cuentas || []).some((c) => /T[IÍ]TULOS? P[UÚ]BLICOS/i.test(c.nombre || ""))) && <Inversiones onCambio={cambioAca} />}
+      {/* 14/11 (etapa 4): los plazos fijos, el FCI y los títulos tienen su lugar en Tesorería → 📈 Inversiones */}
+      {onIr && (datos.tesoreria.some((t) => ["plazo_fijo", "fci"].includes(t.tipo) && t.activa !== false)) && (
+        <button type="button" className="g-btn g-btn-secondary mb-3" onClick={() => onIr("fin-inversiones")}>📈 Ver plazos fijos e inversiones</button>
+      )}
 
       {verRepetidos && <PosiblesRepetidos datos={datos} porCaja={porCaja} onCerrar={() => setVerRepetidos(false)} onCambio={cambioAca} />}
       {extracto && <SubirExtracto caja={saldos.find((s) => s.cuenta === extracto) || { cuenta: extracto, nombre: extracto }} datos={datos} onCerrar={() => setExtracto(null)} onCargado={() => { setExtracto(null); cambioAca(); }} onCambio={cambioAca} />}
