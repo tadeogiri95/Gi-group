@@ -75,8 +75,10 @@ test("validarOperacion — una amortización contra Plazo Fijos no se guarda; co
 test("Nueva operación — con DEPREC pregunta qué bien y arma el asiento con el elegido", async () => {
   global.fetch = async () => new Response(JSON.stringify({ desde: "2026-11-01", hasta: "2026-11-11", truncado: false, tipos: TIPOS, cuentas: CUENTAS, tesoreria: TESORERIA, centros: [], proveedores: [], proyectos: [], operaciones: [] }), { status: 200 });
   render(<FinanzasMovimientos />);
-  await waitFor(() => assert.ok(screen.getByRole("button", { name: "+ Nueva operación" })));
-  fireEvent.click(screen.getByRole("button", { name: "+ Nueva operación" }));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "➕ Cargar" })));
+  fireEvent.click(screen.getByRole("button", { name: "➕ Cargar" }));
+  fireEvent.click(await screen.findByText(/^Otra operación/));
+  await screen.findByLabelText("Tipo de operación");
   fireEvent.change(screen.getByLabelText("Tipo de operación"), { target: { value: "DEPREC" } });
   const grupo = screen.getByRole("group", { name: "¿Qué bien se amortiza?" });
   assert.ok(grupo);

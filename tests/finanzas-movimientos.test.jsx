@@ -318,7 +318,9 @@ test("Movimientos — lista del período y nueva operación con el asiento a la 
   fireEvent.click(screen.getByLabelText("Ver anuladas"));
   await waitFor(() => assert.ok(screen.getByText("Anulada")));
 
-  fireEvent.click(screen.getByRole("button", { name: "+ Nueva operación" }));
+  fireEvent.click(screen.getByRole("button", { name: "➕ Cargar" }));
+  fireEvent.click(await screen.findByText(/^Otra operación/));
+  await screen.findByLabelText("Tipo de operación");
   // 11/11: ventana grande en la computadora (más ancha, en dos columnas)
   const ventana = screen.getByRole("dialog", { name: "Nueva operación" }).lastElementChild;
   assert.ok(ventana.className.includes("modal-grande"), "usa la ventana grande");
@@ -383,8 +385,10 @@ test("Movimientos — el tipo se ve una sola vez (sin MAYÚSCULAS · minúsculas
   ];
   global.fetch = async () => new Response(JSON.stringify({ desde: "2026-11-01", hasta: "2026-11-09", truncado: false, ...CTX, tipos, operaciones: [] }), { status: 200 });
   render(<FinanzasMovimientos />);
-  await waitFor(() => assert.ok(screen.getByRole("button", { name: "+ Nueva operación" })));
-  fireEvent.click(screen.getByRole("button", { name: "+ Nueva operación" }));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "➕ Cargar" })));
+  fireEvent.click(screen.getByRole("button", { name: "➕ Cargar" }));
+  fireEvent.click(await screen.findByText(/^Otra operación/));
+  await screen.findByLabelText("Tipo de operación");
   const select = screen.getByLabelText("Tipo de operación");
   fireEvent.focus(select);
   const textos = screen.getAllByRole("option").map((o) => o.textContent);
@@ -397,7 +401,7 @@ test("Movimientos — el tipo se ve una sola vez (sin MAYÚSCULAS · minúsculas
   assert.match(screen.getByLabelText("Qué comprende este tipo").textContent, /Luz, gas y agua de la planta/, "manda la leyenda propia");
 });
 
-test("Tesorería — con una caja elegida: solo sus movimientos y «＋ Nuevo movimiento» la deja puesta (13/11)", async () => {
+test("Tesorería — con una caja elegida: solo sus movimientos y «➕ Cargar» la deja puesta (13/11, 14/11)", async () => {
   const ops = [
     { id: 1, fecha: "2026-11-05", tipo: "PAGO EFECTIVO", total: 100, total_ars: 100, cuenta_debe: "02.01.02.001.001", cuenta_haber: "01.01.01.001.001.06" },
     { id: 2, fecha: "2026-11-04", tipo: "PAGO EFECTIVO", total: 200, total_ars: 200, cuenta_debe: "02.01.02.001.001", cuenta_haber: "01.01.01.001.001.01" },
@@ -408,7 +412,9 @@ test("Tesorería — con una caja elegida: solo sus movimientos y «＋ Nuevo mo
   const lista = await screen.findByRole("list", { name: "Operaciones" });
   assert.equal(lista.querySelectorAll("li").length, 1, "solo la de Caja Tadeo Giri");
   assert.match(lista.textContent, /Saldo\s*\$\s*900,00/);
-  fireEvent.click(screen.getByRole("button", { name: "＋ Nuevo movimiento" }));
+  fireEvent.click(screen.getByRole("button", { name: "➕ Cargar" }));
+  fireEvent.click(await screen.findByText(/^Otra operación/));
+  await screen.findByLabelText("Tipo de operación");
   fireEvent.change(screen.getByLabelText("Tipo de operación"), { target: { value: "PAGO EFECTIVO" } });
   assert.equal(screen.getByLabelText("Caja o banco que paga").value, "Caja Tadeo Giri", "la caja elegida queda puesta");
   assert.equal(cambios, 0);

@@ -23,6 +23,7 @@ import {
 } from "../lib/finanzasProveedores";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { NuevaOrden, leerDatosPagos } from "./FinanzasPagos";
+import BotonCargar from "./FinanzasCargar";
 import FinanzasSos from "./FinanzasSos";
 import FinanzasUnificados, { LineaUnificada } from "./FinanzasUnificados";
 import { useToast } from "./ui/Toast";
@@ -358,7 +359,8 @@ function Ficha({ saldo, datos, cuentasProv, aprendidas, onCerrar, onCargada }) {
         {saldo.proveedor_id ? (
           <div className="flex flex-wrap gap-2">
             <button type="button" className="g-btn g-btn-primary" disabled={abriendo} onClick={pagar}>{abriendo ? "Abriendo…" : "💸 Pagar"}</button>
-            <button type="button" className="g-btn g-btn-secondary" onClick={() => setManual("sin_factura")}>＋ Compra sin factura</button>
+            {/* Etapa 3 (14/11): el mismo formulario de factura o gasto que en el resto de Finanzas */}
+            <BotonCargar documentos={["gasto"]} contexto={{ proveedorId: saldo.proveedor_id, cuentaGasto: cuenta }} onHecho={onCargada} className="g-btn g-btn-secondary">🧾 Factura o gasto</BotonCargar>
             <button type="button" className="g-btn g-btn-secondary" onClick={() => setManual("nota_credito")}>＋ Nota de crédito</button>
           </div>
         ) : (

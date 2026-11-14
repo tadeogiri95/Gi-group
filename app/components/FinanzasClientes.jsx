@@ -59,12 +59,17 @@ async function leerOperacionesDelLibro(file) {
 
 const formaVacia = (forma = "transferencia") => ({ forma, importe: "", cuenta: "", tipo_cheque: "echeq_diferido", banco: "", numero: "", fecha_pago: "", tipo_cambio: "" });
 
-export function Cobrar({ datos, cliente, proyectoId = "", onCerrar, onHecho }) {
+export function Cobrar({ datos, cliente, proyectoId = "", cajaInicial = "", onCerrar, onHecho }) {
   const toast = useToast();
   const [fecha, setFecha] = useState(hoyAr());
   const [ot, setOt] = useState(proyectoId ? String(proyectoId) : "");
   const [notas, setNotas] = useState("");
-  const [formas, setFormas] = useState([formaVacia()]);
+  // 14/11 (➕ Cargar desde una caja): el cobro entra a esa caja
+  const [formas, setFormas] = useState(() => {
+    const t = cajaInicial ? datos.tesoreria.find((x) => x.cuenta === cajaInicial) : null;
+    if (!t) return [formaVacia()];
+    return [{ ...formaVacia(t.moneda === "USD" ? "dolares" : t.tipo === "caja" ? "efectivo" : "transferencia"), cuenta: t.cuenta }];
+  });
   const [error, setError] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const vivas = datos.tesoreria.filter((t) => t.activa !== false);
