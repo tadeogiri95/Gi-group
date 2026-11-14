@@ -20,7 +20,7 @@ test("Finanzas: fuera de Finanzas un solo renglón; adentro, todo por tema", () 
   const fuera = gruposMenu(empresa, dueno, 0, "home").find((g) => g.id === "finanzas").items;
   assert.deepEqual(fuera.map((i) => i.label), ["Inicio y todo Finanzas"]);
   const adentro = gruposMenu(empresa, dueno, 0, "finanzas").find((g) => g.id === "finanzas").items;
-  assert.equal(adentro.length, 19, "19 con lo que estaba escondido (etapa 4, 14/11)");
+  assert.equal(adentro.length, 20, "20: lo que estaba escondido (etapa 4) y la situación patrimonial (etapa 6, 14/11)");
   assert.equal(adentro[0].tema, undefined, "Inicio va sin tema");
   assert.equal(adentro.find((i) => i.opcion === "fin-flujo").tema, "Informes");
   assert.equal(adentro.find((i) => i.opcion === "fin-inversiones").tema, "Tesorería");
@@ -38,7 +38,7 @@ test("Finanzas en la computadora: subtítulos por tema", () => {
 test("Finanzas en el celular: sin pestañas en su Inicio; afuera, Inicio y las del mismo tema", () => {
   const ops = opcionesBoton("finanzas", empresa, dueno);
   assert.deepEqual(pestanasCelular("finanzas", ops, "fin-inicio"), []);
-  assert.deepEqual(pestanasCelular("finanzas", ops, "fin-flujo").map((o) => o.label), ["Inicio", "Resultados", "Flujo de caja", "Reporte financiero"]);
+  assert.deepEqual(pestanasCelular("finanzas", ops, "fin-flujo").map((o) => o.label), ["Inicio", "Resultados", "Situación patrimonial", "Flujo de caja", "Reporte financiero"]);
   const prod = opcionesBoton("proyectos", empresa, dueno);
   assert.equal(pestanasCelular("proyectos", prod, "ot"), prod, "los otros botones no cambian");
 });
