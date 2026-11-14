@@ -58,7 +58,7 @@ export default function CuentaDatos({ usuario, empresa, onLogout, fetcher = apiF
       <p className="g-overline text-gypi-dim mb-1">Tus datos</p>
       <div className="bg-gypi-surface border border-gypi-border rounded-xl p-4 flex flex-col gap-3">
         <div>
-          <p className="text-[13px] text-gypi-text m-0 mb-2">Descargá todo lo que tu empresa cargó en Gypi (empleados, fichadas, tareas, solicitudes, OT y más) en un archivo .zip que se abre con Excel.</p>
+          <p className="text-[13px] text-gypi-text m-0 mb-2">Descargá todo lo que tu empresa cargó en Gypi (personal, OT, stock, compras, flota, maquinaria y finanzas) en un archivo .zip que se abre con Excel. Si conectaste el libro contable, además se guarda solo cada domingo en tu Google Drive.</p>
           <button onClick={descargar} disabled={descargando} className="min-h-[44px] px-4 rounded-lg border border-gypi-border bg-gypi-surf-hi text-gypi-text text-xs font-bold cursor-pointer disabled:opacity-50">
             {descargando ? "Preparando…" : "⬇️ Descargar todos los datos"}
           </button>

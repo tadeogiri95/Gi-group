@@ -510,3 +510,57 @@ test("/api/finanzas/historico — con el libro como copia completa ya no se vuel
   }
   assert.equal(escrito.length, 0);
 });
+
+// ─── Respaldo semanal en Drive (14/11) ───
+
+test("script — el respaldo semanal guarda el zip en Drive, deja los últimos 8 y avisa a Gypi", () => {
+  const pedidos = [];
+  const archivos = Array.from({ length: 9 }, (_, i) => ({ fecha: new Date(2026, 9, i + 1), tirado: false }));
+  let creados = 0;
+  const carpeta = {
+    createFile: (b) => { creados++; archivos.push({ fecha: new Date(2026, 10, 15), tirado: false, nombre: b.nombre }); },
+    getFiles: () => { let i = 0; const l = archivos.map((a) => ({ getDateCreated: () => a.fecha, setTrashed: (x) => { a.tirado = x; } })); return { hasNext: () => i < l.length, next: () => l[i++] }; },
+  };
+  const blob = { nombre: "", setName(n) { this.nombre = n; return this; }, setContentType() { return this; }, getBytes: () => new Uint8Array(1234) };
+  const globales = {
+    UrlFetchApp: { fetch: (url, o) => { pedidos.push({ url, o }); return { getResponseCode: () => 200, getContentText: () => "", getBlob: () => blob }; } },
+    DriveApp: { getFoldersByName: () => ({ hasNext: () => false }), createFolder: () => carpeta },
+    Utilities: { formatDate: () => "2026-11-15" },
+    SpreadsheetApp: {}, LockService: {}, ScriptApp: {},
+  };
+  const codigo = scriptLibro({ url: "https://gypi.test/api/finanzas/libro", clave: "gyp_clave" });
+  new Function(...Object.keys(globales), `${codigo}\nreturn respaldarGypi;`)(...Object.values(globales))();
+  assert.equal(pedidos[0].url, "https://gypi.test/api/finanzas/libro?respaldo=1");
+  assert.equal(creados, 1);
+  assert.equal(blob.nombre, "gypi-respaldo-2026-11-15.zip");
+  assert.equal(archivos.filter((a) => a.tirado).length, 2, "de 10 quedan los últimos 8");
+  assert.ok(!archivos.at(-1).tirado, "el nuevo queda");
+  assert.deepEqual(JSON.parse(pedidos[1].o.payload), { accion: "respaldo", carpeta: "Gypi - respaldos", nombre: "gypi-respaldo-2026-11-15.zip", bytes: 1234 });
+  assert.match(codigo, /onWeekDay\(ScriptApp\.WeekDay\.SUNDAY\)/);
+});
+
+test("/api/finanzas/libro — ?respaldo=1 da el zip con la clave; el script cuenta cómo salió", async () => {
+  const { clave, hash } = generarClave(E);
+  let valor = { hash };
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    {
+      match: (u) => u.includes("/rest/v1/config_sistema"),
+      respond: (u, o) => { if (o?.method === "PATCH") { valor = JSON.parse(o.body).valor; return { status: 200, body: [] }; } return { status: 200, body: [{ clave: CLAVE_LIBRO_FIN, valor }] }; },
+    },
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ id: E, nombre: "Gi", slug: "gi", plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
+    { match: (u) => u.includes("/rest/v1/fin_operaciones"), respond: () => ({ status: 200, body: [OP] }) },
+    { match: (u) => u.includes("/rest/v1/"), respond: () => ({ status: 200, body: [] }) },
+  ]);
+  const pedir = (k) => api.GET(new Request("http://localhost/api/finanzas/libro?respaldo=1", { headers: { Authorization: `Bearer ${k}` } }));
+  assert.equal((await pedir("gyp_otra")).status, 401);
+  const r = await pedir(clave);
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get("Content-Type"), "application/zip");
+  assert.match(r.headers.get("Content-Disposition"), /gypi-gi-\d{4}-\d{2}-\d{2}\.zip/);
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  assert.deepEqual([...bytes.slice(0, 2)], [0x50, 0x4b], "es un zip");
+  const post = await api.POST(new Request("http://localhost/api/finanzas/libro", { method: "POST", headers: { Authorization: `Bearer ${clave}` }, body: JSON.stringify({ accion: "respaldo", nombre: "gypi-respaldo-2026-11-15.zip", bytes: 2048, carpeta: "Gypi - respaldos" }) }));
+  assert.equal(post.status, 200);
+  assert.deepEqual([valor.respaldo.nombre, valor.respaldo.bytes, valor.hash], ["gypi-respaldo-2026-11-15.zip", 2048, hash]);
+});

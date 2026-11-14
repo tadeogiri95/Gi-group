@@ -19,6 +19,11 @@
 //        completa de Gypi: desde ahí también van lo que vino del libro y los
 //        saldos iniciales, y el script reescribe T-OPERACIONES una vez
 //        (requisitosEspejo en app/lib/finanzasLibro.js).
+// GET ?respaldo=1 con la clave del script (14/11): el .zip con todos los
+//        datos de la empresa (como "⬇️ Descargar todos los datos"). El script
+//        lo guarda una vez por semana en el Google Drive del Dueño.
+// POST { accion: "respaldo", nombre, bytes, carpeta, error } con la clave:
+//        cómo salió el respaldo, para verlo en Configuración.
 // POST { accion: "manuales", grilla } con la clave del script (etapa 7,
 //        14/11): los renglones CONFIRMADO de T-OPERACIONES desde la fecha del
 //        Histórico (manuales_desde del GET). Gypi deja como pendiente lo
@@ -30,12 +35,16 @@ import { sbGet, sbGetAll, sbPost, sbPatch } from "../../../lib/sbHelpers";
 import { getModulosEmpresa } from "../../../lib/planEnforcement";
 import { checkRateLimit } from "../../../lib/rateLimitMemory";
 import { sesionDueno } from "../../../lib/finanzasApi";
-import { CLAVE_LIBRO_FIN, claveValida, datosParaLibro, empresaDeClave, estadoValido, generarClave, requisitosEspejo, scriptLibro } from "../../../lib/finanzasLibro";
+import { CLAVE_LIBRO_FIN, claveValida, datosParaLibro, empresaDeClave, estadoValido, generarClave, requisitosEspejo, respaldoValido, scriptLibro } from "../../../lib/finanzasLibro";
 import { logger } from "../../../lib/logger";
 import { CLAVE_TIPOS, tiposParaLibro } from "../../../lib/finanzasTipos";
 import { cambiosCuentasLibro } from "../../../lib/finanzasLibroCuentas";
 import { desdeDeExistentes, leerBaseHistorico, leerDesdeManuales } from "../../../lib/finanzasHistoricoBase";
 import { pendientesDelLibro } from "../../../lib/finanzasLibroManual";
+import { armarRespaldo } from "../../../lib/exportarServidor";
+
+// El respaldo arma ~90 tablas
+export const maxDuration = 60;
 
 const noAutorizado = () => NextResponse.json({ error: "Clave inválida" }, { status: 401 });
 const COLUMNAS_OP = "id,fecha,tipo,proveedor_id,cliente_id,tipo_cambio,entidad,proyecto_id,centro_costo,neto,iva,otros_impuestos,moneda,cuenta_debe,cuenta_haber,descripcion,referencia,origen,estado,cargada_por_nombre,anulada_at,created_at,updated_at";
@@ -53,6 +62,7 @@ export async function GET(request) {
     if (!claveValida(clave, cfg?.valor?.hash)) return noAutorizado();
     const { modulos } = await getModulosEmpresa(e);
     if (!modulos.includes("finanzas")) return NextResponse.json({ error: "La empresa no tiene Finanzas" }, { status: 402 });
+    if (new URL(request.url).searchParams.get("respaldo") === "1") return await respaldo(e);
 
     // 19/11: con el libro como copia completa también va lo que vino del libro
     const espejoCompleto = cfg.valor?.espejo_completo_at || null;
@@ -92,6 +102,19 @@ export async function GET(request) {
   }
 }
 
+/** El .zip con todos los datos, para el respaldo semanal en Drive. */
+async function respaldo(e) {
+  if (checkRateLimit(`finanzas-libro-respaldo:${e}`, 3, 3_600_000).limited) {
+    return NextResponse.json({ error: "Ya se pidió el respaldo hace poco" }, { status: 429 });
+  }
+  const r = await armarRespaldo(e);
+  if (!r) return NextResponse.json({ error: "Empresa no encontrada" }, { status: 404 });
+  return new Response(r.zip, {
+    status: 200,
+    headers: { "Content-Type": "application/zip", "Content-Disposition": `attachment; filename="${r.nombre}"`, "Cache-Control": "private, no-store" },
+  });
+}
+
 /** El script cuenta cómo salió la vuelta (con su clave, sin sesión). */
 async function estadoDelScript(request) {
   try {
@@ -112,6 +135,10 @@ async function guardarEstado(request) {
   if (!claveValida(clave, cfg?.valor?.hash)) return noAutorizado();
   const d = await request.json().catch(() => null);
   if (d?.accion === "manuales") return await revisarManuales(e, cfg, d);
+  if (d?.accion === "respaldo") {
+    await sbPatch(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_LIBRO_FIN}`, { valor: { ...cfg.valor, respaldo: respaldoValido(d) } });
+    return NextResponse.json({ ok: true });
+  }
   if (d?.accion !== "estado") return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
   const estado = estadoValido(d);
   const valor = { ...cfg.valor, estado: { ...estado, at: new Date().toISOString() } };
