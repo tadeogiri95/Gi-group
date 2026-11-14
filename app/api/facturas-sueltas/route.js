@@ -44,6 +44,7 @@ import {
 import { ErrorIa, leerFacturaIa } from "../../lib/facturaIa";
 import { requireModuloSesion } from "../../lib/accesosServidor";
 import { avisoIngresoRepetido, buscarIngresoRepetido, ingresosDeFactura, marcaFacturaSuelta } from "../../lib/stockIngresos";
+import { faltaColumna192 } from "../../lib/elegirDeLista";
 import { buscarFacturaRepetida } from "../../lib/facturaUnicaServidor";
 import { avisoFacturaRepetida } from "../../lib/facturaUnica";
 
@@ -325,7 +326,11 @@ async function mandarAlStock(sesion, d) {
     empleado_id: sesion.empleado_id, legajo: sesion.legajo, empleado_nombre: await nombreDe(sesion),
   });
   try {
-    await sbPost("movimientos_stock", filas);
+    await sbPost("movimientos_stock", filas).catch((err) => {
+      if (!faltaColumna192(err)) throw err;
+      // Sin la migración 192 (proveedor_id), como antes
+      return sbPost("movimientos_stock", filas.map(({ proveedor_id: _sinId, ...f }) => f));
+    });
   } catch (err) {
     if (/movimientos_stock/.test(String(err?.message))) return NextResponse.json({ error: "Para mandar al stock falta correr la migración 107 en Supabase." }, { status: 409 });
     throw err;

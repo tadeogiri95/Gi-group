@@ -68,7 +68,7 @@ export function cuentaBancoDe(banco, tesoreria = []) {
  * Revisa los datos de un cheque nuevo.
  * @returns {{ cheque?: object, errores: string[] }}
  */
-export function validarCheque(f = {}, { proveedores = [], tesoreria = [] } = {}) {
+export function validarCheque(f = {}, { proveedores = [], tesoreria = [], clientes = [] } = {}) {
   const errores = [];
   const clase = f.clase === "propio" ? "propio" : f.clase === "tercero" ? "tercero" : null;
   if (!clase) errores.push("Elegí si es propio o recibido");
@@ -84,8 +84,12 @@ export function validarCheque(f = {}, { proveedores = [], tesoreria = [] } = {})
   const proveedor = proveedorId ? proveedores.find((p) => Number(p.id) === proveedorId) : null;
   if (proveedorId && !proveedor) errores.push("Ese proveedor no está en la lista");
   if (clase === "propio" && !proveedor) errores.push("Elegí a qué proveedor se lo diste");
-  const recibido = txt(f.recibido_de, 120);
-  if (clase === "tercero" && !recibido) errores.push("Falta de quién lo recibiste");
+  const clienteId = f.cliente_id ? Number(f.cliente_id) : null;
+  let cliente = clienteId ? clientes.find((c) => Number(c.id) === clienteId) : null;
+  if (cliente?.unido_a) cliente = clientes.find((c) => Number(c.id) === Number(cliente.unido_a)) || cliente;
+  if (clienteId && !cliente) errores.push("Ese cliente no está en la lista");
+  const recibido = txt(f.recibido_de, 120) || (cliente ? txt(cliente.nombre, 120) : "");
+  if (clase === "tercero" && !recibido) errores.push("Elegí el cliente que te lo dio");
   let cuentaBanco = f.cuenta_banco ? String(f.cuenta_banco) : null;
   if (cuentaBanco && !tesoreria.some((t) => t.cuenta === cuentaBanco && t.tipo === "banco")) errores.push("Ese banco no está en la lista de cajas y bancos");
   if (clase === "propio" && !cuentaBanco) cuentaBanco = cuentaBancoDe(banco, tesoreria);
@@ -98,6 +102,7 @@ export function validarCheque(f = {}, { proveedores = [], tesoreria = [] } = {})
       beneficiario: clase === "propio" ? txt(proveedor.nombre, 120) : txt(f.beneficiario, 120) || null,
       proveedor_id: clase === "propio" ? proveedor.id : null,
       recibido_de: clase === "tercero" ? recibido : null,
+      ...(clase === "tercero" && cliente ? { cliente_id: Number(cliente.id) } : {}),
       fecha_emision: f.fecha_emision || null, fecha_pago: f.fecha_pago, importe,
       cuenta_banco: cuentaBanco || null,
       estado: clase === "propio" ? "pendiente" : "en_cartera",
@@ -106,8 +111,9 @@ export function validarCheque(f = {}, { proveedores = [], tesoreria = [] } = {})
   };
 }
 
-const opBase = (ch, { fecha, tipo, debe, haber, descripcion, proveedor_id = null, entidad = null, accion }) => ({
+const opBase = (ch, { fecha, tipo, debe, haber, descripcion, proveedor_id = null, cliente_id = null, entidad = null, accion }) => ({
   fecha, tipo, proveedor_id, entidad: proveedor_id ? null : (entidad ? txt(entidad, 120) : null),
+  ...(cliente_id && !proveedor_id ? { cliente_id: Number(cliente_id) } : {}),
   neto: ch.importe, iva: 0, otros_impuestos: 0, total: ch.importe, moneda: "ARS", tipo_cambio: null, total_ars: ch.importe,
   cuenta_debe: debe, cuenta_haber: haber,
   descripcion: txt(`${descripcion} · ${TIPOS_CHEQUE[ch.tipo] || "Cheque"}${ch.banco ? ` ${ch.banco}` : ""}${ch.numero ? ` N° ${ch.numero}` : ""}`, 500),
@@ -124,7 +130,7 @@ export function operacionAlta(ch, cuentas, fecha) {
   }
   const valores = esEcheq(ch.tipo) ? c.valoresEcheq : c.valores;
   if (!valores || !c.deudores) return { error: "Faltan las cuentas \"Valores a depositar\" o \"Deudores por ventas\" en el plan de cuentas" };
-  return { op: opBase(ch, { fecha, accion: "alta", tipo: "COBRO A CLIENTES", debe: valores, haber: c.deudores, entidad: ch.recibido_de, descripcion: `Cheque recibido de ${ch.recibido_de || "un cliente"}` }) };
+  return { op: opBase(ch, { fecha, accion: "alta", tipo: "COBRO A CLIENTES", debe: valores, haber: c.deudores, cliente_id: ch.cliente_id, entidad: ch.recibido_de, descripcion: `Cheque recibido de ${ch.recibido_de || "un cliente"}` }) };
 }
 
 /**
@@ -163,7 +169,7 @@ export function cambioDeEstado(ch, accion, datos, { cuentas = [], tesoreria = []
     if (!valores) return { error: "Falta la cuenta \"Valores a depositar\" en el plan de cuentas" };
     return {
       cambios: { estado: "depositado", estado_fecha: fecha, cuenta_banco: banco },
-      op: opBase(ch, { fecha, accion, tipo: "COBRO A CLIENTES", debe: banco, haber: valores, entidad: ch.recibido_de || ch.librador, descripcion: "Depósito de cheque" }),
+      op: opBase(ch, { fecha, accion, tipo: "COBRO A CLIENTES", debe: banco, haber: valores, cliente_id: ch.cliente_id, entidad: ch.recibido_de || ch.librador, descripcion: "Depósito de cheque" }),
     };
   }
   if (accion === "entregado") {
@@ -184,7 +190,7 @@ export function cambioDeEstado(ch, accion, datos, { cuentas = [], tesoreria = []
   if (!haber) return { error: "No sé de qué cuenta sale el cheque rechazado: revisá el plan de cuentas" };
   return {
     cambios: { estado: "rechazado", estado_fecha: fecha },
-    op: opBase(ch, { fecha, accion, tipo: "CHEQUE RECHAZADO", debe: c.rechazados, haber, proveedor_id, entidad: ch.recibido_de || ch.librador, descripcion: "Cheque rechazado" }),
+    op: opBase(ch, { fecha, accion, tipo: "CHEQUE RECHAZADO", debe: c.rechazados, haber, proveedor_id, cliente_id: ch.cliente_id, entidad: ch.recibido_de || ch.librador, descripcion: "Cheque rechazado" }),
   };
 }
 

@@ -26,6 +26,7 @@ import { requireModuloSesion } from "../../../lib/accesosServidor";
 import { puedeCargar, puedeAnular } from "../../../lib/movimientosStock";
 import { logger } from "../../../lib/logger";
 import { avisoIngresoRepetido, buscarIngresoRepetido } from "../../../lib/stockIngresos";
+import { avisoFaltaProveedor, faltaColumna192, proveedorDeLista } from "../../../lib/elegirDeLista";
 
 function faltaMigracion(err) {
   return String(err?.message).includes("movimientos_stock");
@@ -49,6 +50,14 @@ async function registrar(sesion, datos) {
   }
 
   const esIngreso = datos.tipo === "ingreso";
+  // Etapa 2 (14/11, migración 192): el proveedor del ingreso es uno de la lista
+  let prov = null;
+  if (esIngreso && (datos.proveedor || datos.proveedor_id)) {
+    const proveedores = (await sbGet(`proveedores?empresa_id=eq.${e}&select=id,nombre,activo,unido_a`, { ...opts, silent: true, fallback: [] })) || [];
+    prov = proveedorDeLista({ id: datos.proveedor_id, nombre: datos.proveedor }, proveedores);
+    if (!prov) return NextResponse.json({ error: avisoFaltaProveedor(datos.proveedor || ""), falta_proveedor: true }, { status: 400 });
+    datos = { ...datos, proveedor: String(prov.nombre).slice(0, 120) };
+  }
   if (esIngreso && !datos.forzar) {
     const repetido = await buscarIngresoRepetido(sbGet, e, { proveedor: datos.proveedor, comprobante: datos.comprobante }, opts);
     if (repetido) return NextResponse.json({ error: avisoIngresoRepetido(repetido), repetido: true }, { status: 409 });
@@ -73,7 +82,12 @@ async function registrar(sesion, datos) {
     legajo: Number.isInteger(sesion.legajo) ? sesion.legajo : null,
     empleado_nombre: empleado?.nombre ? String(empleado.nombre).slice(0, 120) : null,
   };
-  const [creado] = (await sbPost("movimientos_stock", fila, opts)) || [];
+  if (prov) fila.proveedor_id = Number(prov.id);
+  const [creado] = (await sbPost("movimientos_stock", fila, opts).catch((err) => {
+    if (!prov || !faltaColumna192(err)) throw err;
+    const { proveedor_id: _sinId, ...sinId } = fila; // sin la migración 192, como antes
+    return sbPost("movimientos_stock", sinId, opts);
+  })) || [];
   broadcastRefresh(e, "movimientos_stock");
   return NextResponse.json({ ok: true, movimiento: creado || fila });
 }

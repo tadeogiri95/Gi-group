@@ -55,6 +55,7 @@ function mockPantalla() {
   const enviados = [];
   global.fetch = async (url, opts = {}) => {
     if (!opts.body) return new Response(JSON.stringify({ ok: true, pendientes: [], revisados: [], puede_confirmar: true }), { status: 200 });
+    if (String(opts.body).includes("proveedores?")) return new Response(JSON.stringify({ data: [{ id: 2, nombre: "Herrajes del Centro SRL", activo: true }] }), { status: 200 });
     enviados.push(JSON.parse(opts.body));
     return new Response(JSON.stringify({ ok: true, id: 9, estado: "confirmado", cargados: 1 }), { status: 200 });
   };
@@ -66,7 +67,10 @@ test("pantalla — ✍ a mano: se elige el artículo del MRP y entra al stock", 
   render(<RemitosFoto articulos={ARTICULOS} />);
   fireEvent.click(await screen.findByText("✍ Cargar un remito a mano"));
   assert.ok(screen.getByText("✍ Remito a mano"));
+  fireEvent.change(screen.getByLabelText("Proveedor"), { target: { value: "HERRAJES DEL CENTR" } });
+  assert.ok(await screen.findByText(/No está en la lista de proveedores/), "etapa 2: avisa si no está en la lista");
   fireEvent.change(screen.getByLabelText("Proveedor"), { target: { value: "HERRAJES DEL CENTRO" } });
+  assert.equal(screen.queryByText(/No está en la lista de proveedores/), null, "igual a 'Herrajes del Centro SRL'");
   fireEvent.change(screen.getByLabelText("Buscar el artículo de Renglón 1"), { target: { value: "corredera 450" } });
   fireEvent.click(screen.getByText("Corredera telescópica 450"));
   assert.ok(screen.getByText(/elegido a mano/));

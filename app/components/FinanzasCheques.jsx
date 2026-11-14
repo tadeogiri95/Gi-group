@@ -18,6 +18,7 @@ import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 import { fechaDebito } from "../lib/finanzasDiasHabiles";
 import ElegirProveedor from "./FinanzasElegirProveedor";
+import { VentanaAltaPersona } from "./AltaPersona";
 import AvisoRepetidos, { repetidosDe } from "./FinanzasAvisoRepetidos";
 import ListadoEcheq from "./FinanzasEcheqListado";
 
@@ -45,6 +46,31 @@ function cuando(f, hoy) {
   return { texto: `en ${d} días`, clase: "text-gypi-dim" };
 }
 
+/* ─── Cliente que dio el cheque (etapa 2, 14/11) ─────────────────────── */
+
+/** El cliente de la lista de Finanzas, con "➕ Nuevo cliente" al final. */
+function ElegirCliente({ value, onChange, clientes = [], vacio = "Elegí el cliente", ...rest }) {
+  const [alta, setAlta] = useState(null);
+  const [extra, setExtra] = useState([]);
+  const lista = [...clientes, ...extra.filter((x) => !clientes.some((c) => Number(c.id) === Number(x.id)))]
+    .filter((c) => !c.unido_a && (c.activo !== false || String(c.id) === String(value)));
+  return (
+    <>
+      <SelectBuscable className="g-input w-full" {...rest} value={value} onChange={onChange}
+        nuevo={{ etiqueta: "Nuevo cliente", onElegir: (nombre) => setAlta({ nombre }) }}>
+        <option value="">{vacio}</option>
+        {lista.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+      </SelectBuscable>
+      <VentanaAltaPersona abierta={!!alta} onCerrar={() => setAlta(null)} nombre={alta?.nombre || ""} rol="cliente"
+        onCreada={(p) => {
+          if (!p?.cliente_id) return;
+          setExtra((x) => [...x, { id: p.cliente_id, nombre: p.nombre, activo: true }]);
+          onChange({ target: { value: String(p.cliente_id) } });
+        }} />
+    </>
+  );
+}
+
 /* ─── Nuevo cheque ───────────────────────────────────────────────────── */
 
 function NuevoCheque({ clase, datos, onCerrar, onGuardado }) {
@@ -52,7 +78,7 @@ function NuevoCheque({ clase, datos, onCerrar, onGuardado }) {
   const bancos = datos.tesoreria.filter((t) => t.tipo === "banco" && t.activa !== false);
   const [f, setF] = useState(() => ({
     tipo: "echeq_diferido", banco: clase === "propio" ? BANCO_ECHEQ : "", numero: "", importe: "", fecha_emision: hoyAr(), fecha_pago: "",
-    proveedor_id: "", recibido_de: "", librador: "", cuenta_banco: clase === "propio" ? cuentaBancoDe(BANCO_ECHEQ, datos.tesoreria) || "" : "", notas: "",
+    proveedor_id: "", cliente_id: "", librador: "", cuenta_banco: clase === "propio" ? cuentaBancoDe(BANCO_ECHEQ, datos.tesoreria) || "" : "", notas: "",
   }));
   const [error, setError] = useState(null);
   const [guardando, setGuardando] = useState(false);
@@ -64,7 +90,7 @@ function NuevoCheque({ clase, datos, onCerrar, onGuardado }) {
     if (!(importe > 0)) { setError("Revisá el importe"); return; }
     setGuardando(true);
     try {
-      await postCheques({ accion: "crear", cheque: { ...f, clase, importe, proveedor_id: f.proveedor_id ? Number(f.proveedor_id) : null } });
+      await postCheques({ accion: "crear", cheque: { ...f, clase, importe, proveedor_id: f.proveedor_id ? Number(f.proveedor_id) : null, cliente_id: f.cliente_id ? Number(f.cliente_id) : null } });
       toast.success(clase === "propio" ? "Cheque guardado: la deuda del proveedor bajó" : "Cheque recibido guardado");
       onGuardado();
     } catch (e) {
@@ -95,7 +121,7 @@ function NuevoCheque({ clase, datos, onCerrar, onGuardado }) {
           </>
         ) : (
           <>
-            {campo("Recibido de", <input className="g-input w-full" aria-label="Recibido de" value={f.recibido_de} maxLength={120} onChange={set("recibido_de")} placeholder="Cliente que lo dio" />)}
+            {campo("Cliente que lo dio", <ElegirCliente aria-label="Cliente que lo dio" value={f.cliente_id} clientes={datos.clientes || []} onChange={set("cliente_id")} />)}
             {campo("Librador (quien lo firmó)", <input className="g-input w-full" aria-label="Librador" value={f.librador} maxLength={120} onChange={set("librador")} />)}
           </>
         )}
@@ -125,12 +151,27 @@ function Detalle({ ch, datos, onCerrar, onCambiado }) {
   const [fecha, setFecha] = useState(hoyAr());
   const [cuenta, setCuenta] = useState(ch.cuenta_banco || (ch.clase === "propio" ? cuentaBancoDe(ch.banco, datos.tesoreria) || "" : ""));
   const [proveedor, setProveedor] = useState("");
+  const [cliente, setCliente] = useState(ch.cliente_id ? String(ch.cliente_id) : "");
   const [error, setError] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const acciones = ACCIONES[ch.clase]?.[ch.estado] || [];
   const bancos = datos.tesoreria.filter((t) => t.tipo === "banco" && t.activa !== false);
   const prov = datos.proveedores.find((p) => Number(p.id) === Number(ch.proveedor_id));
   const fila = (k, v) => (v ? <div className="flex justify-between gap-3 py-1 border-t border-gypi-border text-[13px]"><span className="text-gypi-dim">{k}</span><span className="text-right">{v}</span></div> : null);
+
+  // 14/11: el cliente que dio el cheque, para que sume en su cuenta corriente
+  async function guardarCliente() {
+    setError(null);
+    setGuardando(true);
+    try {
+      await postCheques({ accion: "cliente", id: ch.id, cliente_id: cliente ? Number(cliente) : null });
+      toast.success(cliente ? "Listo: el cheque suma en la cuenta corriente del cliente" : "Cheque sin cliente");
+      onCambiado();
+    } catch (e) {
+      setError(e.message);
+      setGuardando(false);
+    }
+  }
 
   // 13/11: el débito o el depósito ya está en el banco (de un extracto o a mano)
   const [repetidos, setRepetidos] = useState(null);
@@ -162,6 +203,17 @@ function Detalle({ ch, datos, onCerrar, onCambiado }) {
           {fila("Emitido", fechaCorta(ch.fecha_emision))}
           {fila("Notas", ch.notas)}
         </div>
+        {ch.clase === "tercero" && ch.estado !== "anulado" && !accion && (
+          <div className="flex flex-col gap-1">
+            {campo(ch.cliente_id ? "Cliente" : "¿De qué cliente es? (para su cuenta corriente)", (
+              <ElegirCliente aria-label="Cliente del cheque" value={cliente} clientes={datos.clientes || []} onChange={(e) => setCliente(e.target.value)} />
+            ))}
+            {cliente !== (ch.cliente_id ? String(ch.cliente_id) : "") && (
+              <button type="button" className="g-btn g-btn-primary self-end" disabled={guardando} onClick={guardarCliente}>{guardando ? "Guardando…" : "Guardar cliente"}</button>
+            )}
+            {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+          </div>
+        )}
         {!accion && acciones.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-2">
             {acciones.map((a) => (

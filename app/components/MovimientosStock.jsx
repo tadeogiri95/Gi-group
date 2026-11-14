@@ -12,6 +12,7 @@ import { TIPOS_MOVIMIENTO, leerCantidadMovimiento, puedeAnular, textoMovimiento 
 import { useOts } from "../hooks/useOts";
 import { textoOt } from "../lib/nombreOt";
 import BotonNuevaPersona from "./AltaPersona";
+import { proveedorDeLista } from "../lib/elegirDeLista";
 import RemitosFoto from "./RemitosFoto";
 
 const CUANTOS = 100;
@@ -66,7 +67,8 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
     sbGetAll("proveedores?activo=eq.true&select=id,nombre&order=nombre.asc", { maxFilas: 5000 }).then((r) => setProveedores(r.data || [])).catch(() => {});
   }, [ingresando, proveedores.length]);
   const provEscrito = (form?.proveedor || "").trim();
-  const provConocido = !provEscrito || proveedores.some((p) => p.nombre.toLowerCase() === provEscrito.toLowerCase());
+  // 14/11: el proveedor tiene que estar en la lista (misma regla que la Agenda: "STOM" = "STOM SAS")
+  const provConocido = !provEscrito || !!proveedorDeLista({ nombre: provEscrito }, proveedores);
 
   const sugeridos = useMemo(
     () => (form && !form.articulo && form.texto.trim() ? sugerirArticulos(articulos, form.texto) : { lista: [], resto: 0 }),
@@ -248,7 +250,7 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
               <datalist id="mov-proveedores">{proveedores.map((p) => <option key={p.id} value={p.nombre} />)}</datalist>
               {!provConocido && (
                 <div className="flex flex-wrap items-center gap-2 mb-2">
-                  <span className="text-[12px] text-gypi-dim">No está en la lista de proveedores.</span>
+                  <span className="text-[12px] text-gypi-amber-ink">No está en la lista de proveedores: elegilo de la lista o dalo de alta.</span>
                   <BotonNuevaPersona rol="proveedor" nombre={provEscrito}
                     onCreada={(p) => {
                       setProveedores((x) => [...x, { id: p.proveedor_id, nombre: p.nombre }]);
