@@ -168,6 +168,37 @@ function porGrupo(lista) {
   return [...grupos.entries()];
 }
 
+/**
+ * Anticipos de sueldo del dueño (14/11): por mes, lo que lleva por cargas de
+ * combustible y lo que queda del sueldo fijo para liquidar.
+ */
+export function AnticiposSueldo({ resumen }) {
+  return (
+    <section aria-label="Anticipos de sueldo" className="rounded-lg border border-gypi-border p-2.5 flex flex-col gap-2">
+      {resumen.meses.map((m) => (
+        <div key={m.mes} className="flex flex-col gap-0.5 text-[14px]">
+          {m.lineas.length ? m.lineas.map((l) => (
+            <div key={l.nombre} className="flex items-baseline gap-2">
+              <span className="flex-1 min-w-0">{l.nombre}</span>
+              <span className="font-mono">{plata(l.importe)}</span>
+            </div>
+          )) : (
+            <div className="flex items-baseline gap-2 text-gypi-dim">
+              <span className="flex-1 min-w-0">Anticipos de sueldo por cargas de combustible - {m.nombre}</span>
+              <span className="font-mono">{plata(0)}</span>
+            </div>
+          )}
+          <div className="flex items-baseline gap-2 font-semibold">
+            <span className="flex-1 min-w-0">Sueldo {m.nombre} a liquidar</span>
+            <span className={`font-mono ${m.a_liquidar < 0 ? "text-gypi-red" : ""}`}>{plata(m.a_liquidar)}</span>
+          </div>
+        </div>
+      ))}
+      <span className="text-[12px] text-gypi-dim">Sueldo fijo {plata(resumen.sueldo)}. Al pagar el sueldo del mes, los anticipos se descuentan.</span>
+    </section>
+  );
+}
+
 /** Gasté / Recibí plata (parte 10 del 11/11: muy fácil). Primero la foto del
  *  ticket (Gypi lee importe, fecha y concepto), los conceptos en botones con
  *  los más usados primero y la fecha en Hoy / Ayer / Otro día. */
@@ -464,6 +495,7 @@ export default function MiCaja({ datos, onClose, onCambio }) {
           <div className="text-[14px] text-gypi-dim">{caja.nombre}</div>
           <div className={`text-[30px] font-extrabold font-mono ${caja.saldo < 0 ? "text-gypi-red" : ""}`}>{plata(caja.saldo, caja.moneda)}</div>
         </div>
+        {caja.propia !== false && datos.anticipos_sueldo?.meses?.length > 0 && <AnticiposSueldo resumen={datos.anticipos_sueldo} />}
         <div className="grid grid-cols-2 gap-2">
           <button type="button" className="g-btn g-btn-primary min-h-[56px] text-[16px]" onClick={() => { setAviso(null); setCargar("gasto"); }}>➖ Gasté</button>
           <button type="button" className="g-btn g-btn-secondary min-h-[56px] text-[16px]" onClick={() => { setAviso(null); setCargar("ingreso"); }}>➕ Recibí plata</button>
