@@ -422,10 +422,11 @@ const PROYECTOS = [{ id: 40, ot: "7858", cliente: "Bosques", obra: "CEVT", clien
 
 test("cobro a un cliente — pide el cliente y la OT tiene que ser de ese cliente (13/11)", () => {
   const conceptos = conceptosMiCaja(CONFIG, TIPOS, CUENTAS_CLI);
-  assert.deepEqual(conceptos.ingresos.map((c) => [c.codigo, !!c.pide_cliente]), [["COBRO CLIENTE", true]]);
+  // 14/11: con "Deudores por Ventas" en el plan, la lista fija de conceptos de caja
+  assert.deepEqual(conceptos.ingresos.map((c) => [c.codigo, !!c.pide_cliente]), [["cobro_cliente", true]]);
   assert.ok(conceptos.gastos.every((c) => !c.pide_cliente), "un gasto no pide cliente");
   const ctx = { ...CTX, conceptos, clientes: CLIENTES, proyectos: PROYECTOS };
-  const base = { clase: "ingreso", concepto: "COBRO CLIENTE", importe: 50000, fecha: "2026-11-09" };
+  const base = { clase: "ingreso", concepto: "cobro_cliente", importe: 50000, fecha: "2026-11-09" };
   assert.deepEqual(validarMovimientoMiCaja(base, ctx).errores, ["Elegí de qué cliente es la plata"]);
   assert.deepEqual(validarMovimientoMiCaja({ ...base, cliente_id: 99 }, ctx).errores, ["Ese cliente no está en la lista"]);
   assert.match(validarMovimientoMiCaja({ ...base, cliente_id: 6, proyecto_id: 40 }, ctx).errores[0], /La OT 7858 es de Bosques SA/);
@@ -444,10 +445,10 @@ test("/api/mi-caja — el cobro a un cliente queda en su cuenta con la OT; la pa
   assert.equal(r.status, 200);
   assert.deepEqual(d.clientes, [{ id: 5, nombre: "Bosques SA" }, { id: 6, nombre: "Riofrío SRL" }], "sin el unido a otro");
   assert.deepEqual(d.proyectos.map((p) => [p.ot, p.cliente_id]), [["7858", 5], ["7961", 6]]);
-  r = await pedir(api, JUAN, "operativo", "POST", { accion: "cargar", cuenta: CAJA_JUAN.cuenta, clase: "ingreso", concepto: "COBRO CLIENTE", importe: 50000, fecha: "2026-11-09" });
+  r = await pedir(api, JUAN, "operativo", "POST", { accion: "cargar", cuenta: CAJA_JUAN.cuenta, clase: "ingreso", concepto: "cobro_cliente", importe: 50000, fecha: "2026-11-09" });
   assert.equal(r.status, 400);
   assert.match((await r.json()).error, /de qué cliente/);
-  r = await pedir(api, JUAN, "operativo", "POST", { accion: "cargar", cuenta: CAJA_JUAN.cuenta, clase: "ingreso", concepto: "COBRO CLIENTE", importe: 50000, fecha: "2026-11-09", cliente_id: 5, proyecto_id: 40 });
+  r = await pedir(api, JUAN, "operativo", "POST", { accion: "cargar", cuenta: CAJA_JUAN.cuenta, clase: "ingreso", concepto: "cobro_cliente", importe: 50000, fecha: "2026-11-09", cliente_id: 5, proyecto_id: 40 });
   assert.equal(r.status, 200);
   const op = escrito.find((x) => x.tabla === "fin_operaciones").body;
   assert.deepEqual([op.cliente_id, op.entidad, op.proyecto_id], [5, "Bosques SA", 40]);
@@ -481,5 +482,5 @@ test("Mi caja — Recibí plata de un cliente: elegir el cliente y la OT", async
   assert.equal(screen.getByLabelText("Cliente").value, "Bosques SA");
   fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
   await waitFor(() => assert.equal(enviados.length, 1));
-  assert.deepEqual([enviados[0].clase, enviados[0].concepto, enviados[0].cliente_id, enviados[0].proyecto_id, enviados[0].importe], ["ingreso", "COBRO CLIENTE", 5, 40, 50000]);
+  assert.deepEqual([enviados[0].clase, enviados[0].concepto, enviados[0].cliente_id, enviados[0].proyecto_id, enviados[0].importe], ["ingreso", "cobro_cliente", 5, 40, 50000]);
 });

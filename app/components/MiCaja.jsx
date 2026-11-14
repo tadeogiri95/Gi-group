@@ -350,7 +350,7 @@ function Cargar({ caja, clase, conceptos, hoy, conStock = false, clientes = [], 
               </div>
             </div>
             {campo(gasto ? "Qué compraste (opcional)" : "Detalle (opcional)", <input className="g-input w-full" aria-label="Detalle" maxLength={300} placeholder={gasto ? "Ej.: nafta camioneta" : "Ej.: me la dio Tadeo"} value={f.descripcion} onChange={set("descripcion")} />)}
-            {gasto && <DatosTicket f={f} setF={setF} abierto={verDatos} onAbrir={setVerDatos} separa={separaIva(lista.find((c) => c.codigo === f.concepto))} />}
+            {gasto && <DatosTicket f={f} setF={setF} abierto={verDatos} onAbrir={setVerDatos} separa={separaIva(elegido ? { grupo: elegido.grupo_tipo || elegido.grupo } : null)} />}
           </>
         )}
         {repetido && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {repetido} No lo cargues de nuevo.</p>}

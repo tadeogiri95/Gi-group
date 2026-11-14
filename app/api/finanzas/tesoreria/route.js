@@ -29,7 +29,7 @@ import { ORIGEN_SALDO_INICIAL } from "../../../lib/finanzasProveedores";
 import { ORIGEN_LIBRO } from "../../../lib/finanzasHistorico";
 import { cuentaAjusteDe, operacionSaldoInicialCaja, validarTransferencia } from "../../../lib/finanzasTesoreria";
 import { frenoRepetidos, repetidosEnBase } from "../../../lib/finanzasRepetidosServidor";
-import { CLAVE_MI_CAJA, ORIGEN_MI_CAJA, cambioDeTipoMiCaja, leerConfigMiCaja, tiposParaMiCaja } from "../../../lib/finanzasMiCaja";
+import { CLAVE_MI_CAJA, ORIGEN_MI_CAJA, cambioDeTipoMiCaja, conceptosMiCajaTodos, leerConfigMiCaja } from "../../../lib/finanzasMiCaja";
 
 const COLUMNAS = "id,fecha,tipo,proveedor_id,cliente_id,entidad,proyecto_id,centro_costo,neto,iva,otros_impuestos,total,moneda,tipo_cambio,total_ars,cuenta_debe,cuenta_haber,descripcion,referencia,origen,origen_id,estado,cargada_por_nombre,anulada_at,anulada_por_nombre,created_at";
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data);
@@ -131,9 +131,12 @@ async function transferir(sesion, d) {
 
 async function configMiCaja(sesion, d) {
   const e = sesion.empresa_id;
-  const tipos = await leer(sesion, `fin_tipos_operacion?empresa_id=eq.${e}&select=codigo,nombre,grupo,cuenta_debe,cuenta_haber,activo`);
+  const [tipos, cuentas] = await Promise.all([
+    leer(sesion, `fin_tipos_operacion?empresa_id=eq.${e}&select=codigo,nombre,grupo,cuenta_debe,cuenta_haber,activo`),
+    leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre,activa`),
+  ]);
   const { ocultos } = leerConfigMiCaja(d);
-  const sirven = tiposParaMiCaja(tipos || []);
+  const sirven = conceptosMiCajaTodos(tipos || [], cuentas || []);
   const valor = {
     ocultos: {
       gastos: ocultos.gastos.filter((k) => sirven.gastos.some((t) => t.codigo === k)),
@@ -154,7 +157,19 @@ async function revisar(sesion, d) {
   const [op] = (await leer(sesion, `fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&origen=eq.${ORIGEN_MI_CAJA}&anulada_at=is.null&select=id,tipo,cuenta_debe,cuenta_haber&limit=1`)) || [];
   if (!op) return NextResponse.json({ error: "No encontré ese movimiento o ya está anulado" }, { status: 404 });
   const cambios = { estado: "confirmada", updated_at: new Date().toISOString() };
-  if (d.tipo && d.tipo !== op.tipo) {
+  if (d.concepto) {
+    // 14/11: el concepto de caja nuevo (tipo y cuenta); la caja queda donde estaba
+    const [tipos, cuentas, tesoreria] = await Promise.all([
+      leer(sesion, `fin_tipos_operacion?empresa_id=eq.${e}&select=codigo,nombre,grupo,cuenta_debe,cuenta_haber,activo`),
+      leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre,activa`),
+      leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta`),
+    ]);
+    const cajaAlDebe = (tesoreria || []).some((t) => t.cuenta === op.cuenta_debe);
+    const todos = conceptosMiCajaTodos(tipos || [], cuentas || []);
+    const concepto = (cajaAlDebe ? todos.ingresos : todos.gastos).find((c) => c.codigo === String(d.concepto));
+    if (!todos.fijos || !concepto) return NextResponse.json({ error: "Ese concepto no sirve para este movimiento" }, { status: 400 });
+    Object.assign(cambios, { tipo: concepto.tipo, [cajaAlDebe ? "cuenta_haber" : "cuenta_debe"]: concepto.cuenta });
+  } else if (d.tipo && d.tipo !== op.tipo) {
     const [[tipo], tesoreria] = await Promise.all([
       leer(sesion, `fin_tipos_operacion?empresa_id=eq.${e}&codigo=eq.${encodeURIComponent(String(d.tipo))}&select=codigo,cuenta_debe,cuenta_haber,activo&limit=1`),
       leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta`),
