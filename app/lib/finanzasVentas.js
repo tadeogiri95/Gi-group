@@ -28,6 +28,12 @@ import { textoOt } from "./nombreOt";
 import { claveNombre } from "./finanzasProveedores";
 import { ORIGEN_COBRO, clienteDeOt, cuentasDeudores, emparejarCliente, indiceClientes } from "./finanzasClientes";
 import { FECHA, hoyAr } from "./finanzasOperaciones";
+import {
+  ORIGEN_CONSUMO, ORIGEN_ESTIMADA, clientesNuevosDe, cuentasConsumo, otsParaCalcular, planConsumos, planEstimadas,
+} from "./finanzasConsumoOt";
+import { materialesRealesDeOts } from "./costoRealServidor";
+import { materialesDeOts } from "./finanzasMaterialesOt";
+import { valorOt } from "./finanzasOtClientes";
 
 export const CLAVE_VENTAS_OT = "finanzas_ventas_ot";
 /**
@@ -196,15 +202,81 @@ export function planEntregasEstimadas({ proyectos = [], precios, config, fechas 
   return { fechas: nuevas, cambio: claves(nuevas) !== claves(antes) };
 }
 
-/** Guarda las fechas de las entregas sin precio, si cambiaron. */
+/** Guarda las fechas de las entregas sin precio, si cambiaron. Devuelve las fechas (p<id> → fecha). */
 async function guardarEntregasEstimadas(e, proyectos, precios, config, hoy) {
   const [fila] = (await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_ENTREGAS_ESTIMADAS}&select=valor&limit=1`, { silent: true, fallback: [] })) || [];
   const plan = planEntregasEstimadas({ proyectos, precios, config, fechas: fila?.valor?.fechas, hoy });
-  if (!plan.cambio) return Object.keys(plan.fechas).length;
+  if (!plan.cambio) return plan.fechas;
   const valor = { fechas: plan.fechas };
   if (fila) await sbPatch(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_ENTREGAS_ESTIMADAS}`, { valor });
   else await sbPost("config_sistema", { empresa_id: e, clave: CLAVE_ENTREGAS_ESTIMADAS, valor });
-  return Object.keys(plan.fechas).length;
+  return plan.fechas;
+}
+
+/**
+ * Las OT entregadas y su fecha (las con precio: la fecha de su entrega; las
+ * sin precio: la de su entrega estimada). Pura.
+ * @param {object[]} operaciones ventas y entregas leídas antes de este paso (con fecha)
+ * @param {{ crear: object[], anular: {id: number}[] }} plan el de planVentas
+ * @param {Record<string, string>} fechasEstimadas
+ * @returns {Map<string, string>} p<id> → fecha
+ */
+export function entregasDeOts(operaciones = [], plan = { crear: [], anular: [] }, fechasEstimadas = {}) {
+  const anuladas = new Set(plan.anular.map((a) => a.id));
+  const out = new Map();
+  for (const o of operaciones) {
+    if (o.origen === ORIGEN_ENTREGA && !o.anulada_at && !anuladas.has(o.id) && o.fecha) out.set(String(o.origen_id), String(o.fecha));
+  }
+  for (const o of plan.crear) if (o.origen === ORIGEN_ENTREGA) out.set(String(o.origen_id), o.fecha);
+  for (const [id, f] of Object.entries(fechasEstimadas || {})) if (!out.has(id) && f) out.set(id, f);
+  return out;
+}
+
+/**
+ * Etapa 5 (14/11): el consumo de materiales de cada OT entregada y las
+ * entregas estimadas de las OT sin precio, en el libro (finanzasConsumoOt.js).
+ * Si algo falla, las ventas y las entregas quedan igual.
+ */
+async function sincronizarConsumosOt(e, { proyectos, entregas, fechasEstimadas, cuentasPlan, centros, clientes, cuentasVenta, hoy, ahora }) {
+  const consumo = cuentasConsumo(cuentasPlan);
+  const operaciones = await leer(`fin_operaciones?empresa_id=eq.${e}&origen=in.(${ORIGEN_CONSUMO},${ORIGEN_ESTIMADA})&select=id,origen,origen_id,fecha,total,estado,anulada_at,anulada_por_nombre&order=id.asc`);
+  const deOrigen = (o) => operaciones.filter((x) => x.origen === o);
+  const aCalcular = consumo.error ? new Set() : otsParaCalcular({ entregas, operaciones: deOrigen(ORIGEN_CONSUMO), hoy });
+  const estimadasMap = new Map(Object.entries(fechasEstimadas || {}));
+  const aEstimar = otsParaCalcular({ entregas: estimadasMap, operaciones: deOrigen(ORIGEN_ESTIMADA), hoy, origen: ORIGEN_ESTIMADA });
+  const ids = [...new Set([...aCalcular, ...aEstimar])].map((id) => Number(id.slice(1))).filter((n) => n > 0);
+  const completos = [];
+  for (let i = 0; i < ids.length; i += 150) completos.push(...await leer(`proyectos?empresa_id=eq.${e}&id=in.(${ids.slice(i, i + 150).join(",")})&select=*`, 1000));
+  const porId = new Map(completos.map((p) => [`p${p.id}`, p]));
+  const de = (set) => [...set].map((id) => porId.get(id)).filter(Boolean);
+  const reales = aCalcular.size ? await materialesRealesDeOts(e, de(aCalcular)) : new Map();
+  const materiales = new Map(de(aCalcular).map((p) => [`p${p.id}`, Number(reales.get(String(p.ot))) || 0]));
+  const necesidades = aEstimar.size ? await materialesDeOts(null, de(aEstimar), e) : new Map();
+  const valores = new Map(de(aEstimar).map((p) => [`p${p.id}`, valorOt(0, necesidades.get(String(p.ot))).valor]));
+  const centro = (division) => centroDeDivision(division, centros);
+
+  const pc = consumo.error ? { crear: [], corregir: [], anular: [] }
+    : planConsumos({ proyectos, entregas, materiales, operaciones: deOrigen(ORIGEN_CONSUMO), cuentas: consumo, centro, hoy });
+  const pe = planEstimadas({ proyectos, fechas: fechasEstimadas || {}, valores, operaciones: deOrigen(ORIGEN_ESTIMADA), clientes, cuentas: cuentasVenta, centro, hoy });
+  for (const nombre of clientesNuevosDe(pe.crear)) {
+    if (emparejarCliente(nombre, clientes)) continue;
+    const [c] = (await sbPost("fin_clientes", { empresa_id: e, nombre, notas: "Creado por Gypi desde el Plan de trabajo", created_at: ahora, updated_at: ahora })) || [];
+    if (c) clientes.push(c);
+  }
+  const filas = [...pc.crear, ...pe.crear].map(({ cliente_nombre, ...op }) => {
+    const c = op.cliente_id || !cliente_nombre ? null : emparejarCliente(cliente_nombre, clientes);
+    return {
+      ...op, ...(c ? { cliente_id: Number(c.id), entidad: txt(c.nombre, 120) } : {}),
+      empresa_id: e, cargada_por_nombre: "Gypi (entrega de la OT)", created_at: ahora, updated_at: ahora,
+    };
+  });
+  for (let i = 0; i < filas.length; i += 500) await sbPost("fin_operaciones", filas.slice(i, i + 500));
+  for (const { id, cambios } of [...pc.corregir, ...pe.corregir]) await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null`, { ...cambios, updated_at: ahora });
+  for (const { id, motivo } of [...pc.anular, ...pe.anular]) await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null`, { anulada_at: ahora, anulada_por_nombre: motivo, updated_at: ahora });
+  return {
+    consumos: { creados: pc.crear.length, corregidos: pc.corregir.length, anulados: pc.anular.length, ...(consumo.error ? { error: consumo.error } : {}) },
+    estimadas: { creadas: pe.crear.length, corregidas: pe.corregir.length, anuladas: pe.anular.length },
+  };
 }
 
 /**
@@ -295,7 +367,7 @@ export async function sincronizarVentasOt(empresaId, { hoy = hoyAr() } = {}) {
       leer(`proyectos?empresa_id=eq.${e}&select=id,ot,cliente,cliente_id,obra,descripcion,division,estado,created_at&order=id.asc`)
         .catch(() => leer(`proyectos?empresa_id=eq.${e}&select=id,ot,cliente,obra,descripcion,division,estado,created_at&order=id.asc`)),
       leer(`precios_ot?empresa_id=eq.${e}&select=ot,precio&order=ot.asc`),
-      leer(`fin_operaciones?empresa_id=eq.${e}&origen=in.(${ORIGEN_VENTA},${ORIGEN_ENTREGA})&select=id,origen,origen_id,total,cliente_id,anulada_at,anulada_por_nombre&order=id.asc`),
+      leer(`fin_operaciones?empresa_id=eq.${e}&origen=in.(${ORIGEN_VENTA},${ORIGEN_ENTREGA})&select=id,origen,origen_id,fecha,total,cliente_id,anulada_at,anulada_por_nombre&order=id.asc`),
     ]);
     const cuentas = cuentasVentas(cuentasPlan);
     if (cuentas.error) return { accion: "omitida", error: cuentas.error };
@@ -320,9 +392,18 @@ export async function sincronizarVentasOt(empresaId, { hoy = hoyAr() } = {}) {
     for (const { id, cambios } of plan.corregir) await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null`, { ...cambios, updated_at: ahora });
     for (const { id, motivo } of plan.anular) await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null`, { anulada_at: ahora, anulada_por_nombre: motivo, updated_at: ahora });
     // Las OT terminadas sin precio: el día de su entrega estimada (13/11)
-    const estimadas = await guardarEntregasEstimadas(e, proyectos, precios, config, hoy).catch((err) => {
+    const fechasEstimadas = await guardarEntregasEstimadas(e, proyectos, precios, config, hoy).catch((err) => {
       logger.warn(`[finanzas] no se pudieron anotar las entregas sin precio de ${e}`, err);
-      return 0;
+      return null;
+    });
+    const estimadas = Object.keys(fechasEstimadas || {}).length;
+    // Etapa 5: consumo de materiales de las entregadas y entregas estimadas para revisar
+    const consumos = await sincronizarConsumosOt(e, {
+      proyectos, entregas: entregasDeOts(operaciones, plan, fechasEstimadas || {}), fechasEstimadas: fechasEstimadas || {},
+      cuentasPlan, centros, clientes, cuentasVenta: cuentas, hoy, ahora,
+    }).catch((err) => {
+      logger.warn(`[finanzas] no se pudo anotar el consumo de materiales de las OT de ${e}`, err);
+      return { error: "No se pudo anotar el consumo de materiales" };
     });
     // Cada OT unida a su cliente y sus cobros a ese cliente (parte 6; 184)
     const ligado = await ligarClientesOt(e, clientes).catch((err) => {
@@ -331,7 +412,7 @@ export async function sincronizarVentasOt(empresaId, { hoy = hoyAr() } = {}) {
     });
     return {
       accion: "hecha", creadas: filas.length, corregidas: plan.corregir.length, anuladas: plan.anular.length,
-      clientes_nuevos: clientes.length - clientesAntes.length, entregas_sin_precio: estimadas, ...ligado,
+      clientes_nuevos: clientes.length - clientesAntes.length, entregas_sin_precio: estimadas, ...ligado, ...consumos,
     };
   } catch (err) {
     // Sin las migraciones 171/177 o la base no respondió: la sync del Plan sigue igual

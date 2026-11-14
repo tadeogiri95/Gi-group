@@ -19,7 +19,12 @@ export const SE_CORRIGEN = new Set(["manual", "plazo_fijo", "banco", "mi_caja", 
  * que ir al libro. Lo del libro anulado a mano no vuelve al pasar el
  * histórico otra vez (finanzasHistorico.js); la apertura sí se vuelve a armar.
  */
-export const SE_ANULAN = new Set([...SE_CORRIGEN, "gasto", "libro", "saldo_inicial"]);
+// Etapa 5 (14/11): la entrega estimada de una OT sin precio, si el Dueño no la
+// quiere (anulada a mano, Gypi no la vuelve a crear)
+export const SE_ANULAN = new Set([...SE_CORRIGEN, "gasto", "libro", "saldo_inicial", "entrega_estimada"]);
+/** Para revisar que se confirman tal como están (etapa 5). */
+export const SE_CONFIRMAN = new Set(["entrega_estimada"]);
+export const puedeConfirmar = (op) => !!op && !op.anulada_at && op.estado === "para_revisar" && SE_CONFIRMAN.has(op.origen);
 export const MARCA_CORREGIDA = "(corregida)";
 export const MAX_ANULAR_JUNTAS = 200;
 
@@ -39,6 +44,7 @@ export function dondeSeCambia(op) {
   if (["factura_oc", "factura_oc_otra", "factura_suelta"].includes(o)) return "Compras (corrigiendo o anulando la factura)";
   if (o === "cobro" || o === "compensacion") return "Finanzas → Clientes";
   if (o === "venta_ot" || o === "entrega_ot") return "la OT";
+  if (o === "consumo_ot") return "la OT: Gypi lo anota solo cuando se entrega, con su costo real de materiales";
   if (o === "liquidacion" || o === "pago_sueldo") return "Finanzas → Sueldos";
   if (o === "saldo_inicial") return "Configuración → 📚 Histórico del libro (la apertura se vuelve a armar al pasarlo)";
   if (o === "libro") return "el libro: corregila o borrala ahí y volvé a pasar el histórico (Configuración → 📚 Histórico del libro), Gypi la actualiza sola";

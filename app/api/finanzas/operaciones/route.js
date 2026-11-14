@@ -34,6 +34,8 @@
 //   POST { accion: "comprobantes", id, comprobantes } → cambia la lista de
 //       comprobantes (PDF o fotos) de un movimiento (13/11, parte 4; migración
 //       187). "crear" y "gasto" también aceptan comprobantes al cargar.
+//   POST { accion: "confirmar", id } → confirma una entrega estimada de una OT
+//       sin precio que Gypi dejó para revisar (etapa 5, 14/11).
 //   POST { accion: "cambiar_tipo", id, tipo, recordar } → cambia el tipo (y las
 //       cuentas) de una compra que salió de una factura; con recordar, queda
 //       como tipo del proveedor para las próximas (F2a, migración 172).
@@ -59,7 +61,7 @@ import { frenoRepetidos, repetidosEnBase } from "../../../lib/finanzasRepetidosS
 import { clienteDeOperacion } from "../../../lib/finanzasClientes";
 import { listasFinanzas } from "../../../lib/finanzasListas";
 import { columnasComprobantes, falta187, validarComprobantes } from "../../../lib/finanzasAdjuntos";
-import { MARCA_CORREGIDA, MAX_ANULAR_JUNTAS, SE_ANULAN, operacionCorregida, puedeCorregir } from "../../../lib/finanzasCorregir";
+import { MARCA_CORREGIDA, MAX_ANULAR_JUNTAS, SE_ANULAN, SE_CONFIRMAN, operacionCorregida, puedeCorregir } from "../../../lib/finanzasCorregir";
 
 const ANULABLES = `origen=in.(${[...SE_ANULAN].filter((o) => o !== ORIGEN_GASTO).join(",")})`;
 
@@ -326,6 +328,17 @@ export async function POST(request) {
       // Las que salieron de una factura, un cheque o una orden se anulan desde ahí
       const filas = await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null&${ANULABLES}`, marca, { sesion });
       if (!filas?.length) return NextResponse.json({ error: "No encontré esa operación, ya estaba anulada o salió de otra pantalla (se anula desde ahí)" }, { status: 404 });
+      broadcastRefresh(e, "fin_operaciones");
+      return NextResponse.json({ ok: true, operacion: filas[0] });
+    }
+    if (d.accion === "confirmar") {
+      // Etapa 5 (14/11): la entrega estimada de una OT sin precio, tal como la anotó Gypi
+      const id = Number(d.id);
+      if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta la operación" }, { status: 400 });
+      const filas = await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null&estado=eq.para_revisar&origen=in.(${[...SE_CONFIRMAN].join(",")})`, {
+        estado: "confirmada", updated_at: new Date().toISOString(),
+      }, { sesion });
+      if (!filas?.length) return NextResponse.json({ error: "No encontré esa operación, ya estaba confirmada o anulada" }, { status: 404 });
       broadcastRefresh(e, "fin_operaciones");
       return NextResponse.json({ ok: true, operacion: filas[0] });
     }

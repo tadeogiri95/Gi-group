@@ -25,6 +25,10 @@
 //     necesidades ÷ 0,3 (app/lib/finanzasOtClientes.js). El mes es el día en
 //     que Gypi la vio terminada (como una entrega con precio). Cuentan como
 //     entregas para el costo de materiales.
+//   - Asiento de consumo (etapa 5, 14/11; finanzasConsumoOt.js): cuando la OT
+//     se entrega, Gypi anota su costo real de materiales (Costo de Mercadería
+//     Vendida contra Materias Primas). Ese asiento es el costo de materiales
+//     de la OT: sus entregas ya no van al % ni al costo calculado aparte.
 //   - IMP_IVA (IVA a pagar / a favor) va aparte y no entra en el resultado.
 //   - Ordenado según NIIF (NIC 1, gastos por función), 10/11: el ingreso son
 //     SOLO las entregas (ING_ENT, menos descuentos y notas de crédito), para
@@ -44,6 +48,8 @@
 //     Dueño le pone a cada una (config_sistema "finanzas_resultados",
 //     ponderador). Como el libro, los % deben sumar 100.
 export const CLAVE_RESULTADOS = "finanzas_resultados";
+/** finanzasConsumoOt.ORIGEN_CONSUMO (acá sin importar el lado del servidor). */
+export const ORIGEN_CONSUMO_OT = "consumo_ot";
 export const MATERIALES_PCT = 40;
 export const MESES_VENTANA = 12;
 
@@ -228,12 +234,20 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
     }
   };
 
+  // Consumo de materiales de cada OT entregada (etapa 5, 14/11): por OT y mes
+  const consumoOt = new Map();
   for (const op of ops) {
     if (op.anulada_at) continue;
     if (!idx.has(String(op.fecha || "").slice(0, 7))) continue;
     if (op.estado === "para_revisar") { paraRevisar += 1; continue; }
     const f = factor(op);
     if (!f) continue;
+    if (op.origen === ORIGEN_CONSUMO_OT) {
+      const pid = Number(op.proyecto_id) || 0;
+      if (!consumoOt.has(pid)) consumoOt.set(pid, cero());
+      consumoOt.get(pid)[idx.get(String(op.fecha).slice(0, 7))] += importeResultado(op) * f;
+      continue;
+    }
     sumar(op.cuenta_debe, op, 1, f);
     sumar(op.cuenta_haber, op, -1, f);
   }
@@ -266,10 +280,23 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
   // Materiales estimados: un % de las entregas en lugar de las cuentas CMV_MAT
   const pct = Math.max(0, Math.min(100, Number(materialesPct) || 0));
   let estimados = false;
-  if (pct > 0 || materialesOt) {
+  const conConsumo = [...consumoOt.values()].some((vals) => vals.some((v) => Math.abs(v) >= 0.01));
+  if (pct > 0 || materialesOt || conConsumo) {
     for (const [k, l] of lineas) if (l.origen === "CMV" && l.grupo === "MAT") lineas.delete(k);
+    // El asiento de consumo de cada OT es su costo de materiales: sus entregas no van al %
+    const consumo = cero();
+    const conAsiento = cero();
+    for (const vals of consumoOt.values()) vals.forEach((v, i) => { consumo[i] += v; });
+    for (const [pid, vals] of entregaOt) if (consumoOt.has(pid)) vals.forEach((v, i) => { conAsiento[i] += v; });
+    if (conConsumo) {
+      lineas.set("materiales|consumo", {
+        cuenta: null, linea: "CMV_MAT", division: "", nombre: "Costo de materiales (asiento de consumo de cada OT entregada)",
+        seccion: "CMV", origen: "CMV", grupo: "MAT", valores: consumo,
+      });
+    }
     const entregas = cero();
     for (const l of lineas.values()) if (l.origen === "ING" && l.grupo === "ENT") l.valores.forEach((v, i) => { entregas[i] += v; });
+    entregas.forEach((v, i) => { entregas[i] = v - conAsiento[i]; });
     if (entregas.some((v) => Math.abs(v) >= 0.01)) {
       estimados = true;
       // Con el costo real: cada entrega de una OT con materiales lleva su parte; las demás, el %
@@ -277,6 +304,7 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
       const conReal = cero();
       if (materialesOt) {
         for (const [pid, vals] of entregaOt) {
+          if (consumoOt.has(pid)) continue;
           const mat = Number(materialesOt.get(pid)) || 0;
           const tot = vals.reduce((a, b) => a + b, 0);
           if (mat <= 0 || tot <= 0.01) continue;

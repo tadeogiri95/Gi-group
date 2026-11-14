@@ -166,7 +166,7 @@ test("/api/finanzas/operaciones corregir — anula la vieja como corregida y car
 test("/api/finanzas/operaciones anular — ahora también plazos fijos, extracto y Mi caja; nunca lo de una factura", async () => {
   const { escrito } = mockApi();
   assert.equal((await pedir(api, "operaciones", "gerencial", "POST", { accion: "anular", id: 7 })).status, 200);
-  assert.match(escrito[0].url, /origen=in\.\(manual,plazo_fijo,banco,mi_caja,fci,titulos,libro,saldo_inicial\)/);
+  assert.match(escrito[0].url, /origen=in\.\(manual,plazo_fijo,banco,mi_caja,fci,titulos,libro,saldo_inicial,entrega_estimada\)/);
   const varias = mockApi();
   assert.equal((await pedir(api, "operaciones", "gerencial", "POST", { accion: "anular_varias", ids: [1, 2, 2] })).status, 200);
   assert.match(varias.escrito[0].url, /id=in\.\(1,2\)/);

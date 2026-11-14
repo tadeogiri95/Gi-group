@@ -50,7 +50,9 @@ export function pendientesFinanzas({ hoy, revisar = [], ordenes = [], cheques = 
   const out = [];
   const plural = (n, uno, varios) => (n === 1 ? uno : varios.replace("N", String(n)));
   const miCaja = revisar.filter((o) => o.origen === "mi_caja");
-  const otras = revisar.filter((o) => o.origen !== "mi_caja");
+  // Etapa 5 (14/11): las entregas estimadas de OT sin precio, con su aviso propio
+  const estimadas = revisar.filter((o) => o.origen === "entrega_estimada");
+  const otras = revisar.filter((o) => o.origen !== "mi_caja" && o.origen !== "entrega_estimada");
   const enSemana = sumarDias(hoy, 7);
 
   const propios = cheques.filter((c) => c.clase === "propio" && c.estado === "pendiente" && (fechaDebito(c.fecha_pago, feriados) || c.fecha_pago) <= enSemana);
@@ -81,6 +83,12 @@ export function pendientesFinanzas({ hoy, revisar = [], ordenes = [], cheques = 
   }
   if (miCaja.length) {
     out.push({ id: "mi_caja", ir: "fin-tesoreria", cantidad: miCaja.length, tono: "normal", texto: plural(miCaja.length, "1 movimiento de Mi caja para revisar", "N movimientos de Mi caja para revisar") });
+  }
+  if (estimadas.length) {
+    out.push({
+      id: "estimadas", ir: "fin-tesoreria", cantidad: estimadas.length, importe: centavos(estimadas.reduce((s, o) => s + Number(o.total || 0), 0)), tono: "normal",
+      texto: plural(estimadas.length, "1 OT entregada sin precio en el Plan: confirmá su entrega estimada en Movimientos (Solo para revisar)", "N OT entregadas sin precio en el Plan: confirmá sus entregas estimadas en Movimientos (Solo para revisar)"),
+    });
   }
   if (otras.length) {
     out.push({ id: "revisar", ir: "fin-tesoreria", cantidad: otras.length, tono: "normal", texto: plural(otras.length, "1 operación para revisar", "N operaciones para revisar") });

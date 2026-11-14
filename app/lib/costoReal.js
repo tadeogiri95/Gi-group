@@ -26,6 +26,8 @@ export const JORNADA_HORAS = 8;
 export const ORIGENES_NO_GASTO = new Set([
   "factura_oc", "factura_suelta", "liquidacion", "pago_sueldo", "venta_ot", "entrega_ot", "cobro", "orden_pago",
   "cheque", "banco", "mi_caja_pase", "saldo_inicial", "compensacion", "plazo_fijo", "libro",
+  // Etapa 5 (14/11): el consumo ya es el material de la OT; la entrega estimada es un ingreso
+  "consumo_ot", "entrega_estimada",
 ]);
 
 const r1 = (n) => Math.round(n * 10) / 10;

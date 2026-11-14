@@ -23,7 +23,7 @@ import { nombreTipo } from "../lib/finanzasTipos";
 import { CostosMantenimiento } from "./FinanzasIntegracion";
 import { ORIGEN_GASTO, tiposDeGasto } from "../lib/finanzasGastos";
 import { esDeMantenimiento } from "../lib/finanzasIntegracion";
-import { MARCA_CORREGIDA, dondeSeCambia, puedeAnular, puedeCorregir } from "../lib/finanzasCorregir";
+import { MARCA_CORREGIDA, dondeSeCambia, puedeAnular, puedeConfirmar, puedeCorregir } from "../lib/finanzasCorregir";
 import CorregirOperacion from "./FinanzasCorregir";
 import DescargarExtracto from "./FinanzasDescargarExtracto";
 import Comprobantes from "./FinanzasComprobantes";
@@ -143,6 +143,24 @@ export function Detalle({ op, datos, nombres = SIN_NOMBRES, onCerrar, onAnulada,
   const automatica = !puedeAnular(op) && !op.anulada_at;
   const compra = ["factura_oc", "factura_oc_otra", "factura_suelta"].includes(op.origen);
   const deMantenimiento = esDeMantenimiento(op);
+  const estimada = puedeConfirmar(op);
+  const [confirmando, setConfirmando] = useState(false);
+
+  // Etapa 5 (14/11): la entrega estimada de una OT sin precio se confirma tal como está
+  const confirmarEstimada = async () => {
+    setConfirmando(true);
+    try {
+      const res = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "confirmar", id: op.id }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "No se pudo confirmar");
+      toast.success("Entrega confirmada");
+      onAnulada();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setConfirmando(false);
+    }
+  };
 
   const anular = async () => {
     setAnulando(true);
@@ -173,7 +191,9 @@ export function Detalle({ op, datos, nombres = SIN_NOMBRES, onCerrar, onAnulada,
         {op.origen && op.origen !== "manual" && fila("Salió de", ORIGENES[op.origen] || op.origen)}
         {op.estado === "para_revisar" && !op.anulada_at && (
           <p className="m-0 text-[13px] font-semibold text-gypi-amber-ink">
-            {deMantenimiento
+            {estimada
+              ? "Para revisar: la OT se terminó sin PRECIO en el Plan y Gypi estimó la entrega con sus materiales ÷ 0,3. Si el valor está bien, confirmala. Si no, ponele el precio en el Plan (esta se anula sola y va la venta de verdad) o anulala."
+              : deMantenimiento
               ? "Para revisar: Gypi lo pasó solo desde Mantenimiento. Mirá el tipo y el importe y confirmalo. Si tenía factura con IVA, anulalo: vuelve a aparecer en el aviso 🔧 de Flota y Maquinaria para cargarlo con la factura."
               : "Para revisar: el proveedor no tiene tipo de compra. Elegí el que corresponde."}
           </p>
@@ -187,6 +207,7 @@ export function Detalle({ op, datos, nombres = SIN_NOMBRES, onCerrar, onAnulada,
         {!op.anulada_at && !automatica && !corrigiendo && (
           <div className="flex flex-wrap justify-end gap-2 mt-2">
             {!confirmar && puedeCorregir(op) && <button type="button" className="g-btn g-btn-secondary" onClick={() => setCorrigiendo(true)}>✏ Corregir</button>}
+            {!confirmar && estimada && <button type="button" className="g-btn g-btn-primary" disabled={confirmando} onClick={confirmarEstimada}>{confirmando ? "Confirmando…" : "✓ Confirmar entrega"}</button>}
             {confirmar ? (
               <>
                 <span className="self-center text-[13px] text-gypi-text">{gasto ? "¿Anular este gasto? Se anula junto con su pago, si lo cargaste. Queda tachado y no suma."

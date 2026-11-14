@@ -43,7 +43,7 @@ export async function GET(request) {
     const cuentasPf = tesoreria.filter((t) => t.tipo === "plazo_fijo").map((t) => t.cuenta);
     const [ops, revisar, ordenes, cheques, planificacion, mantenimientos, fallas, gastos, plazos, opsPlazos, recibidas, quitados] = await Promise.all([
       tesoreria.length ? leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&or=(cuenta_debe.in.(${lista}),cuenta_haber.in.(${lista}))&select=fecha,total,total_ars,cuenta_debe,cuenta_haber,estado&order=fecha.asc`, 100000) : [],
-      leer(sesion, `fin_operaciones?empresa_id=eq.${e}&estado=eq.para_revisar&anulada_at=is.null&select=id,origen`, 2000),
+      leer(sesion, `fin_operaciones?empresa_id=eq.${e}&estado=eq.para_revisar&anulada_at=is.null&select=id,origen,total`, 2000),
       leerSiHay(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&estado=in.(borrador,para_aprobar,aprobada,rechazada)&select=id,estado,total`),
       leerSiHay(sesion, `fin_cheques?empresa_id=eq.${e}&estado=in.(pendiente,en_cartera)&select=id,clase,estado,fecha_pago,importe`, 20000),
       config(e, CLAVE_PLANIFICACION),
