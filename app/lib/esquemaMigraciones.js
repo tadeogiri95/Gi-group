@@ -110,6 +110,7 @@ export const MIGRACIONES = [
   { n: 191, archivo: "191_agenda_unica.sql", nombre: "Agenda única: clientes, proveedores y empleados", tablas: { fin_personas: ["empleado_id"] } },
   { n: 192, archivo: "192_elegir_de_la_lista.sql", nombre: "Elegir proveedor y cliente de la lista", tablas: { movimientos_stock: ["proveedor_id"], remitos_stock: ["proveedor_id"], fin_cheques: ["cliente_id"] } },
   { n: 193, archivo: "193_cuentas_ligadas.sql", nombre: "Finanzas: cada operación ligada al plan de cuentas", funciones: ["fin_cuentas_sin_plan"] },
+  { n: 194, archivo: "194_ot_ligada.sql", nombre: "OT ligada en pedidos, órdenes de compra y stock", tablas: { pedidos_compra: ["proyecto_id"], ordenes_compra_items: ["proyecto_id"], movimientos_stock: ["proyecto_id"] }, funciones: ["gypi_ot_de_texto"] },
 ];
 
 /** Lo que pide una migración, como lista de { tabla, columnas } y funciones. */
