@@ -4,13 +4,15 @@
 //
 // La primera pantalla de Finanzas: la plata en cajas y bancos, lo que entró y
 // salió en el mes, "Para hacer hoy" (cada cosa lleva a su pantalla) y el resto
-// de Finanzas en tarjetas por tema.
+// de Finanzas en tarjetas por tema. 14/11 (etapa 3): ➕ Cargar arriba de todo
+// (FinanzasCargar.jsx).
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { plata } from "../lib/finanzasOperaciones";
 import { DETALLE_FINANZAS, GRUPOS_FINANZAS } from "../lib/finanzasInicio";
 import { ICONO_GESTION } from "../lib/menuGestion";
 import { Spinner } from "./ui";
+import BotonCargar from "./FinanzasCargar";
 
 const TONO = {
   rojo: "border-gypi-red/40 bg-gypi-red/10 text-gypi-red-ink",
@@ -21,6 +23,7 @@ const TONO = {
 export default function FinanzasInicio({ opciones = [], onIr }) {
   const [d, setD] = useState(null);
   const [error, setError] = useState(null);
+  const [version, setVersion] = useState(0);
   useEffect(() => {
     apiFetch("/api/finanzas/inicio")
       .then(async (res) => {
@@ -29,7 +32,7 @@ export default function FinanzasInicio({ opciones = [], onIr }) {
         setD(x);
       })
       .catch((e) => setError(e.message || "No se pudo cargar el resumen"));
-  }, []);
+  }, [version]);
 
   const label = Object.fromEntries(opciones.map((o) => [o.id, o.label]));
   const max = d ? Math.max(1, d.mes.entro, d.mes.salio) : 1;
@@ -42,6 +45,11 @@ export default function FinanzasInicio({ opciones = [], onIr }) {
 
   return (
     <div className="flex-1 overflow-y-auto px-[18px] pb-6 text-gypi-text">
+      {/* Etapa 3 (14/11): un solo botón para cargar factura o gasto, pago, cobro o pase entre cajas */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <BotonCargar onHecho={() => setVersion((v) => v + 1)} />
+        <span className="text-[13px] text-gypi-dim">Factura o gasto, pago, cobro o pase entre cajas: siempre desde acá.</span>
+      </div>
       {error && <p role="alert" className="m-0 mb-3 text-[14px] text-gypi-red">⚠ {error}</p>}
       {!d && !error && <div className="flex justify-center py-6"><Spinner /></div>}
       {d && (

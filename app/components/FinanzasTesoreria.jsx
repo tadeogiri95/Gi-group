@@ -6,7 +6,7 @@
 // El saldo de cada caja y banco sale de las operaciones: lo que entra y lo que
 // sale. La ficha muestra los movimientos con el saldo renglón por renglón.
 // "Cargar saldos iniciales" lee T-OPERACIONES del libro hasta una fecha de
-// corte; "Pasar plata" es una TRANSFERENCIA ENTRE CAJAS entre dos cajas.
+// corte. Pasar plata entre cajas: ➕ Cargar → Entre cajas (FinanzasTransferir.jsx).
 // F3b (176): lo que cargan los responsables desde 📱 Mi caja espera acá
 // ("Para revisar") y "⚙ Mi caja" esconde los tipos que no se les ofrecen.
 // F5a: en la ficha de un banco, "📥 Subir extracto" (FinanzasExtracto.jsx).
@@ -20,8 +20,8 @@
 // 13/11 (parte 3 del plan): 💰 Tesorería = Cajas y bancos + Movimientos en una
 // sola pantalla. Arriba las cajas con su saldo; se elige una, varias o
 // ninguna (todo) y abajo se ven sus movimientos (FinanzasMovimientos), con el
-// saldo renglón por renglón si hay una sola y "＋ Nuevo movimiento" con esa
-// caja puesta. Tocando un movimiento se ve, se corrige o se anula.
+// saldo renglón por renglón si hay una sola y "➕ Cargar" con esa caja puesta
+// (14/11, etapa 3: factura o gasto, pago, cobro, entre cajas u otra). Tocando un movimiento se ve, se corrige o se anula.
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -35,7 +35,6 @@ import { repetidosEnCuenta } from "../lib/finanzasBanco";
 import PlazosFijos from "./FinanzasPlazosFijos";
 import Inversiones from "./FinanzasInversiones";
 import FinanzasMovimientos, { Detalle } from "./FinanzasMovimientos";
-import AvisoRepetidos, { repetidosDe } from "./FinanzasAvisoRepetidos";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
@@ -154,70 +153,6 @@ function SaldosIniciales({ datos, onCerrar, onCargados }) {
             {guardando ? "Cargando…" : `Cargar ${filas.length} saldos`}
           </button>
         </div>
-      </div>
-    </Modal>
-  );
-}
-
-/* ─── Pasar plata entre cajas ────────────────────────────────────────── */
-
-function Transferir({ datos, desdeInicial = "", onCerrar, onHecho }) {
-  const toast = useToast();
-  const vivas = datos.tesoreria.filter((t) => t.activa !== false);
-  const [f, setF] = useState({ desde: desdeInicial, hacia: "", importe: "", fecha: hoyAr(), tipo_cambio: "", descripcion: "" });
-  const [error, setError] = useState(null);
-  const [guardando, setGuardando] = useState(false);
-  const [repetidos, setRepetidos] = useState(null);
-  const set = (k) => (e) => { setRepetidos(null); setF((x) => ({ ...x, [k]: e.target.value })); };
-  const desde = vivas.find((t) => t.cuenta === f.desde);
-  const usd = desde?.moneda === "USD";
-
-  async function guardar(confirmarRepetido = false) {
-    setError(null);
-    setGuardando(true);
-    try {
-      await postTesoreria({ accion: "transferir", ...f, importe: numero(f.importe), tipo_cambio: usd ? numero(f.tipo_cambio) : null, confirmar_repetido: confirmarRepetido });
-      toast.success("Listo: la plata pasó de caja");
-      onHecho();
-    } catch (e) {
-      const rep = repetidosDe(e.status, e.datos);
-      if (rep) setRepetidos(rep);
-      else setError(e.message);
-      setGuardando(false);
-    }
-  }
-
-  const opciones = (excluir) => vivas.filter((t) => t.cuenta !== excluir && (!desde || excluir !== f.desde || (t.moneda === "USD") === usd));
-  return (
-    <Modal open onClose={onCerrar} title="Pasar plata entre cajas" maxWidth={480}>
-      <div className="flex flex-col gap-3">
-        {campo("Sale de", (
-          <SelectBuscable className="g-input w-full" aria-label="Sale de" value={f.desde} onChange={set("desde")}>
-            <option value="">Elegí…</option>
-            {vivas.map((t) => <option key={t.cuenta} value={t.cuenta}>{t.nombre}</option>)}
-          </SelectBuscable>
-        ))}
-        {campo("Va a", (
-          <SelectBuscable className="g-input w-full" aria-label="Va a" value={f.hacia} onChange={set("hacia")}>
-            <option value="">Elegí…</option>
-            {opciones(f.desde).map((t) => <option key={t.cuenta} value={t.cuenta}>{t.nombre}</option>)}
-          </SelectBuscable>
-        ))}
-        <div className="flex flex-wrap gap-2">
-          {campo(usd ? "Importe (USD)" : "Importe", <input className="g-input w-[160px] text-right font-mono" inputMode="decimal" aria-label="Importe" value={f.importe} onChange={set("importe")} />)}
-          {campo("Fecha", <input type="date" className="g-input" aria-label="Fecha" value={f.fecha} onChange={set("fecha")} />)}
-          {usd && campo("Tipo de cambio", <input className="g-input w-[120px]" inputMode="decimal" aria-label="Tipo de cambio" value={f.tipo_cambio} onChange={set("tipo_cambio")} />)}
-        </div>
-        {campo("Nota (opcional)", <input className="g-input w-full" aria-label="Nota" maxLength={300} value={f.descripcion} onChange={set("descripcion")} />)}
-        {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
-        {repetidos
-          ? <AvisoRepetidos repetidos={repetidos} ocupado={guardando} onCargarIgual={() => guardar(true)} onCancelar={() => setRepetidos(null)} />
-          : (
-            <div className="flex justify-end gap-2">
-              <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
-              <button type="button" className="g-btn g-btn-primary" disabled={guardando || !f.desde || !f.hacia} onClick={() => guardar()}>{guardando ? "Guardando…" : "Pasar la plata"}</button>
-            </div>
-          )}
       </div>
     </Modal>
   );
@@ -396,7 +331,6 @@ export default function FinanzasTesoreria({ onIr = null } = {}) {
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState(null);
   const [elegidas, setElegidas] = useState([]);
-  const [transferir, setTransferir] = useState(null);
   const [iniciales, setIniciales] = useState(false);
   const [inactivas, setInactivas] = useState(false);
   const [verRevisar, setVerRevisar] = useState(false);
@@ -447,7 +381,6 @@ export default function FinanzasTesoreria({ onIr = null } = {}) {
         <p className="m-0 text-[15px] text-gypi-text flex-1 min-w-[200px]">
           En pesos <b className="font-mono">{plata(totales.ARS, "ARS")}</b>{Math.abs(totales.USD) >= 0.01 && <> · En dólares <b className="font-mono">{plata(totales.USD, "USD")}</b></>}
         </p>
-        <button type="button" className="g-btn g-btn-secondary" onClick={() => setTransferir("")}>⇄ Pasar plata</button>
         {onIr && <button type="button" className="g-btn g-btn-secondary" onClick={() => onIr("fin-cheques")}>🏦 Cheques</button>}
         <button type="button" className={`g-btn ${nRepetidos ? "g-btn-primary" : "g-btn-secondary"}`} onClick={() => setVerRepetidos(true)}>
           🔎 Posibles repetidos{nRepetidos ? ` (${nRepetidos})` : ""}
@@ -517,7 +450,6 @@ export default function FinanzasTesoreria({ onIr = null } = {}) {
         <FinanzasMovimientos cajas={elegidasVivas} saldos={saldoRenglon} cajaNueva={una?.activa !== false ? una?.cuenta || "" : ""} onCambio={cargar} recargar={version}
           acciones={una ? (
             <>
-              <button type="button" className="g-btn g-btn-secondary" onClick={() => setTransferir(una.cuenta)}>⇄ Pasar plata desde esta</button>
               {una.tipo === "banco" && una.moneda !== "USD" && <button type="button" className="g-btn g-btn-secondary" onClick={() => setExtracto(una.cuenta)}>📥 Subir extracto</button>}
               {["caja", "otro"].includes(una.tipo) && una.moneda !== "USD" && <button type="button" className="g-btn g-btn-secondary" onClick={() => setExtracto(una.cuenta)}>📥 Subir planilla</button>}
             </>
@@ -529,7 +461,6 @@ export default function FinanzasTesoreria({ onIr = null } = {}) {
 
       {verRepetidos && <PosiblesRepetidos datos={datos} porCaja={porCaja} onCerrar={() => setVerRepetidos(false)} onCambio={cambioAca} />}
       {extracto && <SubirExtracto caja={saldos.find((s) => s.cuenta === extracto) || { cuenta: extracto, nombre: extracto }} datos={datos} onCerrar={() => setExtracto(null)} onCargado={() => { setExtracto(null); cambioAca(); }} onCambio={cambioAca} />}
-      {transferir !== null && <Transferir datos={datos} desdeInicial={transferir} onCerrar={() => setTransferir(null)} onHecho={() => { setTransferir(null); cambioAca(); }} />}
       {verRevisar && <RevisarMiCaja datos={datos} pendientes={pendientes} onCerrar={() => setVerRevisar(false)} onCambio={cambioAca} />}
       {verConfig && <ConfigMiCaja datos={datos} onCerrar={() => setVerConfig(false)} onGuardado={() => { setVerConfig(false); cargar(); }} />}
       {iniciales && <SaldosIniciales datos={datos} onCerrar={() => setIniciales(false)} onCargados={() => { setIniciales(false); cambioAca(); }} />}

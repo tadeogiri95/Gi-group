@@ -238,7 +238,7 @@ test("la ventana — en Nueva operación elige entre cliente y proveedor", async
 
 test("el botón está donde se elige un proveedor o un cliente", () => {
   const leer = (f) => readFileSync(new URL(`../app/components/${f}`, import.meta.url), "utf8");
-  assert.match(leer("FinanzasMovimientos.jsx"), /nuevo=\{\{ etiqueta: "Nuevo cliente o proveedor"/, "Nueva operación");
+  assert.match(leer("FinanzasNuevaOperacion.jsx"), /nuevo=\{\{ etiqueta: "Nuevo cliente o proveedor"/, "Nueva operación");
   assert.match(leer("FinanzasElegirProveedor.jsx"), /nuevo=\{\{ etiqueta: "Nuevo proveedor"/, "pagos, cheques y cargar gasto");
   assert.match(leer("MiCaja.jsx"), /BotonNuevaPersona rol="proveedor"/, "Mi caja");
   assert.match(leer("AComprar.jsx"), /OPCION_NUEVA/, "Compras: A comprar");

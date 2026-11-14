@@ -242,8 +242,10 @@ test("Movimientos — 🧾 Cargar gasto: factura de octubre que llega en noviemb
     return new Response(JSON.stringify(datos), { status: 200 });
   };
   render(<FinanzasMovimientos />);
-  await waitFor(() => assert.ok(screen.getByRole("button", { name: "🧾 Cargar gasto o factura" })));
-  fireEvent.click(screen.getByRole("button", { name: "🧾 Cargar gasto o factura" }));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "➕ Cargar" })));
+  fireEvent.click(screen.getByRole("button", { name: "➕ Cargar" }));
+  fireEvent.click(await screen.findByText("🧾 Factura o gasto"));
+  await screen.findByRole("button", { name: "Guardar gasto" });
   fireEvent.click(screen.getByRole("button", { name: "Guardar gasto" }));
   await waitFor(() => assert.match(screen.getByRole("alert").textContent, /Elegí el tipo de gasto/));
 
@@ -276,8 +278,10 @@ test("Movimientos — 🧾 Cargar gasto: factura de octubre que llega en noviemb
 test("Movimientos — en una factura B no se pide IVA; sin proveedor se elige dónde queda la deuda", async () => {
   global.fetch = async () => new Response(JSON.stringify({ desde: "2026-11-01", hasta: "2026-11-11", truncado: false, ...CTX, operaciones: [] }), { status: 200 });
   render(<FinanzasMovimientos />);
-  await waitFor(() => assert.ok(screen.getByRole("button", { name: "🧾 Cargar gasto o factura" })));
-  fireEvent.click(screen.getByRole("button", { name: "🧾 Cargar gasto o factura" }));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "➕ Cargar" })));
+  fireEvent.click(screen.getByRole("button", { name: "➕ Cargar" }));
+  fireEvent.click(await screen.findByText("🧾 Factura o gasto"));
+  await screen.findByRole("button", { name: "Guardar gasto" });
   fireEvent.click(screen.getByRole("button", { name: "B" }));
   assert.equal(screen.queryByLabelText("IVA"), null);
   assert.ok(screen.getByLabelText("Importe"));
@@ -393,8 +397,10 @@ test("Movimientos — 📎 subir la factura deja la propuesta para revisar y se 
     return new Response(JSON.stringify(datos), { status: 200 });
   };
   render(<FinanzasMovimientos />);
-  await waitFor(() => assert.ok(screen.getByRole("button", { name: "🧾 Cargar gasto o factura" })));
-  fireEvent.click(screen.getByRole("button", { name: "🧾 Cargar gasto o factura" }));
+  await waitFor(() => assert.ok(screen.getByRole("button", { name: "➕ Cargar" })));
+  fireEvent.click(screen.getByRole("button", { name: "➕ Cargar" }));
+  fireEvent.click(await screen.findByText("🧾 Factura o gasto"));
+  await screen.findByRole("button", { name: "Guardar gasto" });
   const archivo = new File([new Uint8Array([37, 80, 68, 70])], "luz.pdf", { type: "application/pdf" });
   fireEvent.change(screen.getByLabelText("Subir la factura"), { target: { files: [archivo] } });
   await waitFor(() => assert.ok(screen.getByText(/Esta es la propuesta de Gypi/)));

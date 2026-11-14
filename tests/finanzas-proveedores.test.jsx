@@ -301,7 +301,7 @@ test("Proveedores — sin el libro copiado manda a Configuración", async () => 
   await waitFor(() => assert.ok(screen.getByText(/Primero copiá el libro/)));
 });
 
-test("Proveedores — cuenta sugerida de cada proveedor y compra sin factura desde la ficha", async () => {
+test("Proveedores — cuenta sugerida de cada proveedor y 🧾 Factura o gasto desde la ficha (etapa 3)", async () => {
   const datos = {
     cuentas: CUENTAS, proveedores: PROVEEDORES, cuentas_proveedores: [PROV], cuentas_guardadas: {},
     operaciones: [compra(1, "2026-10-01", 1000), compra(2, "2026-10-02", 500, { cuenta_debe: FLETES }), compra(3, "2026-10-03", 200)],
@@ -309,6 +309,8 @@ test("Proveedores — cuenta sugerida de cada proveedor y compra sin factura des
   const enviados = [];
   global.fetch = async (u, o) => {
     if (o?.method === "POST") { enviados.push(JSON.parse(o.body)); return new Response(JSON.stringify({ ok: true, cuentas: 1 }), { status: 200 }); }
+    // Las listas del formulario de factura o gasto (el mismo de toda Finanzas)
+    if (String(u).includes("/api/finanzas/operaciones")) return new Response(JSON.stringify({ tipos: [{ codigo: "COMPRAS", nombre: "Compras", grupo: "COMPRAS", cuenta_debe: MP, cuenta_haber: PROV, activo: true }], cuentas: CUENTAS, tesoreria: [], proveedores: PROVEEDORES, proyectos: [], centros: [], operaciones: [] }), { status: 200 });
     return new Response(JSON.stringify(datos), { status: 200 });
   };
   render(<FinanzasProveedores />);
@@ -322,14 +324,7 @@ test("Proveedores — cuenta sugerida de cada proveedor y compra sin factura des
 
   await waitFor(() => assert.equal(screen.queryByRole("combobox", { name: "Cuenta de ACERCO S A" }), null));
   fireEvent.click(screen.getByText("ACERCO S A"));
-  fireEvent.click(await screen.findByRole("button", { name: "＋ Compra sin factura" }));
-  fireEvent.change(await screen.findByLabelText("Importe"), { target: { value: "1.500,50" } });
-  fireEvent.change(screen.getByLabelText("Número de remito o ticket"), { target: { value: "R-7" } });
-  assert.equal(screen.getByRole("combobox", { name: "Cuenta del gasto" }).value, `Materias Primas (${MP})`);
-  fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
-  await waitFor(() => assert.equal(enviados.length, 2));
-  assert.deepEqual(
-    { ...enviados[1], fecha: undefined },
-    { accion: "compra", clase: "sin_factura", proveedor_id: 5, fecha: undefined, importe: 1500.5, iva: 0, numero: "R-7", cuenta: MP, descripcion: "" },
-  );
+  assert.equal(screen.queryByRole("button", { name: "＋ Compra sin factura" }), null, "ya no hay un formulario aparte");
+  fireEvent.click(await screen.findByRole("button", { name: "🧾 Factura o gasto" }));
+  await waitFor(() => assert.equal(screen.getByLabelText("Proveedor del gasto").value, "ACERCO S A"), "el proveedor de la ficha queda puesto");
 });

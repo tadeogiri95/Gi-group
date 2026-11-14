@@ -207,8 +207,10 @@ test("💰 Tesorería — cajas con saldo; elegir una muestra sus movimientos co
   fireEvent.click(screen.getByRole("button", { name: /^(✓ )?Caja Juan/ }));
   assert.match(screen.getByRole("heading", { name: /Movimientos de 2 cajas/ }).textContent, /2 cajas/);
   fireEvent.click(screen.getByRole("button", { name: /^(✓ )?Caja Juan/ }));
-  fireEvent.click(screen.getByText("⇄ Pasar plata desde esta"));
-  assert.equal(screen.getByLabelText("Sale de").value, CAJA.nombre);
+  // 14/11 (etapa 3): pasar plata es ➕ Cargar → Entre cajas, con la caja elegida puesta
+  fireEvent.click(screen.getByRole("button", { name: "➕ Cargar" }));
+  fireEvent.click(await screen.findByText("⇄ Entre cajas y bancos"));
+  await waitFor(() => assert.equal(screen.getByLabelText("Sale de").value, CAJA.nombre));
   fireEvent.change(screen.getByLabelText("Va a"), { target: { value: CAJA_JUAN.cuenta } });
   fireEvent.change(screen.getByLabelText("Importe"), { target: { value: "1.500,50" } });
   fireEvent.click(screen.getByRole("button", { name: "Pasar la plata" }));
