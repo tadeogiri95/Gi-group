@@ -11,7 +11,7 @@
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige).
 import { NextResponse } from "next/server";
-import { sbGet, sbGetAll } from "../../../lib/sbHelpers";
+import { sbGet, sbGetAll, sbRpc } from "../../../lib/sbHelpers";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { hoyAr, inicioMes } from "../../../lib/finanzasOperaciones";
 import { feriadosFinanzas } from "../../../lib/finanzasDiasHabiles";
@@ -42,7 +42,7 @@ export async function GET(request) {
     const tesoreria = await leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,activa`);
     const lista = encodeURIComponent(tesoreria.map((t) => `"${String(t.cuenta).replace(/"/g, "")}"`).join(","));
     const cuentasPf = tesoreria.filter((t) => t.tipo === "plazo_fijo").map((t) => t.cuenta);
-    const [ops, revisar, ordenes, cheques, planificacion, mantenimientos, fallas, gastos, plazos, opsPlazos, recibidas, quitados, libro] = await Promise.all([
+    const [ops, revisar, ordenes, cheques, planificacion, mantenimientos, fallas, gastos, plazos, opsPlazos, recibidas, quitados, libro, sinPlan] = await Promise.all([
       tesoreria.length ? leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&or=(cuenta_debe.in.(${lista}),cuenta_haber.in.(${lista}))&select=fecha,total,total_ars,cuenta_debe,cuenta_haber,estado&order=fecha.asc`, 100000) : [],
       leer(sesion, `fin_operaciones?empresa_id=eq.${e}&estado=eq.para_revisar&anulada_at=is.null&select=id,origen,total`, 2000),
       leerSiHay(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&estado=in.(borrador,para_aprobar,aprobada,rechazada)&select=id,estado,total`),
@@ -58,6 +58,8 @@ export async function GET(request) {
       config(e, CLAVE_QUITADOS),
       // Etapa 7: lo cargado a mano en el libro de Google (lo deja el script)
       config(e, CLAVE_LIBRO_FIN),
+      // Migración 193: cuentas usadas que no están en el plan (sin la migración, nada)
+      sbRpc("fin_cuentas_sin_plan", { p_empresa: e }, { sesion, silent: true, fallback: [] }),
     ]);
     const confirmadas = ops.filter((o) => o.estado !== "para_revisar");
     const totales = totalesTesoreria(saldosTesoreria(confirmadas, tesoreria));
@@ -77,6 +79,7 @@ export async function GET(request) {
       costos: costos.length, costosTotal: costos.reduce((s, c) => s + c.costo, 0),
       sinFactura: recibidas.filter(faltaFacturaOc).length,
       libroManual: Number(libro?.manuales?.total) || 0,
+      cuentasSinPlan: Array.isArray(sinPlan) ? sinPlan : [],
       plazosVencidos: guardados.length ? vencidosPendientes(guardados, opsPlazos, cuentasPf, hoy).length : 0,
     });
     return NextResponse.json({
