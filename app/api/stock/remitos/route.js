@@ -37,6 +37,7 @@ import { comprobanteValido } from "../../../lib/finanzasMiCaja";
 import { MAX_ARCHIVO_B64, claveProveedor, filasAsociacion } from "../../../lib/facturasSueltas";
 import { ErrorIa, leerDocumentoIa } from "../../../lib/facturaIa";
 import { avisoIngresoRepetido, buscarIngresoRepetido } from "../../../lib/stockIngresos";
+import { avisoFaltaProveedor, faltaColumna192, proveedorDeLista } from "../../../lib/elegirDeLista";
 import {
   ESQUEMA_REMITO, PROMPT_REMITO, avisoOrden, borradorRemito, faltaParaConfirmar, ingresosDeRemito, ordenParaRecibir, validarRemito,
 } from "../../../lib/remitosStock";
@@ -170,6 +171,13 @@ async function alStock(sesion, fila, d) {
   const e = sesion.empresa_id;
   const falta = faltaParaConfirmar(fila);
   if (falta) return NextResponse.json({ error: falta }, { status: 400 });
+  // Etapa 2 (14/11, migración 192): el proveedor tiene que ser uno de la lista
+  if (fila.proveedor || d.proveedor_id) {
+    const proveedores = (await sbGet(`proveedores?empresa_id=eq.${e}&select=id,nombre,activo,unido_a`, { silent: true, fallback: [] })) || [];
+    const prov = proveedorDeLista({ id: d.proveedor_id, nombre: fila.proveedor }, proveedores);
+    if (!prov) return NextResponse.json({ error: avisoFaltaProveedor(fila.proveedor), falta_proveedor: true }, { status: 400 });
+    fila = { ...fila, proveedor: String(prov.nombre).slice(0, 120), proveedor_id: Number(prov.id) };
+  }
   if (!d.forzar) {
     const repetido = await buscarIngresoRepetido(sbGet, e, { proveedor: fila.proveedor, comprobante: fila.numero });
     if (repetido) return NextResponse.json({ error: avisoIngresoRepetido(repetido), repetido: true }, { status: 409 });
@@ -178,14 +186,25 @@ async function alStock(sesion, fila, d) {
   const articulos = (await sbGet(`articulos_stock?empresa_id=eq.${e}&sku=in.${enLista(skus)}&select=sku,nombre,unidad,division`)) || [];
   const nombre = await nombreDe(sesion);
   const ahora = new Date().toISOString();
-  const [remito] = fila.id
-    ? (await sbPatch(`remitos_stock?id=eq.${fila.id}&empresa_id=eq.${e}&estado=eq.para_revisar`, {
-      proveedor: fila.proveedor, numero: fila.numero, fecha: fila.fecha, notas: fila.notas, renglones: fila.renglones,
-      estado: "confirmado", revisado_por_nombre: nombre, revisado_at: ahora,
-    })) || []
-    : (await sbPost("remitos_stock", { ...fila, empresa_id: e, estado: "confirmado", revisado_por_nombre: nombre, revisado_at: ahora })) || [];
+  const guardarRemito = (conId) => {
+    const prov = conId && fila.proveedor_id ? { proveedor_id: fila.proveedor_id } : {};
+    const { proveedor_id: _sacar, ...sinId } = fila;
+    return fila.id
+      ? sbPatch(`remitos_stock?id=eq.${fila.id}&empresa_id=eq.${e}&estado=eq.para_revisar`, {
+        proveedor: fila.proveedor, ...prov, numero: fila.numero, fecha: fila.fecha, notas: fila.notas, renglones: fila.renglones,
+        estado: "confirmado", revisado_por_nombre: nombre, revisado_at: ahora,
+      })
+      : sbPost("remitos_stock", { ...sinId, ...prov, empresa_id: e, estado: "confirmado", revisado_por_nombre: nombre, revisado_at: ahora });
+  };
+  // Sin la migración 192 se guarda como antes (sin proveedor_id)
+  let con192 = true;
+  const [remito] = (await guardarRemito(true).catch((err) => {
+    if (!faltaColumna192(err)) throw err;
+    con192 = false;
+    return guardarRemito(false);
+  })) || [];
   if (!remito) return NextResponse.json({ error: "Ese remito ya se revisó" }, { status: 409 });
-  const filas = ingresosDeRemito({ ...remito, empresa_id: e }, articulos, { empleado_id: sesion.empleado_id, legajo: sesion.legajo, empleado_nombre: nombre });
+  const filas = ingresosDeRemito({ ...remito, empresa_id: e, proveedor_id: con192 ? fila.proveedor_id : null }, articulos, { empleado_id: sesion.empleado_id, legajo: sesion.legajo, empleado_nombre: nombre });
   await sbPost("movimientos_stock", filas);
   await recordar(e, remito, nombre);
   broadcastRefresh(e, "movimientos_stock");

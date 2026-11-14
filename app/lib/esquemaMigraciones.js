@@ -108,6 +108,7 @@ export const MIGRACIONES = [
   { n: 189, archivo: "189_cheques_id_banco.sql", nombre: "Finanzas: listado de e-cheq del banco (Id. Cheque)", tablas: { fin_cheques: ["id_banco"] } },
   { n: 190, archivo: "190_meses_cerrados.sql", nombre: "Finanzas: cerrar y reabrir meses", tablas: { fin_meses_cerrados: ["mes", "cerrado", "historial"] } },
   { n: 191, archivo: "191_agenda_unica.sql", nombre: "Agenda única: clientes, proveedores y empleados", tablas: { fin_personas: ["empleado_id"] } },
+  { n: 192, archivo: "192_elegir_de_la_lista.sql", nombre: "Elegir proveedor y cliente de la lista", tablas: { movimientos_stock: ["proveedor_id"], remitos_stock: ["proveedor_id"], fin_cheques: ["cliente_id"] } },
 ];
 
 /** Lo que pide una migración, como lista de { tabla, columnas } y funciones. */

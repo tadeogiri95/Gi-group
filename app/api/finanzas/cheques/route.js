@@ -11,6 +11,9 @@
 //       movimiento igual (13/11), 409 con los repetidos: usar_operacion = id
 //       une el cheque a ese movimiento sin cargar otro; confirmar_repetido
 //       carga uno nuevo igual.
+//   POST { accion: "cliente", id, cliente_id } → el cliente que dio un
+//       cheque de terceros (migración 192); sus movimientos pasan a su
+//       cuenta corriente. cliente_id null lo suelta.
 //   POST { accion: "copiar_libro", filas } → los vivos de R-CHEQUES, sin
 //       operación (ya están en el libro). Los ya copiados no se repiten.
 //
@@ -25,6 +28,7 @@ import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { ESTADOS_CHEQUE, TIPOS_CHEQUE, cambioDeEstado, operacionAlta, validarCheque } from "../../../lib/finanzasCheques";
 import { hoyAr } from "../../../lib/finanzasOperaciones";
 import { frenoRepetidos, repetidosEnBase } from "../../../lib/finanzasRepetidosServidor";
+import { clienteDeLista, faltaColumna192 } from "../../../lib/elegirDeLista";
 
 const MAX_COPIAR = 2000;
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
@@ -41,12 +45,13 @@ async function nombreEmpleado(sesion) {
 
 async function contexto(sesion) {
   const e = sesion.empresa_id;
-  const [cuentas, tesoreria, proveedores] = await Promise.all([
+  const [cuentas, tesoreria, proveedores, clientes] = await Promise.all([
     leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre,activa&order=codigo.asc`),
     leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,activa&order=nombre.asc`),
     leer(sesion, `proveedores?empresa_id=eq.${e}&select=id,nombre,activo&order=nombre.asc,id.asc`),
+    leer(sesion, `fin_clientes?empresa_id=eq.${e}&select=id,nombre,alias,activo,unido_a&order=nombre.asc,id.asc`).catch(() => []),
   ]);
-  return { cuentas, tesoreria, proveedores };
+  return { cuentas, tesoreria, proveedores, clientes: clientes || [] };
 }
 
 function error(err, donde) {
@@ -79,7 +84,13 @@ async function crear(sesion, d) {
   if (errores.length) return NextResponse.json({ error: errores[0], errores }, { status: 400 });
   const ahora = new Date().toISOString();
   const quien = await nombreEmpleado(sesion);
-  const [fila] = (await sbPost("fin_cheques", { ...cheque, empresa_id: e, origen: "manual", cargado_por_nombre: quien, created_at: ahora, updated_at: ahora }, { sesion })) || [];
+  const nuevo = { ...cheque, empresa_id: e, origen: "manual", cargado_por_nombre: quien, created_at: ahora, updated_at: ahora };
+  const [fila] = (await sbPost("fin_cheques", nuevo, { sesion }).catch((err) => {
+    // Sin la migración 192 el cheque se guarda igual, con el nombre del cliente
+    if (!("cliente_id" in nuevo) || !faltaColumna192(err)) throw err;
+    const { cliente_id: _c, ...sin } = nuevo;
+    return sbPost("fin_cheques", sin, { sesion });
+  })) || [];
   if (!fila?.id) return NextResponse.json({ error: "No se pudo guardar el cheque" }, { status: 500 });
   const fecha = fila.fecha_emision || hoyAr();
   const { op, error: sinCuentas } = operacionAlta(fila, ctx.cuentas, fecha);
@@ -146,6 +157,32 @@ async function cambiar(sesion, d) {
   return NextResponse.json({ ok: true, cheque: final });
 }
 
+async function asignarCliente(sesion, d) {
+  const e = sesion.empresa_id;
+  const id = Number(d.id);
+  if (!(id > 0)) return NextResponse.json({ error: "Falta el cheque" }, { status: 400 });
+  const [ch] = (await leer(sesion, `fin_cheques?id=eq.${id}&empresa_id=eq.${e}&select=id,clase,recibido_de&limit=1`)) || [];
+  if (!ch) return NextResponse.json({ error: "No encontré el cheque" }, { status: 404 });
+  if (ch.clase !== "tercero") return NextResponse.json({ error: "Solo los cheques recibidos tienen cliente" }, { status: 400 });
+  const ctx = await contexto(sesion);
+  const cliente = d.cliente_id ? clienteDeLista({ id: d.cliente_id }, ctx.clientes) : null;
+  if (d.cliente_id && !cliente) return NextResponse.json({ error: "Ese cliente no está en la lista" }, { status: 400 });
+  const ahora = new Date().toISOString();
+  const cambios = { cliente_id: cliente ? Number(cliente.id) : null, updated_at: ahora, ...(cliente ? { recibido_de: String(cliente.nombre).slice(0, 120) } : {}) };
+  let final;
+  try {
+    [final] = (await sbPatch(`fin_cheques?id=eq.${id}&empresa_id=eq.${e}`, cambios, { sesion })) || [];
+  } catch (err) {
+    if (faltaColumna192(err)) return NextResponse.json({ error: "Para elegir el cliente del cheque falta correr la migración 192 en Supabase.", falta_migracion: 192 }, { status: 409 });
+    throw err;
+  }
+  // Sus movimientos (alta, depósito, rechazo) pasan a la cuenta corriente del cliente
+  await sbPatch(`fin_operaciones?empresa_id=eq.${e}&origen=eq.cheque&origen_id=like.${id}:*&proveedor_id=is.null`, { cliente_id: cambios.cliente_id, updated_at: ahora }, { sesion });
+  broadcastRefresh(e, "fin_cheques");
+  broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, cheque: final || { ...ch, ...cambios } });
+}
+
 async function copiarLibro(sesion, d) {
   const e = sesion.empresa_id;
   const lista = Array.isArray(d.filas) ? d.filas : [];
@@ -168,7 +205,9 @@ async function copiarLibro(sesion, d) {
     if (!(importe > 0) || importe >= 1e13 || !FECHA.test(String(f.fecha_pago || ""))) return NextResponse.json({ error: `Fila ${i + 1}: revisá el importe y la fecha de pago` }, { status: 400 });
     const proveedorId = f.proveedor_id && ids.has(Number(f.proveedor_id)) ? Number(f.proveedor_id) : null;
     const t = (v, n) => (v ? String(v).replace(/\s+/g, " ").trim().slice(0, n) || null : null);
+    const cliente = f.clase === "tercero" ? clienteDeLista({ nombre: f.librador }, ctx.clientes) : null;
     nuevas.push({
+      cliente_id: cliente ? Number(cliente.id) : null,
       empresa_id: e, origen: "libro", referencia: ref, clase: f.clase, tipo: f.tipo, estado: f.estado,
       banco: t(f.banco, 60), numero: t(f.numero, 40), librador: t(f.librador, 120), beneficiario: t(f.beneficiario, 120),
       proveedor_id: proveedorId, entregado_a: t(f.entregado_a, 120), recibido_de: f.clase === "tercero" ? t(f.librador, 120) : null,
@@ -178,7 +217,14 @@ async function copiarLibro(sesion, d) {
     });
     ya.add(ref);
   }
-  for (let i = 0; i < nuevas.length; i += 500) await sbPost("fin_cheques", nuevas.slice(i, i + 500), { sesion });
+  // Cada cheque recibido queda ligado a su cliente (migración 192; sin ella, solo el nombre)
+  for (let i = 0; i < nuevas.length; i += 500) {
+    const tanda = nuevas.slice(i, i + 500);
+    await sbPost("fin_cheques", tanda, { sesion }).catch((err) => {
+      if (!faltaColumna192(err)) throw err;
+      return sbPost("fin_cheques", tanda.map(({ cliente_id: _c, ...x }) => x), { sesion });
+    });
+  }
   broadcastRefresh(e, "fin_cheques");
   return NextResponse.json({ ok: true, copiados: nuevas.length, repetidos: lista.length - nuevas.length });
 }
@@ -192,6 +238,7 @@ export async function POST(request) {
   try {
     if (d?.accion === "crear") return await crear(sesion, d);
     if (d?.accion === "cambiar") return await cambiar(sesion, d);
+    if (d?.accion === "cliente") return await asignarCliente(sesion, d);
     if (d?.accion === "copiar_libro") return await copiarLibro(sesion, d);
     return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
   } catch (err) {

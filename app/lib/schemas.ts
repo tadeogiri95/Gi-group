@@ -366,6 +366,7 @@ export const movimientoStockBody = z.discriminatedUnion("accion", [
     cantidad: cantidadMovimiento,
     ot: otSuelto.nullable().optional().transform((v) => v || null),
     proveedor: textoSuelto(120),
+    proveedor_id: z.number().int().positive().optional(),
     comprobante: textoSuelto(60),
     precio_unitario: z.number().finite().min(0).max(1e11).nullable().optional().transform((v) => v ?? null),
     notas: textoSuelto(300),

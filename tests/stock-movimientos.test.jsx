@@ -100,6 +100,7 @@ function mockRuta({ articulo = TABLILLA, ot = [{ ot: "M-7495" }], mov = null, fa
     { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
     { match: (u) => u.includes("/rest/v1/articulos_stock"), respond: () => ({ status: 200, body: articulo ? [articulo] : [] }) },
     { match: (u) => u.includes("/rest/v1/proyectos"), respond: () => ({ status: 200, body: ot }) },
+    { match: (u) => u.includes("/rest/v1/proveedores"), respond: () => ({ status: 200, body: [{ id: 4, nombre: "ALUAR S.A.", activo: true }] }) },
     { match: (u) => u.includes("/rest/v1/empleados"), respond: () => ({ status: 200, body: [{ nombre: "Juan Pérez" }] }) },
     {
       match: (u) => u.includes("/rest/v1/movimientos_stock"),
@@ -147,8 +148,12 @@ test("/api/stock/movimientos — el operario no carga ingresos; la oficina sí",
   assert.equal(escrito.length, 0);
   res = await api.POST(req(await token("administrativo"), ingreso));
   assert.equal(res.status, 200);
-  assert.equal(escrito[0].body.proveedor, "Aluar");
+  assert.equal(escrito[0].body.proveedor, "ALUAR S.A.", "el nombre de la lista (etapa 2)");
+  assert.equal(escrito[0].body.proveedor_id, 4);
   assert.equal(escrito[0].body.precio_unitario, 1500);
+  res = await api.POST(req(await token("administrativo"), { ...ingreso, proveedor: "Aluarr" }));
+  assert.equal(res.status, 400, "un proveedor que no está en la lista no entra");
+  assert.match((await res.json()).error, /no está en la lista de proveedores/);
 });
 
 test("/api/stock/movimientos — artículo u OT que no existen, y la migración que falta", async () => {

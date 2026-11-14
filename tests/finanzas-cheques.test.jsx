@@ -57,14 +57,30 @@ test("cuentas — se buscan por nombre; el banco del cheque va a su cuenta en pe
   assert.equal(cuentaBancoDe("Bancor", TESORERIA), null);
 });
 
-test("nuevo cheque — el propio pide proveedor y sale del Credicoop; el recibido pide de quién", () => {
+test("nuevo cheque — el propio pide proveedor y sale del Credicoop; el recibido pide el cliente", () => {
   const p = validarCheque({ clase: "propio", tipo: "echeq_diferido", importe: 1000, fecha_pago: "2026-11-20", proveedor_id: 5 }, CTX);
   assert.deepEqual(p.errores, []);
   assert.deepEqual([p.cheque.banco, p.cheque.cuenta_banco, p.cheque.beneficiario, p.cheque.estado], ["Credicoop", "01.01.01.003.002", "ANTONIO F PEPERMANS SA", "pendiente"]);
   assert.match(validarCheque({ clase: "propio", tipo: "echeq_diferido", importe: 1000, fecha_pago: "2026-11-20" }, CTX).errores.join(), /proveedor/);
-  assert.match(validarCheque({ clase: "tercero", tipo: "cheque_fisico", banco: "Bancor", importe: 1000, fecha_pago: "2026-11-20" }, CTX).errores.join(), /de quién/);
+  assert.match(validarCheque({ clase: "tercero", tipo: "cheque_fisico", banco: "Bancor", importe: 1000, fecha_pago: "2026-11-20" }, CTX).errores.join(), /cliente/);
   assert.match(validarCheque({ clase: "tercero", tipo: "cheque_fisico", banco: "Bancor", importe: 0, recibido_de: "X" }, CTX).errores.join(), /importe.*fecha de pago/);
   assert.equal(validarCheque({ clase: "tercero", tipo: "cheque_fisico", banco: "Bancor", importe: 5, fecha_pago: "2026-11-20", recibido_de: "Cliente" }, CTX).cheque.estado, "en_cartera");
+});
+
+test("cliente del cheque (etapa 2) — se elige de la lista y sus movimientos suman en su cuenta corriente", () => {
+  const CLIENTES = [{ id: 7, nombre: "Municipalidad de Rio Ceballos", activo: true }, { id: 8, nombre: "Muni Rio Ceballos", unido_a: 7 }];
+  const r = validarCheque({ clase: "tercero", tipo: "cheque_fisico", banco: "Bancor", importe: 5, fecha_pago: "2026-11-20", cliente_id: 8 }, { ...CTX, clientes: CLIENTES });
+  assert.deepEqual(r.errores, []);
+  assert.deepEqual([r.cheque.cliente_id, r.cheque.recibido_de], [7, "Municipalidad de Rio Ceballos"], "el unido va al que quedó");
+  assert.match(validarCheque({ clase: "tercero", tipo: "cheque_fisico", banco: "Bancor", importe: 5, fecha_pago: "2026-11-20", cliente_id: 99 }, { ...CTX, clientes: CLIENTES }).errores.join(), /no está en la lista/);
+  assert.equal("cliente_id" in validarCheque({ clase: "tercero", tipo: "cheque_fisico", banco: "Bancor", importe: 5, fecha_pago: "2026-11-20", recibido_de: "Otro" }, CTX).cheque, false, "sin cliente no manda la columna nueva");
+  const ch = { ...TERCERO, cliente_id: 7 };
+  assert.equal(operacionAlta(ch, CUENTAS, "2026-11-01").op.cliente_id, 7);
+  assert.equal(cambioDeEstado(ch, "depositado", { fecha: "2026-11-20", cuenta_banco: "01.01.01.003.004" }, CTX).op.cliente_id, 7);
+  assert.equal(cambioDeEstado(ch, "rechazado", { fecha: "2026-11-21" }, CTX).op.cliente_id, 7);
+  const ent = cambioDeEstado(ch, "entregado", { fecha: "2026-11-12", proveedor: PROVEEDORES[1] }, CTX).op;
+  assert.deepEqual([ent.proveedor_id, "cliente_id" in ent], [6, false], "entregado es del proveedor");
+  assert.equal("cliente_id" in operacionAlta(TERCERO, CUENTAS, "2026-11-01").op, false);
 });
 
 test("alta — propio: Proveedores contra E-cheq diferidos; recibido: Valores contra el cliente", () => {
@@ -190,6 +206,7 @@ function mockApi({ cheques = [PROPIO, TERCERO], sin174 = false, libro = [], enBa
     { match: (u) => u.includes("/rest/v1/fin_cuentas"), respond: () => ({ status: 200, body: CUENTAS }) },
     { match: (u) => u.includes("/rest/v1/fin_tesoreria"), respond: () => ({ status: 200, body: TESORERIA }) },
     { match: (u) => u.includes("/rest/v1/proveedores"), respond: () => ({ status: 200, body: PROVEEDORES }) },
+    { match: (u) => u.includes("/rest/v1/fin_clientes"), respond: () => ({ status: 200, body: [{ id: 7, nombre: "Municipalidad de Rio Ceballos", activo: true }] }) },
   ]);
   return { escrito, leido };
 }
@@ -218,6 +235,25 @@ test("/api/finanzas/cheques — crear un propio guarda el cheque y su operación
   mockApi({ cheques: [] });
   const mal = await pedir("gerencial", "POST", { accion: "crear", cheque: { clase: "propio", tipo: "echeq_diferido", importe: 1000, fecha_pago: "2026-12-09" } });
   assert.equal(mal.status, 400);
+});
+
+test("/api/finanzas/cheques — cliente (etapa 2): el recibido se liga a su cliente y sus movimientos pasan a su cuenta corriente", async () => {
+  let { escrito } = mockApi({ cheques: [] });
+  let res = await pedir("gerencial", "POST", { accion: "crear", cheque: { clase: "tercero", tipo: "cheque_fisico", banco: "Bancor", importe: 500, fecha_emision: "2026-11-09", fecha_pago: "2026-12-09", cliente_id: 7 } });
+  assert.equal(res.status, 200);
+  assert.deepEqual([escrito[0].body.cliente_id, escrito[0].body.recibido_de], [7, "Municipalidad de Rio Ceballos"]);
+  assert.equal(escrito[1].body.cliente_id, 7, "el cobro suma en la cuenta corriente del cliente");
+
+  ({ escrito } = mockApi());
+  res = await pedir("gerencial", "POST", { accion: "cliente", id: 11, cliente_id: 7 });
+  assert.equal(res.status, 200);
+  assert.equal(escrito[0].body.cliente_id, 7);
+  assert.match(decodeURIComponent(escrito[1].url), /fin_operaciones\?.*origen=eq\.cheque&origen_id=like\.11:\*&proveedor_id=is\.null/);
+  assert.equal(escrito[1].body.cliente_id, 7);
+  mockApi();
+  assert.equal((await pedir("gerencial", "POST", { accion: "cliente", id: 10, cliente_id: 7 })).status, 400, "un propio no tiene cliente");
+  mockApi();
+  assert.equal((await pedir("gerencial", "POST", { accion: "cliente", id: 11, cliente_id: 99 })).status, 400);
 });
 
 test("/api/finanzas/cheques — debitado: el cambio solo vale si el cheque sigue igual, y genera su operación", async () => {

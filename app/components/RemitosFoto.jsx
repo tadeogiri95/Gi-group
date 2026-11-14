@@ -12,7 +12,9 @@
 // para elegir de un toque. "✍ Cargar a mano" arma el remito sin foto,
 // eligiendo los artículos del MRP.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../lib/supabase";
+import { apiFetch, sbGetAll } from "../lib/supabase";
+import { proveedorDeLista } from "../lib/elegirDeLista";
+import BotonNuevaPersona from "./AltaPersona";
 import { sugerirArticulos } from "../lib/stock";
 import { COMO_ARTICULO, parecidosArticulo } from "../lib/remitosStock";
 import BotonFoto from "./BotonFoto";
@@ -69,6 +71,15 @@ export default function RemitosFoto({ articulos = [], onIngreso, onAbierto }) {
   const [error, setError] = useState(null);
   const [hecho, setHecho] = useState(null);
   const porSku = useMemo(() => new Map(articulos.map((a) => [a.sku, a])), [articulos]);
+  // 14/11: el proveedor se elige de la lista de Compras (➕ si no está)
+  const [proveedores, setProveedores] = useState([]);
+  const abierto = !!ed;
+  const [pedidos, setPedidos] = useState(false);
+  useEffect(() => {
+    if (!abierto || pedidos) return;
+    setPedidos(true);
+    sbGetAll("proveedores?activo=eq.true&select=id,nombre,activo,unido_a&order=nombre.asc", { maxFilas: 5000 }).then((r) => setProveedores(r.data || [])).catch(() => {});
+  }, [abierto, pedidos]);
 
   const cargar = useCallback(async () => {
     try {
@@ -208,7 +219,18 @@ export default function RemitosFoto({ articulos = [], onIngreso, onAbierto }) {
       {avisos.map((a) => <div key={a} role="alert" className="p-2 mb-2 rounded-lg bg-gypi-amber/15 text-gypi-amber-ink text-[13px]">⚠ {a}</div>)}
 
       <label className="g-label" htmlFor="rem-proveedor">Proveedor</label>
-      <input id="rem-proveedor" className="g-input w-full mb-2" value={ed.proveedor} onChange={cambiar("proveedor")} maxLength={120} />
+      <input id="rem-proveedor" className="g-input w-full mb-2" list="rem-proveedores" value={ed.proveedor} onChange={cambiar("proveedor")} maxLength={120} placeholder="Escribí para buscar" />
+      <datalist id="rem-proveedores">{proveedores.map((p) => <option key={p.id} value={p.nombre} />)}</datalist>
+      {ed.proveedor.trim() && proveedores.length > 0 && !proveedorDeLista({ nombre: ed.proveedor }, proveedores) && (
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <span className="text-[12px] text-gypi-amber-ink">No está en la lista de proveedores: elegilo de la lista o dalo de alta.</span>
+          <BotonNuevaPersona rol="proveedor" nombre={ed.proveedor.trim()}
+            onCreada={(p) => {
+              setProveedores((x) => [...x, { id: p.proveedor_id, nombre: p.nombre }]);
+              setEd((x) => ({ ...x, proveedor: p.nombre }));
+            }}>➕ Dar de alta como proveedor</BotonNuevaPersona>
+        </div>
+      )}
       <div className="flex gap-2">
         <div className="flex-1 min-w-0">
           <label className="g-label" htmlFor="rem-numero">N° de remito</label>

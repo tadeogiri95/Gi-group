@@ -81,6 +81,7 @@ export function ingresosDeFactura(factura, renglones = [], articulos = [], quien
       cantidad: Number(r.cantidad),
       ot: null,
       proveedor: String(factura.proveedor).slice(0, 120),
+      ...(factura.proveedor_id ? { proveedor_id: Number(factura.proveedor_id) } : {}),
       comprobante: factura.numero ? String(factura.numero).slice(0, 60) : null,
       precio_unitario: precioArs(r.precio, factura.moneda, factura.tipo_cambio),
       notas: marcaFacturaSuelta(factura.id),

@@ -263,6 +263,7 @@ export function ingresosDeRemito(remito, articulos = [], quien = {}) {
       cantidad: r.cantidad,
       ot: null,
       proveedor: remito.proveedor ? String(remito.proveedor).slice(0, 120) : null,
+      ...(remito.proveedor_id ? { proveedor_id: Number(remito.proveedor_id) } : {}),
       comprobante: remito.numero ? String(remito.numero).slice(0, 60) : null,
       precio_unitario: null,
       notas: marcaRemito(remito.id),

@@ -65,6 +65,7 @@ function mockApi({ factura = FACTURA, renglones = RENGLONES, yaEnStock = false, 
     { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
     { match: (u) => u.includes("/rest/v1/empleados?"), respond: () => ({ status: 200, body: [{ nombre: "Ana" }] }) },
     { match: (u) => u.includes("/rest/v1/articulos_stock"), respond: () => ({ status: 200, body: [{ ...ARTICULOS[0], activo: true }] }) },
+    { match: (u) => u.includes("/rest/v1/proveedores?"), respond: () => ({ status: 200, body: [{ id: 3, nombre: "Faplac", activo: true }] }) },
     { match: (u) => u.includes("/rest/v1/facturas_sueltas_renglones"), respond: () => ({ status: 200, body: renglones }) },
     {
       match: (u) => u.includes("/rest/v1/facturas_sueltas?"),

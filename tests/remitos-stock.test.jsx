@@ -84,7 +84,9 @@ const PENDIENTE = {
   cargado_por: OTRO, cargado_por_nombre: "Juan", created_at: "2026-11-11T10:00:00Z",
 };
 
-function mockApi({ remito = PENDIENTE, repetido = null, ordenes = [], items = [], anthropic = null, sinTabla = false } = {}) {
+const PROVEEDORES = [{ id: 3, nombre: "Faplac S.A.", activo: true }];
+
+function mockApi({ remito = PENDIENTE, repetido = null, ordenes = [], items = [], anthropic = null, sinTabla = false, proveedores = PROVEEDORES } = {}) {
   const escrito = [];
   const leido = [];
   global.fetch = createFetchMock([
@@ -96,6 +98,7 @@ function mockApi({ remito = PENDIENTE, repetido = null, ordenes = [], items = []
     { match: (u) => u.includes("/rest/v1/asociaciones_articulos"), respond: (u, o) => { if (o?.method === "POST") escrito.push({ tabla: "asociaciones_articulos", body: JSON.parse(o.body) }); return { status: o?.method === "POST" ? 201 : 200, body: o?.method === "POST" ? "" : [] }; } },
     { match: (u) => u.includes("/rest/v1/ordenes_compra_items"), respond: () => ({ status: 200, body: items }) },
     { match: (u) => u.includes("/rest/v1/ordenes_compra?"), respond: () => ({ status: 200, body: ordenes }) },
+    { match: (u) => u.includes("/rest/v1/proveedores?"), respond: () => ({ status: 200, body: proveedores }) },
     { match: (u) => u === FOTO, respond: () => ({ status: 200, body: "foto" }) },
     { match: (u) => u.includes("api.anthropic.com"), respond: () => anthropic },
     {
@@ -178,10 +181,20 @@ test("/api/stock/remitos confirmar — la oficina corrige, confirma y queda reco
   assert.match(patch.url, /estado=eq\.para_revisar/, "solo uno que sigue para revisar (no se confirma dos veces)");
   assert.equal(patch.body.estado, "confirmado");
   const ingresos = escrito.find((x) => x.tabla === "movimientos_stock").body;
-  assert.deepEqual(ingresos.map((f) => [f.sku, f.cantidad, f.proveedor, f.comprobante]), [["1.10", 10, "FAPLAC", "0001-00004567"], ["4.20", 2, "FAPLAC", "0001-00004567"]]);
+  assert.deepEqual(ingresos.map((f) => [f.sku, f.cantidad, f.proveedor, f.proveedor_id, f.comprobante]), [["1.10", 10, "Faplac S.A.", 3, "0001-00004567"], ["4.20", 2, "Faplac S.A.", 3, "0001-00004567"]], "el proveedor de la lista (etapa 2)");
+  assert.equal(patch.body.proveedor_id, 3);
   const memoria = escrito.find((x) => x.tabla === "asociaciones_articulos").body;
   assert.ok(memoria.some((m) => m.tipo === "texto" && m.sku === "4.20"), "el próximo remito de FAPLAC reconoce los tornillos solo");
   assert.equal((await pedir("operativo", { accion: "confirmar", id: 5 })).status, 403);
+});
+
+test("/api/stock/remitos confirmar — un proveedor que no está en la lista no entra (etapa 2)", async () => {
+  const { escrito } = mockApi({ proveedores: [{ id: 4, nombre: "Otro", activo: true }] });
+  const r = await pedir("gerencial", { accion: "confirmar", id: 5, renglones: [PENDIENTE.renglones[0]] });
+  const d = await r.json();
+  assert.deepEqual([r.status, d.falta_proveedor], [400, true]);
+  assert.match(d.error, /FAPLAC" no está en la lista de proveedores/);
+  assert.equal(escrito.length, 0);
 });
 
 test("/api/stock/remitos — un comprobante que ya entró avisa; con forzar entra igual", async () => {
