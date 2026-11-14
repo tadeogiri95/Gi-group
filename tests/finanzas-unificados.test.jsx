@@ -5,7 +5,7 @@ import { test, before, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
-import { cuentasUnificadas, leerPares, operacionCompensacion, sugerirPares } from "../app/lib/finanzasUnificados.js";
+import { cuentasUnificadas, juntarPares, leerPares, operacionCompensacion, sugerirPares } from "../app/lib/finanzasUnificados.js";
 import { efectoCliente } from "../app/lib/finanzasClientes.js";
 import { efectoDeuda } from "../app/lib/finanzasProveedores.js";
 
@@ -150,4 +150,9 @@ test("Cliente y proveedor — muestra el neto, une lo sugerido y compensa", asyn
   fireEvent.click(screen.getByRole("button", { name: "Compensar" }));
   await waitFor(() => assert.equal(enviados[1]?.accion, "compensar"));
   assert.deepEqual([enviados[1].cliente_id, enviados[1].importe], [1, 400]);
+});
+
+test("Unificados — los pares de la agenda se suman a los guardados sin pisarlos", () => {
+  assert.deepEqual(juntarPares([{ cliente_id: 1, proveedor_id: 10 }], [{ cliente_id: 1, proveedor_id: 11, persona_id: 5 }, { cliente_id: 2, proveedor_id: 12, persona_id: 6 }]),
+    [{ cliente_id: 1, proveedor_id: 10 }, { cliente_id: 2, proveedor_id: 12 }]);
 });

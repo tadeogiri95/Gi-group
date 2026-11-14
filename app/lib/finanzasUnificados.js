@@ -38,6 +38,15 @@ export function leerPares(valor) {
   return out;
 }
 
+/**
+ * Los pares guardados más los de la agenda (una persona cliente y proveedor,
+ * migración 191), uno con uno: si un cliente o un proveedor ya está en un
+ * par guardado, manda ese.
+ */
+export function juntarPares(guardados = [], deAgenda = []) {
+  return leerPares({ pares: [...guardados, ...deAgenda.map((p) => ({ cliente_id: p.cliente_id, proveedor_id: p.proveedor_id }))] });
+}
+
 /** Clientes y proveedores con el mismo CUIT o el mismo nombre, que todavía no están unidos. */
 export function sugerirPares(clientes = [], proveedores = [], pares = []) {
   const usadosC = new Set(pares.map((p) => p.cliente_id));

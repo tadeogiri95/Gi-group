@@ -1,12 +1,15 @@
 // app/lib/finanzasPersonas.js — Finanzas, parte 4 del plan del 11/11: una
 // sola agenda de clientes y proveedores (migración 180, fin_personas).
 //
-// La agenda junta tres listas sin repetir a nadie:
+// La agenda junta cuatro listas sin repetir a nadie:
 //   - las personas de la hoja PERSONAS del Plan de trabajo (se pegan una vez
 //     y se pueden volver a pegar: lo que ya está no se duplica);
 //   - los proveedores de Compras;
-//   - los clientes de Finanzas.
-// Alguien que es cliente y proveedor queda en un solo renglón con los dos.
+//   - los clientes de Finanzas;
+//   - los empleados (14/11, etapa 1 de la Agenda única, migración 191).
+// Alguien que es cliente y proveedor (o empleado) queda en un solo renglón
+// con sus roles. Desde la 191 cada proveedor, cliente y empleado tiene su
+// renglón guardado en fin_personas (paraLigar dice qué falta guardar).
 //
 // "Es el mismo" cuando el nombre tiene las mismas palabras en cualquier
 // orden y sin S.A., S.R.L., S.A.S., puntos ni tildes: "GIRI EZEQUIEL" =
@@ -73,15 +76,16 @@ export function datosFaltantes(p) {
 }
 
 /**
- * La agenda: personas, proveedores y clientes juntos, sin repetir.
- * @param {{ personas?: object[], proveedores?: object[], clientes?: object[], pares?: { cliente_id, proveedor_id }[] }} d
- * @returns {{ clave: string, nombre: string, persona_id: number|null, proveedor_id: number|null, cliente_id: number|null, cuit, telefono, email, direccion, contacto, notas, id_planilla, alias: string[] }[]}
+ * La agenda: personas, proveedores, clientes y empleados juntos, sin repetir.
+ * @param {{ personas?: object[], proveedores?: object[], clientes?: object[], empleados?: object[], pares?: { cliente_id, proveedor_id }[] }} d
+ * @returns {{ clave: string, nombre: string, persona_id: number|null, proveedor_id: number|null, cliente_id: number|null, empleado_id: string|null, cuit, telefono, email, direccion, contacto, notas, id_planilla, alias: string[] }[]}
  */
-export function armarAgenda({ personas = [], proveedores = [], clientes = [], pares = [] } = {}) {
+export function armarAgenda({ personas = [], proveedores = [], clientes = [], empleados = [], pares = [] } = {}) {
   const lista = [];
   const porClave = new Map();
   const porProveedor = new Map();
   const porCliente = new Map();
+  const porEmpleado = new Map();
   const registrar = (e, nombres) => {
     for (const n of nombres) {
       const k = clavePersona(n);
@@ -95,13 +99,14 @@ export function armarAgenda({ personas = [], proveedores = [], clientes = [], pa
     if (p.activo === false || p.unido_a) continue;
     const e = {
       clave: `a${p.id}`, nombre: p.nombre, persona_id: Number(p.id), proveedor_id: p.proveedor_id ? Number(p.proveedor_id) : null,
-      cliente_id: p.cliente_id ? Number(p.cliente_id) : null, alias: Array.isArray(p.alias) ? p.alias : [],
+      cliente_id: p.cliente_id ? Number(p.cliente_id) : null, empleado_id: p.empleado_id || null, alias: Array.isArray(p.alias) ? p.alias : [],
     };
     completar(e, p);
     lista.push(e);
     registrar(e, [p.nombre, ...e.alias]);
     if (e.proveedor_id) porProveedor.set(e.proveedor_id, e);
     if (e.cliente_id) porCliente.set(e.cliente_id, e);
+    if (e.empleado_id) porEmpleado.set(e.empleado_id, e);
   }
   const parDe = new Map(pares.map((x) => [Number(x.cliente_id), Number(x.proveedor_id)]));
   for (const p of proveedores) {
@@ -110,7 +115,7 @@ export function armarAgenda({ personas = [], proveedores = [], clientes = [], pa
     let e = porProveedor.get(id) || porClave.get(clavePersona(p.nombre));
     if (e && e.proveedor_id && e.proveedor_id !== id) e = null; // otro proveedor con nombre parecido
     if (!e) {
-      e = { clave: `p${id}`, nombre: p.nombre, persona_id: null, proveedor_id: id, cliente_id: null, alias: [] };
+      e = { clave: `p${id}`, nombre: p.nombre, persona_id: null, proveedor_id: id, cliente_id: null, empleado_id: null, alias: [] };
       lista.push(e);
       registrar(e, [p.nombre]);
     }
@@ -125,7 +130,7 @@ export function armarAgenda({ personas = [], proveedores = [], clientes = [], pa
     let e = porCliente.get(id) || porProveedor.get(parDe.get(id)) || porClave.get(clavePersona(c.nombre)) || alias.map((a) => porClave.get(clavePersona(a))).find(Boolean);
     if (e && e.cliente_id && e.cliente_id !== id) e = null;
     if (!e) {
-      e = { clave: `c${id}`, nombre: c.nombre, persona_id: null, proveedor_id: null, cliente_id: id, alias: [] };
+      e = { clave: `c${id}`, nombre: c.nombre, persona_id: null, proveedor_id: null, cliente_id: id, empleado_id: null, alias: [] };
       lista.push(e);
     }
     registrar(e, [c.nombre, ...alias]);
@@ -133,15 +138,74 @@ export function armarAgenda({ personas = [], proveedores = [], clientes = [], pa
     porCliente.set(id, e);
     completar(e, c);
   }
+  // Los empleados: se juntan solo por el nombre exacto (sin S.A. ni orden), con quien todavía no es empleado
+  for (const m of empleados) {
+    if (m.activo === false || !m.id) continue;
+    const id = String(m.id);
+    let e = porEmpleado.get(id) || porClave.get(clavePersona(m.nombre));
+    if (e && e.empleado_id && e.empleado_id !== id) e = null;
+    if (!e) {
+      e = { clave: `e${id}`, nombre: m.nombre, persona_id: null, proveedor_id: null, cliente_id: null, empleado_id: id, alias: [] };
+      lista.push(e);
+      registrar(e, [m.nombre]);
+    }
+    e.empleado_id = id;
+    porEmpleado.set(id, e);
+    completar(e, { email: m.email });
+  }
   return lista.sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), "es"));
 }
 
-/** "Proveedor y cliente", "Proveedor", "Cliente" o "Agenda". */
+/** Los roles de un renglón de la agenda: ["Proveedor", "Cliente", "Empleado"]. */
+export function rolesPersona(e) {
+  return [e?.proveedor_id && "Proveedor", e?.cliente_id && "Cliente", e?.empleado_id && "Empleado"].filter(Boolean);
+}
+
+/** "Proveedor y cliente", "Proveedor", "Cliente", "Empleado", "Cliente y empleado"… o "Agenda". */
 export function rolPersona(e) {
-  if (e.proveedor_id && e.cliente_id) return "Proveedor y cliente";
-  if (e.proveedor_id) return "Proveedor";
-  if (e.cliente_id) return "Cliente";
-  return "Agenda";
+  const r = rolesPersona(e);
+  if (!r.length) return "Agenda";
+  const texto = r.length === 1 ? r[0] : `${r.slice(0, -1).join(", ")} y ${r[r.length - 1].toLowerCase()}`;
+  return texto.charAt(0) + texto.slice(1).replace(/Cliente|Empleado/g, (x) => x.toLowerCase());
+}
+
+/**
+ * Lo que falta guardar en fin_personas para que cada proveedor, cliente y
+ * empleado tenga su renglón (migración 191): los renglones nuevos y los que
+ * tienen que apuntar a un rol que hoy solo se juntó al leer.
+ * @param {object[]} agenda armarAgenda(...)
+ * @param {object[]} personas las filas de fin_personas
+ * @param {{ conEmpleados?: boolean }} [op] sin la 191 no se guardan empleados
+ * @returns {{ nuevas: object[], cambios: { id: number, datos: object }[] }}
+ */
+export function paraLigar(agenda = [], personas = [], { conEmpleados = true } = {}) {
+  const porId = new Map(personas.map((p) => [Number(p.id), p]));
+  const nuevas = [];
+  const cambios = [];
+  for (const e of agenda) {
+    const roles = { proveedor_id: e.proveedor_id || null, cliente_id: e.cliente_id || null };
+    if (conEmpleados) roles.empleado_id = e.empleado_id || null;
+    if (!roles.proveedor_id && !roles.cliente_id && !roles.empleado_id) continue;
+    if (!e.persona_id) {
+      const fila = { nombre: String(e.nombre || "").slice(0, LARGO.nombre), alias: e.alias || [], ...roles };
+      for (const c of [...CAMPOS_PERSONA, "id_planilla"]) fila[c] = e[c] || null;
+      if (fila.nombre) nuevas.push(fila);
+      continue;
+    }
+    const p = porId.get(Number(e.persona_id));
+    if (!p) continue;
+    const datos = {};
+    for (const [k, v] of Object.entries(roles)) if (v && String(p[k] || "") !== String(v)) datos[k] = v;
+    if (Object.keys(datos).length) cambios.push({ id: Number(e.persona_id), datos });
+  }
+  return { nuevas, cambios };
+}
+
+/** Clientes que también son proveedores según la agenda (la misma persona con los dos roles). */
+export function paresDeAgenda(personas = []) {
+  return personas
+    .filter((p) => p.activo !== false && !p.unido_a && p.cliente_id && p.proveedor_id)
+    .map((p) => ({ cliente_id: Number(p.cliente_id), proveedor_id: Number(p.proveedor_id), persona_id: Number(p.id) }));
 }
 
 /**
@@ -269,7 +333,7 @@ export function planImportarPersonas(filas = [], agenda = []) {
 export function opcionesAgenda(agenda = []) {
   return agenda.map((e) => ({
     value: e.proveedor_id ? `p${e.proveedor_id}` : `n${e.nombre}`,
-    label: `${e.nombre}${e.proveedor_id && e.cliente_id ? " (proveedor y cliente)" : e.proveedor_id ? " (proveedor)" : e.cliente_id ? " (cliente)" : ""}`,
+    label: `${e.nombre}${rolesPersona(e).length ? ` (${rolPersona(e).toLowerCase()})` : ""}`,
     nombre: e.nombre,
     proveedor_id: e.proveedor_id,
   }));

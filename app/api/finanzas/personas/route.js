@@ -2,8 +2,10 @@
 // 180): la agenda única de clientes y proveedores (reglas en
 // app/lib/finanzasPersonas.js).
 //
-//   GET → la agenda (personas + proveedores + clientes, sin repetir) y los
-//       posibles repetidos para que el dueño decida.
+//   GET → la agenda (personas + proveedores + clientes + empleados, sin
+//       repetir) y los posibles repetidos para que el dueño decida. Antes de
+//       contestar guarda el renglón de cada proveedor, cliente y empleado que
+//       todavía no lo tenía (Agenda única, migración 191).
 //   POST { accion: "importar", texto, ver? } → lo pegado de la hoja PERSONAS.
 //       Con ver: true solo dice qué haría. Lo que ya está no se duplica: se le
 //       completan los datos que le faltan.
@@ -22,33 +24,81 @@ import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { CLAVE_UNIFICADOS, leerPares } from "../../../lib/finanzasUnificados";
 import {
-  CAMPOS_PERSONA, armarAgenda, leerPersonasPegadas, planImportarPersonas, posiblesRepetidos, validarPersona,
+  CAMPOS_PERSONA, armarAgenda, leerPersonasPegadas, paraLigar, planImportarPersonas, posiblesRepetidos, validarPersona,
 } from "../../../lib/finanzasPersonas";
+import { logger } from "../../../lib/logger";
 
 const COLS_PERSONA = "id,nombre,alias,cuit,telefono,email,direccion,contacto,notas,id_planilla,proveedor_id,cliente_id,activo,unido_a";
+const falta191 = (err) => /empleado_id/.test(String(err?.message)) && /does not exist|42703|PGRST20[045]|schema cache/.test(String(err?.message));
 const FALTA_180 = "Para la agenda de personas falta correr la migración 180 en Supabase.";
 const falta180 = (err) => /fin_personas/.test(String(err?.message)) && /does not exist|42P01|42703|PGRST20[045]|schema cache/.test(String(err?.message));
 const MAX_PEGADO = 400000;
 
 const leer = (sesion, path, maxFilas = 10000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data || []);
 
+/** Las filas de la agenda; sin la migración 191 (no hay empleado_id) se leen sin empleados. */
+async function leerPersonas(sesion) {
+  const ruta = (cols) => `fin_personas?empresa_id=eq.${sesion.empresa_id}&select=${cols}&order=nombre.asc,id.asc`;
+  try {
+    return { personas: await leer(sesion, ruta(`${COLS_PERSONA},empleado_id`)), con191: true };
+  } catch (err) {
+    if (!falta191(err)) throw err;
+    return { personas: await leer(sesion, ruta(COLS_PERSONA)), con191: false };
+  }
+}
+
 async function cargar(sesion) {
   const e = sesion.empresa_id;
-  const [personas, proveedores, clientes, pares] = await Promise.all([
-    leer(sesion, `fin_personas?empresa_id=eq.${e}&select=${COLS_PERSONA}&order=nombre.asc,id.asc`),
+  const [{ personas, con191 }, proveedores, clientes, empleados, pares] = await Promise.all([
+    leerPersonas(sesion),
     leer(sesion, `proveedores?empresa_id=eq.${e}&select=id,nombre,cuit,contacto,whatsapp,email,notas,activo&order=nombre.asc`),
     leer(sesion, `fin_clientes?empresa_id=eq.${e}&select=id,nombre,cuit,telefono,email,notas,alias,activo,unido_a&order=nombre.asc`).catch(() => []),
+    leer(sesion, `empleados?empresa_id=eq.${e}&activo=eq.true&select=id,nombre,email,activo&order=nombre.asc`).catch(() => []),
     sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_UNIFICADOS}&select=valor&limit=1`, { silent: true, fallback: [] }).then((r) => leerPares(r?.[0]?.valor)),
   ]);
-  return { personas, agenda: armarAgenda({ personas, proveedores, clientes, pares }) };
+  return { personas, con191, agenda: armarAgenda({ personas, proveedores, clientes, empleados: con191 ? empleados : [], pares }) };
+}
+
+/**
+ * Guarda el renglón de cada proveedor, cliente y empleado que todavía no lo
+ * tenía, y el rol de los que solo se juntaban al leer. Si dos pedidos lo
+ * hacen a la vez, la base no deja repetir (índices de la 191) y el siguiente
+ * GET lo termina. Devuelve cuántos guardó.
+ */
+async function ligar(sesion, { personas, agenda, con191 }) {
+  const { nuevas, cambios } = paraLigar(agenda, personas, { conEmpleados: con191 });
+  if (!nuevas.length && !cambios.length) return 0;
+  const e = sesion.empresa_id;
+  const ahora = new Date().toISOString();
+  let n = 0;
+  for (let i = 0; i < nuevas.length; i += 200) {
+    const parte = nuevas.slice(i, i + 200).map((f) => ({ ...f, empresa_id: e, created_at: ahora, updated_at: ahora }));
+    try {
+      await sbPost("fin_personas", parte, { sesion });
+      n += parte.length;
+    } catch (err) {
+      logger.warn("[personas] ligar nuevas", { error: err?.message });
+    }
+  }
+  for (const c of cambios) {
+    try {
+      await sbPatch(`fin_personas?id=eq.${c.id}&empresa_id=eq.${e}`, { ...c.datos, updated_at: ahora }, { sesion });
+      n++;
+    } catch (err) {
+      logger.warn("[personas] ligar cambio", { error: err?.message });
+    }
+  }
+  return n;
 }
 
 export async function GET(request) {
   const { sesion, response } = await sesionDueno(request);
   if (response) return response;
   try {
-    const { personas, agenda } = await cargar(sesion);
-    return NextResponse.json({ agenda, repetidos: posiblesRepetidos(agenda), personas_cargadas: personas.filter((p) => p.activo !== false).length });
+    let datos = await cargar(sesion);
+    if (await ligar(sesion, datos)) datos = await cargar(sesion);
+    const { personas, agenda, con191 } = datos;
+    return NextResponse.json({ agenda, repetidos: posiblesRepetidos(agenda), personas_cargadas: personas.filter((p) => p.activo !== false).length, falta_migracion: con191 ? null : 191 });
   } catch (err) {
     if (falta180(err)) return NextResponse.json({ error: FALTA_180, falta_migracion: 180 }, { status: 409 });
     return errorFinanzas(err, "personas GET");
@@ -66,6 +116,7 @@ async function asegurarPersona(sesion, entrada, datos = {}) {
     empresa_id: sesion.empresa_id, nombre: entrada.nombre, alias: datos.alias || [],
     proveedor_id: entrada.proveedor_id || null, cliente_id: entrada.cliente_id || null, created_at: ahora, updated_at: ahora,
   };
+  if (entrada.empleado_id) fila.empleado_id = entrada.empleado_id;
   for (const c of [...CAMPOS_PERSONA, "id_planilla"]) fila[c] = datos[c] ?? entrada[c] ?? null;
   const [nueva] = (await sbPost("fin_personas", fila, { sesion })) || [];
   return nueva?.id || null;
@@ -139,15 +190,20 @@ async function unir(sesion, d, agenda) {
   if (a.cliente_id && b.cliente_id && a.cliente_id !== b.cliente_id) {
     return NextResponse.json({ error: "Los dos son clientes distintos: juntalos primero en 👥 Clientes (Unir)." }, { status: 400 });
   }
+  if (a.empleado_id && b.empleado_id && a.empleado_id !== b.empleado_id) {
+    return NextResponse.json({ error: "Los dos son empleados distintos: no se pueden unir." }, { status: 400 });
+  }
   const e = sesion.empresa_id;
   const ahora = new Date().toISOString();
   const idA = await asegurarPersona(sesion, a);
   const cambios = { updated_at: ahora, alias: [...new Set([...(a.alias || []), b.nombre, ...(b.alias || [])])].filter((n) => n !== a.nombre).slice(0, 30) };
   if (!a.proveedor_id && b.proveedor_id) cambios.proveedor_id = b.proveedor_id;
   if (!a.cliente_id && b.cliente_id) cambios.cliente_id = b.cliente_id;
+  if (!a.empleado_id && b.empleado_id) cambios.empleado_id = b.empleado_id;
   for (const c of [...CAMPOS_PERSONA, "id_planilla"]) if (!a[c] && b[c]) cambios[c] = b[c];
+  // Primero el renglón que sale suelta sus roles (la base deja una sola persona por rol)
+  if (b.persona_id) await sbPatch(`fin_personas?id=eq.${b.persona_id}&empresa_id=eq.${e}`, { activo: false, unido_a: idA, proveedor_id: null, cliente_id: null, ...(b.empleado_id ? { empleado_id: null } : {}), updated_at: ahora }, { sesion });
   await sbPatch(`fin_personas?id=eq.${idA}&empresa_id=eq.${e}`, cambios, { sesion });
-  if (b.persona_id) await sbPatch(`fin_personas?id=eq.${b.persona_id}&empresa_id=eq.${e}`, { activo: false, unido_a: idA, proveedor_id: null, cliente_id: null, updated_at: ahora }, { sesion });
   broadcastRefresh(e, "finanzas");
   return NextResponse.json({ ok: true });
 }

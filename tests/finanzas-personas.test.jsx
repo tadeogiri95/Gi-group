@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
-  armarAgenda, clavePersona, leerPersonasPegadas, opcionesAgenda, planImportarPersonas, posiblesRepetidos, validarPersona, datosFaltantes,
+  armarAgenda, paraLigar, paresDeAgenda, rolPersona, clavePersona, leerPersonasPegadas, opcionesAgenda, planImportarPersonas, posiblesRepetidos, validarPersona, datosFaltantes,
 } from "../app/lib/finanzasPersonas.js";
 
 before(() => {
@@ -110,6 +110,9 @@ test("/api/finanzas/personas — solo el Dueño; importar sin repetir, guardar c
   assert.equal((await llamar("GET", null, "administrativo")).status, 403);
   const g = await (await llamar("GET")).json();
   assert.equal(g.agenda.length, 1);
+  const ligada = escrito.find((x) => x.tabla === "fin_personas" && x.metodo === "POST");
+  assert.deepEqual(ligada?.body?.map((n) => [n.nombre, n.proveedor_id]), [["ACERCO S A", 5]], "Agenda única: el proveedor sin renglón queda guardado en la agenda");
+  escrito.length = 0;
 
   const texto = "ID\tNOMBRE\tTELEFONO\n1\tGIRI EZEQUIEL\t351\n2\tEZEQUIEL GIRI\t\n3\tACERCO S.A.\t3514";
   const v = await (await llamar("POST", { accion: "importar", texto, ver: true })).json();
@@ -175,4 +178,42 @@ test("📇 Personas — busca, filtra lo que falta y guarda la ficha", async () 
   fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
   await waitFor(() => assert.equal(enviados.length, 1));
   assert.deepEqual([enviados[0].accion, enviados[0].clave, enviados[0].persona.cuit], ["guardar", "a1", "20-30111222-3"]);
+});
+
+test("Agenda única — los empleados entran y cada persona muestra sus roles", () => {
+  const agenda = armarAgenda({
+    personas: [{ id: 1, nombre: "GIRI EZEQUIEL", proveedor_id: 10 }],
+    proveedores: [{ id: 10, nombre: "Giri Ezequiel", activo: true }],
+    empleados: [{ id: "u1", nombre: "Ezequiel Giri", email: "e@g.com" }, { id: "u2", nombre: "Ana Paz" }, { id: "u3", nombre: "Baja", activo: false }],
+  });
+  assert.equal(agenda.length, 2);
+  const giri = agenda.find((e) => e.persona_id === 1);
+  assert.deepEqual([giri.proveedor_id, giri.empleado_id, giri.email], [10, "u1", "e@g.com"]);
+  assert.equal(rolPersona(giri), "Proveedor y empleado");
+  assert.equal(rolPersona({ cliente_id: 1, empleado_id: "x" }), "Cliente y empleado");
+  assert.equal(rolPersona({ proveedor_id: 1, cliente_id: 2, empleado_id: "x" }), "Proveedor, cliente y empleado");
+  assert.equal(rolPersona({}), "Agenda");
+  assert.equal(opcionesAgenda(agenda).find((o) => o.nombre === "Ana Paz").label, "Ana Paz (empleado)");
+});
+
+test("Agenda única — paraLigar guarda los renglones que faltan y los roles juntados al leer", () => {
+  const personas = [{ id: 1, nombre: "STOM", proveedor_id: null }, { id: 2, nombre: "SOLO AGENDA" }];
+  const agenda = armarAgenda({
+    personas,
+    proveedores: [{ id: 10, nombre: "STOM SAS", activo: true }],
+    clientes: [{ id: 7, nombre: "Hotel Norte", cuit: "30-71234567-8" }],
+    empleados: [{ id: "u2", nombre: "Ana Paz" }],
+  });
+  const { nuevas, cambios } = paraLigar(agenda, personas);
+  assert.deepEqual(cambios, [{ id: 1, datos: { proveedor_id: 10 } }], "STOM = STOM SAS: el renglón de la agenda pasa a ser del proveedor");
+  assert.deepEqual(nuevas.map((n) => [n.nombre, n.cliente_id, n.empleado_id, n.cuit]).sort(), [["Ana Paz", null, "u2", null], ["Hotel Norte", 7, null, "30-71234567-8"]]);
+  const sin191 = paraLigar(agenda, personas, { conEmpleados: false });
+  assert.ok(sin191.nuevas.every((n) => !("empleado_id" in n)), "sin la migración 191 no se manda empleado_id");
+  assert.equal(paraLigar(armarAgenda({ personas: [{ id: 1, nombre: "STOM", proveedor_id: 10 }], proveedores: [{ id: 10, nombre: "STOM SAS" }] }), [{ id: 1, nombre: "STOM", proveedor_id: 10 }]).cambios.length, 0, "ya ligado: nada que hacer");
+});
+
+test("Agenda única — la persona cliente y proveedor cuenta como unida", () => {
+  assert.deepEqual(paresDeAgenda([
+    { id: 1, cliente_id: 7, proveedor_id: 10 }, { id: 2, cliente_id: 8 }, { id: 3, cliente_id: 9, proveedor_id: 11, unido_a: 1 },
+  ]), [{ cliente_id: 7, proveedor_id: 10, persona_id: 1 }]);
 });

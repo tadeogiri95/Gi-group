@@ -9,6 +9,10 @@
 //   POST { accion: "compensar", cliente_id, fecha, importe, descripcion? }
 //       → una operación Proveedores al debe / Deudores por Ventas al haber.
 //
+// Desde la Agenda única (14/11, migración 191) una persona de la agenda que es
+// cliente y proveedor también cuenta como unida: unir y separar acá cambian
+// también su renglón de la agenda, así las dos pantallas dicen lo mismo.
+//
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige).
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
@@ -18,7 +22,8 @@ import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { cuentasDeudores } from "../../../lib/finanzasClientes";
 import { cuentasProveedores } from "../../../lib/finanzasProveedores";
-import { CLAVE_UNIFICADOS, cuentasUnificadas, leerPares, operacionCompensacion, sugerirPares } from "../../../lib/finanzasUnificados";
+import { CLAVE_UNIFICADOS, cuentasUnificadas, leerPares, operacionCompensacion, sugerirPares, juntarPares } from "../../../lib/finanzasUnificados";
+import { paresDeAgenda } from "../../../lib/finanzasPersonas";
 
 const COLUMNAS = "id,fecha,proveedor_id,cliente_id,entidad,total_ars,cuenta_debe,cuenta_haber,anulada_at";
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data || []);
@@ -26,28 +31,59 @@ const filtroConfig = (e) => `config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_
 
 async function leerTodo(sesion) {
   const e = sesion.empresa_id;
-  const [cuentas, clientes, proveedores, cfg] = await Promise.all([
+  const [cuentas, clientes, proveedores, cfg, personas] = await Promise.all([
     leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre`),
     leer(sesion, `fin_clientes?empresa_id=eq.${e}&select=id,nombre,cuit,alias,activo,unido_a&order=nombre.asc,id.asc`, 10000),
     leer(sesion, `proveedores?empresa_id=eq.${e}&select=id,nombre,cuit,activo&order=nombre.asc,id.asc`, 10000),
     sbGet(`${filtroConfig(e)}&select=valor&limit=1`, { silent: true, fallback: [] }),
+    leer(sesion, `fin_personas?empresa_id=eq.${e}&select=id,nombre,alias,cliente_id,proveedor_id,activo,unido_a`, 20000).catch(() => []),
   ]);
   const cuentasDeu = cuentasDeudores(cuentas);
   const cuentasProv = cuentasProveedores(cuentas);
-  const pares = leerPares(cfg?.[0]?.valor).filter((p) => clientes.some((c) => Number(c.id) === p.cliente_id) && proveedores.some((x) => Number(x.id) === p.proveedor_id));
+  const guardados = leerPares(cfg?.[0]?.valor);
+  const pares = juntarPares(guardados, paresDeAgenda(personas)).filter((p) => clientes.some((c) => Number(c.id) === p.cliente_id) && proveedores.some((x) => Number(x.id) === p.proveedor_id));
   const lado = [...cuentasDeu, ...cuentasProv];
   // Lo que toca Deudores por Ventas o Proveedores (los nombres escritos sin id también cuentan)
   const ops = pares.length && lado.length
     ? await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&or=(cuenta_debe.in.(${lado.join(",")}),cuenta_haber.in.(${lado.join(",")}))&select=${COLUMNAS}&order=fecha.asc,id.asc`, 100000)
     : [];
   const unificadas = cuentasUnificadas(pares, { ops, clientes, proveedores, cuentasDeu, cuentasProv });
-  return { clientes, proveedores, pares, unificadas, cuentaDeudores: [...cuentasDeu][0] || null, cuentaProveedores: [...cuentasProv][0] || null, existe: Boolean(cfg?.[0]) };
+  return { clientes, proveedores, personas, guardados, pares, unificadas, cuentaDeudores: [...cuentasDeu][0] || null, cuentaProveedores: [...cuentasProv][0] || null, existe: Boolean(cfg?.[0]) };
 }
 
 async function guardarPares(e, pares, existe) {
   const valor = { pares, actualizado_at: new Date().toISOString() };
   if (existe) await sbPatch(filtroConfig(e), { valor });
   else await sbPost("config_sistema", { empresa_id: e, clave: CLAVE_UNIFICADOS, valor });
+}
+
+const vivas = (personas) => personas.filter((p) => p.activo !== false && !p.unido_a);
+
+/** El cliente pasa al renglón del proveedor en la agenda (si el suyo no tenía otro rol, queda como otro nombre). */
+async function unirEnAgenda(sesion, personas, clienteId, proveedorId, nombreCliente) {
+  const e = sesion.empresa_id;
+  const ahora = new Date().toISOString();
+  const lista = vivas(personas);
+  const deP = lista.find((p) => Number(p.proveedor_id) === proveedorId);
+  const deC = lista.find((p) => Number(p.cliente_id) === clienteId);
+  if (!deP || deP === deC || (deP.cliente_id && Number(deP.cliente_id) !== clienteId)) return;
+  if (deC) {
+    const soloCliente = !deC.proveedor_id;
+    await sbPatch(`fin_personas?id=eq.${deC.id}&empresa_id=eq.${e}`, soloCliente ? { cliente_id: null, activo: false, unido_a: deP.id, updated_at: ahora } : { cliente_id: null, updated_at: ahora }, { sesion });
+  }
+  const alias = [...new Set([...(deP.alias || []), nombreCliente, ...(deC?.alias || [])])].filter((n) => n && n !== deP.nombre).slice(0, 30);
+  await sbPatch(`fin_personas?id=eq.${deP.id}&empresa_id=eq.${e}`, { cliente_id: clienteId, alias, updated_at: ahora }, { sesion });
+}
+
+/** El cliente sale del renglón del proveedor y vuelve a tener su propio renglón en la agenda. */
+async function separarEnAgenda(sesion, personas, clientes, clienteId) {
+  const e = sesion.empresa_id;
+  const ahora = new Date().toISOString();
+  const deC = vivas(personas).find((p) => Number(p.cliente_id) === clienteId && p.proveedor_id);
+  if (!deC) return;
+  await sbPatch(`fin_personas?id=eq.${deC.id}&empresa_id=eq.${e}`, { cliente_id: null, updated_at: ahora }, { sesion });
+  const c = clientes.find((x) => Number(x.id) === clienteId);
+  await sbPost("fin_personas", { empresa_id: e, nombre: String(c?.nombre || deC.nombre).slice(0, 120), alias: c?.alias || [], cuit: c?.cuit || null, cliente_id: clienteId, created_at: ahora, updated_at: ahora }, { sesion });
 }
 
 export async function GET(request) {
@@ -84,13 +120,17 @@ export async function POST(request) {
       if (!c || !p) return NextResponse.json({ error: "Elegí un cliente y un proveedor de la lista" }, { status: 400 });
       const otro = datos.pares.find((x) => x.proveedor_id === proveedorId && x.cliente_id !== clienteId);
       if (otro) return NextResponse.json({ error: `${p.nombre} ya está unido con otro cliente` }, { status: 409 });
-      const pares = [...datos.pares.filter((x) => x.cliente_id !== clienteId), { cliente_id: clienteId, proveedor_id: proveedorId }];
+      const pares = [...datos.guardados.filter((x) => x.cliente_id !== clienteId), { cliente_id: clienteId, proveedor_id: proveedorId }];
       await guardarPares(e, pares, datos.existe);
+      await unirEnAgenda(sesion, datos.personas, clienteId, proveedorId, c.nombre);
+      broadcastRefresh(e, "finanzas");
       return NextResponse.json({ ok: true });
     }
     if (d.accion === "separar") {
       if (!datos.pares.some((x) => x.cliente_id === clienteId)) return NextResponse.json({ error: "Ese cliente no está unido" }, { status: 400 });
-      await guardarPares(e, datos.pares.filter((x) => x.cliente_id !== clienteId), datos.existe);
+      await guardarPares(e, datos.guardados.filter((x) => x.cliente_id !== clienteId), datos.existe);
+      await separarEnAgenda(sesion, datos.personas, datos.clientes, clienteId);
+      broadcastRefresh(e, "finanzas");
       return NextResponse.json({ ok: true });
     }
     const cuenta = datos.unificadas.find((x) => x.cliente_id === clienteId);
