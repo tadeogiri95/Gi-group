@@ -16,6 +16,7 @@ import AvisoRepetidos, { repetidosDe } from "./FinanzasAvisoRepetidos";
 import Comprobantes from "./FinanzasComprobantes";
 import { asientoDe, cajasDelLado, cuentasDelTipo, hoyAr, numero, plata, validarOperacion, separaIva } from "../lib/finanzasOperaciones";
 import { cuentaParaElegir, cuentasIniciales } from "../lib/finanzasCuentaElegir";
+import { centrosParaElegir, cuentasCobroDesarrollismo, esCobroDesarrollismo, obraNueva, pideObra } from "../lib/finanzasDesarrollismo";
 import { Chip, Modal, SelectBuscable } from "./ui";
 import { useToast } from "./ui/Toast";
 
@@ -99,13 +100,18 @@ export function NuevaOperacion({ datos, cajaInicial = "", inicial = null, titulo
     if (sirve(t.cuenta_debe)) return { ...cuentas, cuenta_debe: cajaInicial };
     return cuentas;
   };
+  // 15/11: el cobro del Desarrollismo arranca con la caja y Anticipo de Clientes (finanzasDesarrollismo.js)
+  const cuentasDe = (t) => {
+    const c = conCajaElegida(t, cuentasIniciales(t, datos.cuentas, cuentasDelTipo(t, datos.tesoreria)));
+    return { ...c, ...cuentasCobroDesarrollismo(t, datos, cajaInicial, c) };
+  };
 
   // Etapa 3 (14/11): abierta desde ➕ Cargar, llega con el tipo, la persona o la OT
   const [f, setF] = useState(() => {
     const base = { ...VACIA, fecha: hoyAr() };
     if (!inicial) return base;
     const t = datos.tipos.find((x) => x.codigo === inicial.tipo);
-    const cuentas = t ? conCajaElegida(t, cuentasIniciales(t, datos.cuentas, cuentasDelTipo(t, datos.tesoreria))) : {};
+    const cuentas = t ? cuentasDe(t) : {};
     const limpio = Object.fromEntries(Object.entries(inicial).filter(([k, v]) => k in VACIA && v !== null && v !== undefined).map(([k, v]) => [k, String(v)]));
     return { ...base, ...limpio, ...(t ? { tipo: t.codigo } : { tipo: "" }), ...cuentas };
   });
@@ -120,7 +126,13 @@ export function NuevaOperacion({ datos, cajaInicial = "", inicial = null, titulo
   const set = (k) => (e) => { setRepetidos(null); setF((x) => ({ ...x, [k]: e.target.value })); };
 
   const tipo = datos.tipos.find((t) => t.codigo === f.tipo);
-  const cajasDebe = cajasDelLado(tipo?.cuenta_debe, datos.tesoreria);
+  // Las obras del Desarrollismo que se dan de alta acá (todavía no vuelven en la lista)
+  const [obrasNuevas, setObrasNuevas] = useState([]);
+  const centros = [...(datos.centros || []), ...obrasNuevas];
+  const obra = pideObra(tipo);
+  // El cobro del Desarrollismo sin caja en el tipo: se elige entre todas las cajas
+  const cajasDebe = cajasDelLado(tipo?.cuenta_debe, datos.tesoreria)
+    || (esCobroDesarrollismo(tipo) && !tipo.cuenta_debe ? { opciones: datos.tesoreria.filter((t) => t.activa !== false), defecto: "" } : null);
   const cajasHaber = cajasDelLado(tipo?.cuenta_haber, datos.tesoreria);
   const elegir = cuentaParaElegir(tipo, datos.cuentas);
   const tiposActivos = datos.tipos.filter((t) => t.activo !== false);
@@ -133,7 +145,7 @@ export function NuevaOperacion({ datos, cajaInicial = "", inicial = null, titulo
       const junto = t && !separaIva(t) && (numero(x.iva) || numero(x.otros_impuestos))
         ? { neto: String(Math.round(((numero(x.neto) || 0) + (numero(x.iva) || 0) + (numero(x.otros_impuestos) || 0)) * 100) / 100).replace(".", ","), iva: "", otros_impuestos: "" }
         : {};
-      return { ...x, ...junto, tipo: e.target.value, ...conCajaElegida(t, cuentasIniciales(t, datos.cuentas, cuentasDelTipo(t, datos.tesoreria))) };
+      return { ...x, ...junto, tipo: e.target.value, ...(t ? cuentasDe(t) : { cuenta_debe: "", cuenta_haber: "" }) };
     });
     setErrores([]);
   };
@@ -149,7 +161,8 @@ export function NuevaOperacion({ datos, cajaInicial = "", inicial = null, titulo
 
   const guardar = async (confirmarRepetido = false) => {
     const operacion = { ...f, ...(conIva ? {} : { iva: "", otros_impuestos: "" }), proveedor_id: otroNombre ? "" : f.proveedor_id, entidad: f.proveedor_id && !otroNombre ? "" : f.entidad };
-    const { errores: e } = validarOperacion(operacion, datos);
+    const { errores: e } = validarOperacion(operacion, { ...datos, centros });
+    if (obra && !f.centro_costo) e.push("Elegí la obra del Desarrollismo (centro de costo).");
     setErrores(e);
     if (e.length) return;
     setGuardando(true);
@@ -166,6 +179,22 @@ export function NuevaOperacion({ datos, cajaInicial = "", inicial = null, titulo
       toast.error(err.message);
     } finally {
       setGuardando(false);
+    }
+  };
+
+  // 15/11: una obra nueva del Desarrollismo se da de alta sin salir del formulario
+  const crearObra = async (nombre) => {
+    const { fila, error } = obraNueva(nombre, centros);
+    if (error) { toast.error(error); return; }
+    try {
+      const res = await apiFetch("/api/finanzas", { method: "POST", body: JSON.stringify({ accion: "guardar", tabla: "centros", fila }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "No se pudo crear la obra");
+      setObrasNuevas((x) => [...x, fila]);
+      setF((x) => ({ ...x, centro_costo: fila.codigo }));
+      toast.success(`✅ Obra ${fila.codigo} creada`);
+    } catch (err) {
+      toast.error(err.message);
     }
   };
 
@@ -201,6 +230,12 @@ export function NuevaOperacion({ datos, cajaInicial = "", inicial = null, titulo
           ))}
         </div>
         {tipo && leyendaTipo(tipo) && <div className="-mt-2"><ExplicacionConcepto texto={leyendaTipo(tipo)} nombre={nombreTipo(tipo)} /></div>}
+        {esCobroDesarrollismo(tipo) && (
+          <p className="m-0 -mt-1 text-[13px] text-gypi-dim">
+            Una seña o una cuota queda en <b className="text-gypi-text">Anticipo de Clientes</b> hasta que se escritura; ahí se pasa a Ventas Desarrollismo.
+            Elegí la caja donde entró la plata y la obra.
+          </p>
+        )}
 
         {/* En la computadora, dos columnas: a la izquierda de dónde sale y a
             quién; a la derecha cuánto y el detalle (11/11, ventana grande). */}
@@ -271,10 +306,11 @@ export function NuevaOperacion({ datos, cajaInicial = "", inicial = null, titulo
                     {datos.proyectos.map((p) => <option key={p.id} value={p.id}>{textoOt(p)}</option>)}
                   </SelectBuscable>
                 ))}
-                {campo(`Centro de costo${tipo.pide_cc ? " (obligatorio)" : ""}`, (
-                  <SelectBuscable className="g-input w-full" value={f.centro_costo} onChange={set("centro_costo")}>
-                    <option value="">Sin centro de costo</option>
-                    {datos.centros.filter((c) => c.activo !== false).map((c) => <option key={c.codigo} value={c.codigo}>{c.nombre && c.nombre.toUpperCase() !== c.codigo.toUpperCase() ? `${c.codigo} · ${c.nombre}` : c.codigo}</option>)}
+                {campo(obra ? "Obra (centro de costo, obligatorio)" : `Centro de costo${tipo.pide_cc ? " (obligatorio)" : ""}`, (
+                  <SelectBuscable className="g-input w-full" value={f.centro_costo} onChange={set("centro_costo")}
+                    nuevo={obra ? { etiqueta: "Nueva obra", onElegir: crearObra } : undefined}>
+                    <option value="">{obra ? "Elegí la obra…" : "Sin centro de costo"}</option>
+                    {centrosParaElegir(tipo, centros).map((c) => <option key={c.codigo} value={c.codigo}>{c.nombre && c.nombre.toUpperCase() !== c.codigo.toUpperCase() ? `${c.codigo} · ${c.nombre}` : c.codigo}</option>)}
                   </SelectBuscable>
                 ))}
               </div>
