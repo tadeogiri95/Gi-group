@@ -12,6 +12,7 @@
 //   💵 Cobro de un cliente → Cobrar (FinanzasClientes)
 //   ⇄ Entre cajas → Pasar plata entre cajas (FinanzasTransferir)
 //   💱 Dólares → Comprar o vender dólares, con la diferencia de cotización (FinanzasDolares, 14/11)
+//   🏠 Cobro del Desarrollismo → el formulario general con el tipo, la caja y la obra (15/11)
 //   Otra operación → el formulario general (FinanzasNuevaOperacion)
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/supabase";
@@ -23,6 +24,7 @@ import Dolares from "./FinanzasDolares";
 import { NuevaOrden, leerDatosPagos } from "./FinanzasPagos";
 import { Cobrar } from "./FinanzasClientes";
 import { VentanaAltaPersona } from "./AltaPersona";
+import { TIPO_COBRO_DESARROLLISMO } from "../lib/finanzasDesarrollismo";
 import { Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
@@ -32,6 +34,7 @@ export const DOCUMENTOS = [
   { id: "pago", icono: "💸", nombre: "Pago a un proveedor", detalle: "Orden de pago: efectivo, transferencia, e-cheq o un cheque de la cartera." },
   { id: "cobro", icono: "💵", nombre: "Cobro de un cliente", detalle: "Efectivo, transferencia, dólares o cheque. Suma en su cuenta corriente." },
   { id: "cajas", icono: "⇄", nombre: "Entre cajas y bancos", detalle: "Pasar plata de una caja o banco a otro." },
+  { id: "desarrollismo", icono: "🏠", nombre: "Cobro del Desarrollismo", detalle: "Seña o cuota por la venta de una unidad. Va a Anticipo de Clientes, imputada a su obra." },
   { id: "dolares", icono: "💱", nombre: "Comprar o vender dólares", detalle: "Pesos por dólares o al revés. En una venta, Gypi calcula la ganancia o la pérdida por diferencia de cotización." },
 ];
 
@@ -96,6 +99,9 @@ export function VentanaCargar({ contexto = {}, documentos = null, onPago = null,
     setCargando(true);
     try {
       const d = id === "pago" ? await leerDatosPagos() : id === "cobro" ? await leerClientes() : await leerListas();
+      if (id === "desarrollismo" && d.tipos?.length && !d.tipos.some((t) => t.codigo === TIPO_COBRO_DESARROLLISMO && t.activo !== false)) {
+        throw new Error("Falta el tipo «Desarrollismo: cobros por ventas»: pasá los tipos nuevos en Finanzas → Configuración → 🏷 Tipos de operación nuevos.");
+      }
       if (id !== "pago" && id !== "cobro" && !d.tipos?.length) throw new Error("Primero copiá el libro en Finanzas → Configuración: sin tipos de operación no se puede cargar.");
       setDatos(d);
       setDoc(id);
@@ -125,6 +131,10 @@ export function VentanaCargar({ contexto = {}, documentos = null, onPago = null,
   }
   if (doc === "cajas") return <Transferir datos={datos} desdeInicial={contexto.caja || ""} onCerrar={onCerrar} onHecho={hecho} />;
   if (doc === "dolares") return <Dolares datos={datos} cajaInicial={contexto.caja || ""} onCerrar={onCerrar} onHecho={hecho} />;
+  // 15/11: la seña o la cuota de un comprador, imputada a la obra (finanzasDesarrollismo.js)
+  if (doc === "desarrollismo") {
+    return <NuevaOperacion datos={datos} cajaInicial={contexto.caja || ""} inicial={{ tipo: TIPO_COBRO_DESARROLLISMO }} titulo="🏠 Cobro del Desarrollismo" onCerrar={onCerrar} onGuardada={hecho} />;
+  }
   if (doc === "otra") {
     const inicial = {
       ...(contexto.proveedorId ? { proveedor_id: contexto.proveedorId } : {}),

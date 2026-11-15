@@ -22,8 +22,11 @@
 // ninguna (todo) y abajo se ven sus movimientos (FinanzasMovimientos), con el
 // saldo renglón por renglón si hay una sola y "➕ Cargar" con esa caja puesta
 // (14/11, etapa 3: factura o gasto, pago, cobro, entre cajas u otra). Tocando un movimiento se ve, se corrige o se anula.
+// 15/11: ➕ Nueva caja (el código lo pone Gypi) y, con una caja elegida, 🗑
+// Eliminar caja: se borra si nunca se usó, si no se archiva (FinanzasCajaAlta.jsx).
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { EliminarCaja, NuevaCaja, reactivarCaja } from "./FinanzasCajaAlta";
 import { apiFetch } from "../lib/supabase";
 import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import { ORIGEN_SALDO_INICIAL } from "../lib/finanzasProveedores";
@@ -347,6 +350,9 @@ export default function FinanzasTesoreria({ onIr = null } = {}) {
   const [extracto, setExtracto] = useState(null);
   const [verRepetidos, setVerRepetidos] = useState(false);
   const [masOpciones, setMasOpciones] = useState(false);
+  const toast = useToast();
+  const [nuevaCaja, setNuevaCaja] = useState(false);
+  const [eliminar, setEliminar] = useState(null);
   // Lo que cambia desde acá (pasar plata, extracto, Mi caja) también recarga la lista de abajo
   const [version, setVersion] = useState(0);
 
@@ -394,6 +400,7 @@ export default function FinanzasTesoreria({ onIr = null } = {}) {
         <button type="button" className={`g-btn ${nRepetidos ? "g-btn-primary" : "g-btn-secondary"}`} onClick={() => setVerRepetidos(true)}>
           🔎 Posibles repetidos{nRepetidos ? ` (${nRepetidos})` : ""}
         </button>
+        <button type="button" className="g-btn g-btn-secondary" onClick={() => setNuevaCaja(true)}>➕ Nueva caja</button>
         <button type="button" className="g-btn g-btn-secondary" aria-expanded={masOpciones} onClick={() => setMasOpciones((v) => !v)}>⋯ Más</button>
       </div>
       {masOpciones && (
@@ -461,6 +468,9 @@ export default function FinanzasTesoreria({ onIr = null } = {}) {
             <>
               {una.tipo === "banco" && una.moneda !== "USD" && <button type="button" className="g-btn g-btn-secondary" onClick={() => setExtracto(una.cuenta)}>📥 Subir extracto</button>}
               {["caja", "otro"].includes(una.tipo) && una.moneda !== "USD" && <button type="button" className="g-btn g-btn-secondary" onClick={() => setExtracto(una.cuenta)}>📥 Subir planilla</button>}
+              {una.activa !== false
+                ? <button type="button" className="g-btn g-btn-secondary" onClick={() => setEliminar(una)}>🗑 Eliminar caja</button>
+                : <button type="button" className="g-btn g-btn-secondary" onClick={() => reactivarCaja(una).then(() => { toast.success(`✅ ${una.nombre} activa de nuevo`); cambioAca(); }).catch((e) => toast.error(e.message))}>↩ Volver a activar</button>}
             </>
           ) : null} />
       </section>
@@ -471,6 +481,8 @@ export default function FinanzasTesoreria({ onIr = null } = {}) {
       )}
 
       {verRepetidos && <PosiblesRepetidos datos={datos} porCaja={porCaja} onCerrar={() => setVerRepetidos(false)} onCambio={cambioAca} />}
+      {nuevaCaja && <NuevaCaja personal={datos.personal} onCerrar={() => setNuevaCaja(false)} onCreada={(c) => { setNuevaCaja(false); setElegidas([c.cuenta]); cambioAca(); }} />}
+      {eliminar && <EliminarCaja caja={eliminar} operaciones={datos.operaciones} onCerrar={() => setEliminar(null)} onHecho={() => { setEliminar(null); setElegidas([]); cambioAca(); }} />}
       {extracto && <SubirExtracto caja={saldos.find((s) => s.cuenta === extracto) || { cuenta: extracto, nombre: extracto }} datos={datos} onCerrar={() => setExtracto(null)} onCargado={() => { setExtracto(null); cambioAca(); }} onCambio={cambioAca} />}
       {verRevisar && <RevisarMiCaja datos={datos} pendientes={pendientes} onCerrar={() => setVerRevisar(false)} onCambio={cambioAca} />}
       {verConfig && <ConfigMiCaja datos={datos} onCerrar={() => setVerConfig(false)} onGuardado={() => { setVerConfig(false); cargar(); }} />}
