@@ -17,6 +17,14 @@
 //   POST { accion: "revisar", id, tipo? } → confirma lo que cargó un
 //       responsable; con tipo, se lo cambia (la caja queda donde estaba).
 //   POST { accion: "anular_mi_caja", id } → anula lo que cargó un responsable.
+//   💱 Comprar o vender dólares (14/11, app/lib/finanzasDolares.js):
+//   POST { accion: "dolares_costo", caja_usd, fecha } → cuántos dólares tiene
+//       la caja a esa fecha, cuánto valen en pesos en el Mayor (costo
+//       promedio) y las cuentas de diferencia de cambio que propone Gypi.
+//   POST { accion: "dolares", accion_dolares: "vender"|"comprar", caja_usd,
+//       caja_pesos, usd, tipo_cambio, costo?, fecha, cuenta_diferencia?,
+//       descripcion?, confirmar_repetido? } → la DÓLARES (y en una venta, la
+//       diferencia de cotización), juntas con el mismo origen_id.
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige).
 import { NextResponse } from "next/server";
@@ -28,6 +36,9 @@ import { FECHA } from "../../../lib/finanzasOperaciones";
 import { ORIGEN_SALDO_INICIAL } from "../../../lib/finanzasProveedores";
 import { ORIGEN_LIBRO } from "../../../lib/finanzasHistorico";
 import { cuentaAjusteDe, operacionSaldoInicialCaja, validarTransferencia } from "../../../lib/finanzasTesoreria";
+import { listasFinanzas } from "../../../lib/finanzasListas";
+import { ORIGEN_DOLARES, costoCajaUsd, cuentaDiferenciaSugerida, operacionesDolares } from "../../../lib/finanzasDolares";
+import { randomUUID } from "node:crypto";
 import { frenoRepetidos, repetidosEnBase } from "../../../lib/finanzasRepetidosServidor";
 import { CLAVE_MI_CAJA, ORIGEN_MI_CAJA, cambioDeTipoMiCaja, conceptosMiCajaTodos, leerConfigMiCaja } from "../../../lib/finanzasMiCaja";
 
@@ -129,6 +140,57 @@ async function transferir(sesion, d) {
   return NextResponse.json({ ok: true, operacion: o });
 }
 
+/** Lo que tiene una caja en dólares a una fecha (con las listas para validar). */
+async function datosDolares(sesion, cajaUsd, fecha) {
+  const e = sesion.empresa_id;
+  const ctx = await listasFinanzas(sesion);
+  const caja = (ctx.tesoreria || []).find((t) => t.cuenta === cajaUsd && t.moneda === "USD" && t.activa !== false) || null;
+  const lista = caja ? encodeURIComponent(`"${String(caja.cuenta).replace(/"/g, "")}"`) : "";
+  const ops = caja
+    ? await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&fecha=lte.${fecha}&or=(cuenta_debe.in.(${lista}),cuenta_haber.in.(${lista}))&select=${COLUMNAS}&order=fecha.asc,id.asc`, 60000)
+    : [];
+  const calculado = caja ? costoCajaUsd(ops, caja, { hasta: fecha, cuentas: ctx.cuentas, tipos: ctx.tipos }) : null;
+  return { ctx, caja, calculado };
+}
+
+/** El plan de cuentas con el renglón del estado de resultados (179), para proponer la cuenta de diferencia. */
+async function cuentasConLinea(sesion, cuentas) {
+  const conLinea = await leer(sesion, `fin_cuentas?empresa_id=eq.${sesion.empresa_id}&select=codigo,nombre,rubro,activa,linea_eerr`).catch(() => null);
+  return conLinea || cuentas;
+}
+
+async function dolaresCosto(sesion, d) {
+  const fecha = FECHA.test(String(d.fecha || "")) ? d.fecha : null;
+  if (!fecha) return NextResponse.json({ error: "Falta la fecha" }, { status: 400 });
+  const { ctx, caja, calculado } = await datosDolares(sesion, String(d.caja_usd || ""), fecha);
+  if (!caja) return NextResponse.json({ error: "Elegí la caja o el banco en dólares" }, { status: 400 });
+  const cuentas = await cuentasConLinea(sesion, ctx.cuentas);
+  return NextResponse.json({
+    ok: true, caja: caja.cuenta, fecha, ...calculado,
+    sugeridas: { ganancia: cuentaDiferenciaSugerida(cuentas, true), perdida: cuentaDiferenciaSugerida(cuentas, false) },
+  });
+}
+
+async function dolares(sesion, d) {
+  const e = sesion.empresa_id;
+  const fecha = FECHA.test(String(d.fecha || "")) ? d.fecha : "";
+  const { ctx, calculado } = await datosDolares(sesion, String(d.caja_usd || ""), fecha || "9999-12-31");
+  const { ops, errores, avisos } = operacionesDolares({ ...d, accion: d.accion_dolares }, { ...ctx, calculado });
+  if (errores.length) return NextResponse.json({ error: errores.join(" "), errores }, { status: 400 });
+  if (d.confirmar_repetido !== true) {
+    const freno = frenoRepetidos(await repetidosEnBase(sesion, ops, { tesoreria: ctx.tesoreria }));
+    if (freno) return freno;
+  }
+  const ahora = new Date().toISOString();
+  const quien = await nombreEmpleado(sesion);
+  const grupo = `d${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  const filas = (await sbPost("fin_operaciones", ops.map((op, i) => ({
+    ...op, origen: ORIGEN_DOLARES, origen_id: i ? `${grupo}-dif` : grupo, empresa_id: e, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora,
+  })), { sesion })) || [];
+  broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, operaciones: filas, avisos });
+}
+
 async function configMiCaja(sesion, d) {
   const e = sesion.empresa_id;
   const [tipos, cuentas] = await Promise.all([
@@ -208,6 +270,8 @@ export async function POST(request) {
     if (d?.accion === "config_mi_caja") return await configMiCaja(sesion, d);
     if (d?.accion === "revisar") return await revisar(sesion, d);
     if (d?.accion === "anular_mi_caja") return await anularMiCaja(sesion, d);
+    if (d?.accion === "dolares_costo") return await dolaresCosto(sesion, d);
+    if (d?.accion === "dolares") return await dolares(sesion, d);
     return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
   } catch (err) {
     return errorFinanzas(err, `tesoreria ${d?.accion}`);
