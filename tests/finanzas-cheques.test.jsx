@@ -363,3 +363,25 @@ test("Cheques — por debitar, en cartera, calendario y marcar debitado", async 
   await waitFor(() => assert.equal(enviados.length, 1));
   assert.deepEqual([enviados[0].accion, enviados[0].id, enviados[0].a, enviados[0].cuenta_banco], ["cambiar", 10, "debitado", "01.01.01.003.002"]);
 });
+
+// 16/11: el débito que cargó Gypi y el del extracto, dos veces en el banco
+test("/api/finanzas/cheques — muestra los cheques con el débito dos veces y anula el de Gypi, uniendo el cheque al del banco", async () => {
+  const B = "01.01.01.003.002";
+  const debitado = { id: 10, clase: "propio", tipo: "echeq_diferido", estado: "debitado", numero: "555", importe: 1000, fecha_pago: "2026-10-05", beneficiario: "Maderas SA", op_cierre_id: 100 };
+  const enBanco = [
+    { id: 100, fecha: "2026-10-05", total: 1000, cuenta_debe: "02.01.03", cuenta_haber: B, origen: "cheque" },
+    { id: 200, fecha: "2026-10-27", total: 1000, cuenta_debe: "02.01.03", cuenta_haber: B, origen: "banco", descripcion: "ECHEQ pago camara" },
+  ];
+  mockApi({ cheques: [debitado], enBanco });
+  const d = await (await pedir("gerencial", "GET")).json();
+  assert.deepEqual(d.repetidos.map((r) => [r.id, r.gypi.id, r.otra.id, r.otra.origen]), [[10, 100, 200, "del extracto del banco"]]);
+  const { escrito } = mockApi({ cheques: [debitado], enBanco });
+  const r = await (await pedir("gerencial", "POST", { accion: "anular_repetidos" })).json();
+  assert.equal(r.ok, true);
+  const union = escrito.find((x) => x.tabla === "fin_cheques");
+  assert.equal(union.body.op_cierre_id, 200, "el cheque queda unido al del banco");
+  assert.match(decodeURIComponent(union.url), /op_cierre_id=eq\.100/);
+  const anulada = escrito.find((x) => x.tabla === "fin_operaciones");
+  assert.match(decodeURIComponent(anulada.url), /id=eq\.100&.*origen=eq\.cheque&anulada_at=is\.null/);
+  assert.match(anulada.body.anulada_por_nombre, /repetida con el extracto/);
+});

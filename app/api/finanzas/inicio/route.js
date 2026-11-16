@@ -20,7 +20,7 @@ import { saldosTesoreria, totalesTesoreria } from "../../../lib/finanzasTesoreri
 import { cajasPorMoneda, deltaCaja } from "../../../lib/finanzasFlujo";
 import { ORIGEN_GASTO } from "../../../lib/finanzasGastos";
 import { CLAVE_QUITADOS, costosMantenimiento, leerQuitados } from "../../../lib/finanzasIntegracion";
-import { CLAVE_PLAZOS_FIJOS, leerGuardados, pathOpsPlazos, vencidosPendientes } from "../../../lib/finanzasPlazosFijos";
+import { CLAVE_PLAZOS_FIJOS, leerGuardados, leerOpsPlazos, vencidosPendientes } from "../../../lib/finanzasPlazosFijos";
 import { pendientesFinanzas } from "../../../lib/finanzasInicio";
 import { ESTADOS_OC_RECIBIDA, faltaFacturaOc } from "../../../lib/ordenesCompra";
 import { CLAVE_LIBRO_FIN } from "../../../lib/finanzasLibro";
@@ -52,7 +52,7 @@ export async function GET(request) {
       leerSiHay(sesion, `maquina_fallas?empresa_id=eq.${e}&estado=eq.resuelta&cerrado_at=gte.${haceUnAnio}&costo=gt.0&select=id,maquina_id,estado,costo,cerrado_at,created_at`),
       leer(sesion, `fin_operaciones?empresa_id=eq.${e}&origen=eq.${ORIGEN_GASTO}&anulada_at=is.null&or=(origen_id.like.ga*,origen_id.like.gb*)&select=origen_id,total,anulada_at`, 20000),
       config(e, CLAVE_PLAZOS_FIJOS),
-      cuentasPf.length ? leerSiHay(sesion, pathOpsPlazos(e, cuentasPf, hoy), 20000) : [],
+      cuentasPf.length ? leerOpsPlazos((path) => leerSiHay(sesion, path, 20000), e, cuentasPf, hoy) : { ops: [], cuentasInteres: [] },
       // Órdenes de compra con mercadería recibida y sin factura (sin el módulo Compras queda vacío)
       leerSiHay(sesion, `ordenes_compra?empresa_id=eq.${e}&estado=in.(${ESTADOS_OC_RECIBIDA.join(",")})&select=id,estado,factura_numero,factura_fecha`, 2000),
       config(e, CLAVE_QUITADOS),
@@ -80,7 +80,7 @@ export async function GET(request) {
       sinFactura: recibidas.filter(faltaFacturaOc).length,
       libroManual: Number(libro?.manuales?.total) || 0,
       cuentasSinPlan: Array.isArray(sinPlan) ? sinPlan : [],
-      plazosVencidos: guardados.length ? vencidosPendientes(guardados, opsPlazos, cuentasPf, hoy).length : 0,
+      plazosVencidos: guardados.length ? vencidosPendientes(guardados, opsPlazos.ops, cuentasPf, hoy, { cuentasInteres: opsPlazos.cuentasInteres }).length : 0,
     });
     return NextResponse.json({
       hoy, saldo: totales, mes: { desde: desdeMes, entro: Math.round(entro * 100) / 100, salio: Math.round(salio * 100) / 100 },

@@ -333,6 +333,54 @@ function CopiarLibro({ datos, onCerrar, onCopiados }) {
 }
 
 /* ─── Pantalla ───────────────────────────────────────────────────────── */
+/* ─── Débitos o depósitos dos veces (16/11) ──────────────────────────── */
+
+/** Los cheques con el movimiento dos veces: queda el del banco y se anula el de Gypi. */
+function ChequesRepetidos({ repetidos, onCerrar, onHecho }) {
+  const toast = useToast();
+  const [ocupado, setOcupado] = useState(false);
+  const [error, setError] = useState(null);
+  async function anular() {
+    setOcupado(true);
+    setError(null);
+    try {
+      const d = await postCheques({ accion: "anular_repetidos" });
+      toast.success(`✅ ${d.anuladas === 1 ? "Se anuló 1 movimiento repetido" : `Se anularon ${d.anuladas} movimientos repetidos`}`);
+      onHecho();
+    } catch (e) {
+      setError(e.message);
+      setOcupado(false);
+    }
+  }
+  return (
+    <Modal open onClose={ocupado ? () => {} : onCerrar} title="Cheques con el movimiento dos veces" maxWidth={680}>
+      <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
+        <p className="m-0 text-[13px] text-gypi-dim">
+          El débito (o el depósito) de estos cheques está dos veces en el banco: el que cargó Gypi al cambiar el cheque y el que ya trajo el extracto.
+          Se queda el del banco (tiene la fecha real), el cheque se une a ese y el de Gypi se anula (queda tachado, no se borra).
+        </p>
+        <ul className="list-none m-0 p-0 flex flex-col gap-2" aria-label="Cheques repetidos">
+          {repetidos.map((r) => (
+            <li key={r.id} className="text-[13px] border-b border-gypi-border pb-2">
+              <span className="flex flex-wrap gap-x-2">
+                <b className="font-mono">{plata(r.importe, "ARS")}</b>
+                <span>Cheque{r.numero ? ` N° ${r.numero}` : ""} · {r.estado === "debitado" ? "debitado" : "depositado"}</span>
+                {r.quien && <span className="text-gypi-dim">{r.quien}</span>}
+              </span>
+              <span className="block text-gypi-red">Se anula: el de Gypi del {fechaCorta(r.gypi.fecha)}</span>
+              <span className="block text-gypi-dim">Queda el {r.otra.origen} del {fechaCorta(r.otra.fecha)}{r.otra.descripcion ? `: ${r.otra.descripcion}` : ""}</span>
+            </li>
+          ))}
+        </ul>
+        {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" className="g-btn g-btn-secondary" disabled={ocupado} onClick={onCerrar}>Cerrar</button>
+          <button type="button" className="g-btn g-btn-primary" disabled={ocupado} onClick={anular}>{ocupado ? "Anulando…" : `Anular ${repetidos.length === 1 ? "el repetido" : `los ${repetidos.length} repetidos`}`}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
 
 export default function FinanzasCheques() {
   const [datos, setDatos] = useState(null);
@@ -343,6 +391,7 @@ export default function FinanzasCheques() {
   const [detalle, setDetalle] = useState(null);
   const [copiar, setCopiar] = useState(false);
   const [listado, setListado] = useState(false);
+  const [verRepetidos, setVerRepetidos] = useState(false);
   const hoy = hoyAr();
 
   const cargar = useCallback(async () => {
@@ -387,6 +436,12 @@ export default function FinanzasCheques() {
         <button type="button" className="g-btn g-btn-secondary ml-auto" onClick={() => setListado(true)}>📥 Subir listado del banco</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setCopiar(true)}>📥 Copiar del libro</button>
       </div>
+      {datos.repetidos?.length > 0 && (
+        <button type="button" onClick={() => setVerRepetidos(true)}
+          className="w-full mb-2 p-3 rounded-lg border border-gypi-red/40 bg-gypi-red/10 text-left text-[14px] font-semibold text-gypi-red cursor-pointer">
+          ⚠ {datos.repetidos.length === 1 ? "1 cheque tiene" : `${datos.repetidos.length} cheques tienen`} el débito o el depósito dos veces en el banco: revisar y anular los repetidos
+        </button>
+      )}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <Chip active={vista === "propios"} onClick={() => setVista("propios")}>Por debitar ({propios.length})</Chip>
         <Chip active={vista === "cartera"} onClick={() => setVista("cartera")}>En cartera ({cartera.length})</Chip>
@@ -449,6 +504,7 @@ export default function FinanzasCheques() {
 
       {nuevo && <NuevoCheque clase={nuevo} datos={datos} onCerrar={() => setNuevo(null)} onGuardado={() => { setNuevo(null); cargar(); }} />}
       {detalle && <Detalle ch={detalle} datos={datos} onCerrar={() => setDetalle(null)} onCambiado={() => { setDetalle(null); cargar(); }} />}
+      {verRepetidos && <ChequesRepetidos repetidos={datos.repetidos} onCerrar={() => setVerRepetidos(false)} onHecho={() => { setVerRepetidos(false); cargar(); }} />}
       {listado && <ListadoEcheq onCerrar={() => setListado(false)} onAplicado={() => { setListado(false); cargar(); }} />}
       {copiar && <CopiarLibro datos={datos} onCerrar={() => setCopiar(false)} onCopiados={() => { setCopiar(false); cargar(); }} />}
     </div>

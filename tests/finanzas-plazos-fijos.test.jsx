@@ -336,3 +336,22 @@ test("/api/finanzas/plazos-fijos — lo que el extracto ya trajo (el rescate con
   assert.equal(conOk.status, 200);
   assert.ok(insertado.length > 0);
 });
+
+// 16/11: el interés que trajo el extracto con otro tipo, y el renglón con capital e interés juntos
+test("estadoDePlazos — el interés del extracto cuenta aunque tenga otro tipo; el renglón con capital e interés juntos cuenta como las dos cosas", () => {
+  const p = plazo("20000001", 1000000, 40000, "2026-11-02");
+  const capital = { id: 1, fecha: "2026-11-02", tipo: "PLAZO FIJO", total: 1000000, cuenta_debe: BANCO, cuenta_haber: PF, descripcion: "Acred. plazo fijo", origen: "banco" };
+  const interesOtroTipo = { id: 2, fecha: "2026-11-03", tipo: "COBRO INTERESES", total: 40000, cuenta_debe: BANCO, cuenta_haber: INTERESES, descripcion: "Intereses plazo fijo", origen: "banco" };
+  const sinCuenta = estadoDePlazos([p], [capital, interesOtroTipo], [PF]).get("20000001");
+  assert.equal(sinCuenta.i, null, "sin saber cuál es Intereses Ganados no lo reconoce");
+  const e = estadoDePlazos([p], [capital, interesOtroTipo], [PF], { cuentasInteres: [INTERESES] }).get("20000001");
+  assert.deepEqual([e.r?.id, e.i?.id], [1, 2]);
+  const contraPf = estadoDePlazos([p], [capital, { ...interesOtroTipo, cuenta_haber: PF }], [PF]).get("20000001");
+  assert.equal(contraPf.i?.id, 2, "contra la cuenta del plazo fijo también");
+  const juntos = { id: 3, fecha: "2026-11-02", tipo: "PLAZO FIJO", total: 1040000, cuenta_debe: BANCO, cuenta_haber: PF, descripcion: "Acred. plazo fijo", origen: "banco" };
+  const j = estadoDePlazos([p], [juntos], [PF]).get("20000001");
+  assert.deepEqual([j.r?.id, j.i?.id], [3, 3]);
+  const plan = planPlazosFijos({ plazos: [{ ...p, constituido: "2026-10-01" }], ops: [{ id: 4, fecha: "2026-10-01", tipo: "PLAZO FIJO", total: 1000000, cuenta_debe: PF, cuenta_haber: BANCO, origen: "banco", descripcion: "" }, juntos], ctx: CTX, cuentasPf: [PF], hoy: "2026-11-11" });
+  assert.equal(plan.ops.length, 0, "no se vuelve a sumar nada");
+  assert.equal(vencidosPendientes([{ ...p, banco: BANCO, cuenta_pf: PF }], [{ id: 4, fecha: "2026-10-01", total: 1000000, cuenta_debe: PF, cuenta_haber: BANCO, origen: "banco", descripcion: "" }, capital, interesOtroTipo], [PF], "2026-11-11", { cuentasInteres: [INTERESES] }).length, 0);
+});

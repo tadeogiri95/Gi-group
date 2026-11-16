@@ -176,6 +176,62 @@ export function planListado(listado = [], gypi = [], { cuentaPropia = "", cuitEm
   return { filas };
 }
 
+/* ─── El débito o depósito que ya trajo el extracto (16/11) ─────────────── */
+
+/** Días antes de la fecha de pago en que se busca el movimiento del banco. */
+export const DIAS_ANTES_DEL_PAGO = 4;
+/**
+ * Días después de la fecha de pago: un e-cheq se debita o se acredita el día
+ * que lo presentan, y eso puede ser hasta 30 días después (35 con margen).
+ */
+export const DIAS_DESPUES_DEL_PAGO = 35;
+
+const moverDias = (fecha, d) => new Date(Date.parse(`${fecha}T12:00:00Z`) + d * 86400000).toISOString().slice(0, 10);
+const entreDias = (a, b) => Math.abs(Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86400000;
+
+/**
+ * El día en que se movió la plata: si el banco lo da por pagado, la fecha de
+ * la última modificación (el día que se cobró); si no, la fecha de pago.
+ */
+export function fechaDelMovimiento(c) {
+  return c?.estado_banco === "PAGADO" && FECHA_ISO.test(String(c.fecha_mod || "")) && c.fecha_mod >= c.fecha_pago ? c.fecha_mod : c.fecha_pago;
+}
+const FECHA_ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Desde y hasta qué día buscar el movimiento del banco de un cheque. */
+export function rangoDelMovimiento(c) {
+  const real = fechaDelMovimiento(c);
+  const hasta = moverDias(c.fecha_pago, DIAS_DESPUES_DEL_PAGO);
+  const hastaReal = moverDias(real, DIAS_ANTES_DEL_PAGO);
+  return { desde: moverDias(c.fecha_pago, -DIAS_ANTES_DEL_PAGO), hasta: hastaReal > hasta ? hastaReal : hasta };
+}
+
+/**
+ * El movimiento del banco que ya es el débito (o el depósito) de este cheque:
+ * misma cuenta y sentido, el mismo importe, desde 4 días antes de la fecha de
+ * pago hasta 35 días después, el más cercano al día en que se cobró. Antes se
+ * buscaba solo hasta 4 días de la fecha de pago y el débito que llegaba más
+ * tarde se cargaba otra vez.
+ * @param {{ c: object, accion: string }} f renglón del plan
+ * @param {object[]} ops operaciones del banco
+ * @param {{ banco: string, usadas?: Set<number> }} ctx
+ */
+export function movimientoDelCheque(f, ops = [], { banco, usadas = new Set() }) {
+  const sale = f.accion === "debitado";
+  const { desde, hasta } = rangoDelMovimiento(f.c);
+  const real = fechaDelMovimiento(f.c);
+  let mejor = null;
+  for (const o of ops) {
+    if (o.anulada_at || usadas.has(Number(o.id)) || o.origen === "cheque") continue;
+    if ((sale ? o.cuenta_haber : o.cuenta_debe) !== banco) continue;
+    if (Math.abs((Number(o.total_ars ?? o.total) || 0) - f.c.monto) >= 0.01) continue;
+    if (o.fecha < desde || o.fecha > hasta) continue;
+    const d = entreDias(o.fecha, real);
+    if (!mejor || d < mejor.d) mejor = { o, d };
+  }
+  return mejor?.o || null;
+}
+
 /** El cheque nuevo de Gypi para un renglón "nuevo" del listado (sin operación). */
 export function chequeNuevo(f, { cuentaBanco = null } = {}) {
   const { c, clase, estado, proveedor } = f;

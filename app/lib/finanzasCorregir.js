@@ -116,22 +116,100 @@ export function operacionCorregida(op, cambios = {}, { cuentas = [] } = {}) {
  * por el redondeo del interés) y hasta 3 días entre una y otra.
  * Se propone anular la de Gypi: el libro borra su renglón y queda la del
  * libro. Cada operación sirve para un solo par.
+ *
+ * 16/11: también lo que trajo el extracto del banco aunque se haya cargado
+ * con otro tipo o contra otra cuenta (el interés contra Intereses Ganados o
+ * contra la cuenta del plazo fijo: entra al mismo banco, mismo importe y
+ * hasta 5 días), y el renglón del banco con capital e interés juntos, que
+ * repite el vencimiento y el interés que cargó Gypi.
+ * @param {{ cuentasPf?: string[], cuentasInteres?: string[] }} [opts]
  * @returns {{ gypi: object, otra: object }[]}
  */
-export function plazosRepetidos(ops = []) {
+export function plazosRepetidos(ops = [], { cuentasPf = [], cuentasInteres = [] } = {}) {
   const vivas = ops.filter((o) => !o.anulada_at);
   const deGypi = vivas.filter((o) => o.origen === "plazo_fijo");
   const otras = vivas.filter((o) => o.origen !== "plazo_fijo");
+  const pfs = new Set(cuentasPf);
+  const reconocible = new Set([...cuentasPf, ...cuentasInteres].filter(Boolean));
   const usadas = new Set();
   const out = [];
+  const enGrupo = new Set();
+  // El banco devolvió capital e interés juntos: el vencimiento y el interés de Gypi sobran
+  const porCert = new Map();
   for (const g of deGypi) {
-    const otra = otras.find((o) => !usadas.has(o.id)
-      && o.cuenta_debe === g.cuenta_debe && o.cuenta_haber === g.cuenta_haber
-      && Math.abs(centavos(o.total) - centavos(g.total)) <= 1
-      && Math.abs(dias(o.fecha, g.fecha)) <= 3);
+    const m = String(g.origen_id || "").match(/^pf(\d+):([ri])$/);
+    if (!m) continue;
+    porCert.set(m[1], { ...(porCert.get(m[1]) || {}), [m[2]]: g });
+  }
+  for (const { r, i } of porCert.values()) {
+    if (!r || !i || r.cuenta_debe !== i.cuenta_debe) continue;
+    const suma = centavos(Number(r.total) + Number(i.total));
+    const otra = otras.find((o) => !usadas.has(o.id) && o.cuenta_debe === r.cuenta_debe && reconocible.has(o.cuenta_haber) && !pfs.has(o.cuenta_debe)
+      && Math.abs(centavos(o.total) - suma) <= 1 && Math.abs(dias(o.fecha, r.fecha)) <= 5);
+    if (!otra) continue;
+    usadas.add(otra.id);
+    enGrupo.add(r.id).add(i.id);
+    out.push({ gypi: r, otra }, { gypi: i, otra });
+  }
+  for (const g of deGypi) {
+    if (enGrupo.has(g.id)) continue;
+    const otra = otras.find((o) => !usadas.has(o.id) && o.cuenta_debe === g.cuenta_debe
+      && (o.cuenta_haber === g.cuenta_haber
+        ? Math.abs(centavos(o.total) - centavos(g.total)) <= 1 && Math.abs(dias(o.fecha, g.fecha)) <= 3
+        : o.origen === "banco" && reconocible.has(o.cuenta_haber) && !pfs.has(o.cuenta_debe)
+          && Math.abs(centavos(o.total) - centavos(g.total)) <= 1 && Math.abs(dias(o.fecha, g.fecha)) <= 5));
     if (!otra) continue;
     usadas.add(otra.id);
     out.push({ gypi: g, otra });
+  }
+  return out;
+}
+
+/* ─── Cheques con el débito o el depósito dos veces (16/11) ───────────── */
+
+/** Días antes y después de la fecha de pago en que se busca el movimiento del banco. */
+const CHEQUE_ANTES = 4;
+const CHEQUE_DESPUES = 35;
+
+/**
+ * Los cheques debitados o depositados cuyo movimiento cargó Gypi (origen
+ * cheque) y que también trajo el extracto o se cargó a mano: mismo banco y
+ * sentido, el mismo importe, desde 4 días antes de la fecha de pago hasta 35
+ * después (el e-cheq se cobra cuando lo presentan). Se propone quedarse con
+ * el del banco (tiene la fecha real), unir el cheque a ese y anular el de
+ * Gypi. Cada movimiento sirve para un solo cheque.
+ * @param {object[]} cheques con op_cierre_id
+ * @param {object[]} ops las del cheque y las de los bancos
+ * @returns {{ cheque: object, gypi: object, otra: object }[]}
+ */
+export function chequesRepetidos(cheques = [], ops = []) {
+  const porId = new Map(ops.map((o) => [Number(o.id), o]));
+  const deCheques = new Set(cheques.map((c) => Number(c.op_cierre_id)).filter(Boolean));
+  const usadas = new Set();
+  const out = [];
+  const lista = cheques.filter((c) => ["debitado", "depositado"].includes(c.estado) && c.op_cierre_id)
+    .sort((a, b) => String(a.fecha_pago).localeCompare(String(b.fecha_pago)) || a.id - b.id);
+  for (const ch of lista) {
+    const g = porId.get(Number(ch.op_cierre_id));
+    if (!g || g.anulada_at || g.origen !== "cheque") continue;
+    const sale = ch.estado === "debitado";
+    const banco = sale ? g.cuenta_haber : g.cuenta_debe;
+    const importe = centavos(g.total_ars ?? g.total);
+    const desde = dias(ch.fecha_pago, "1970-01-01") - CHEQUE_ANTES;
+    const hasta = dias(ch.fecha_pago, "1970-01-01") + CHEQUE_DESPUES;
+    let mejor = null;
+    for (const o of ops) {
+      if (o.anulada_at || o.origen === "cheque" || usadas.has(Number(o.id)) || deCheques.has(Number(o.id))) continue;
+      if ((sale ? o.cuenta_haber : o.cuenta_debe) !== banco) continue;
+      if (Math.abs(centavos(o.total_ars ?? o.total) - importe) >= 0.01) continue;
+      const d = dias(o.fecha, "1970-01-01");
+      if (d < desde || d > hasta) continue;
+      const cerca = Math.abs(dias(o.fecha, g.fecha));
+      if (!mejor || cerca < mejor.cerca) mejor = { o, cerca };
+    }
+    if (!mejor) continue;
+    usadas.add(Number(mejor.o.id));
+    out.push({ cheque: ch, gypi: g, otra: mejor.o });
   }
   return out;
 }

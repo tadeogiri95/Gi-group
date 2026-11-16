@@ -191,10 +191,17 @@ const esInteres = (op) => /RENDIMIENTOS FINANCIEROS/i.test(String(op.tipo || "")
  * de diferencia) hasta 5 días antes o después del vencimiento, y un rescate
  * sin certificado por el capital y la fecha; cada operación sirve para un
  * solo plazo.
+ *
+ * 16/11: el interés que trajo el extracto del banco cuenta aunque se haya
+ * cargado con otro tipo (contra Intereses Ganados o contra la cuenta del plazo
+ * fijo), y el renglón del banco que trae capital e interés juntos cuenta como
+ * vencimiento e interés a la vez. Antes se volvía a sumar el interés.
+ * @param {{ cuentasInteres?: string[] }} [opts] las cuentas de Intereses Ganados
  * @returns {Map<string, { c: object|null, r: object|null, i: object|null }>}
  */
-export function estadoDePlazos(plazos = [], ops = [], cuentasPf = []) {
+export function estadoDePlazos(plazos = [], ops = [], cuentasPf = [], { cuentasInteres = [] } = {}) {
   const pfs = new Set(cuentasPf);
+  const deInteres = new Set(cuentasInteres.filter(Boolean));
   const vivas = ops.filter((o) => !o.anulada_at);
   const usadas = new Set();
   const out = new Map();
@@ -214,11 +221,22 @@ export function estadoDePlazos(plazos = [], ops = [], cuentasPf = []) {
       || buscar("r", (o) => pfs.has(o.cuenta_haber) && !/\d{6,}/.test(String(o.descripcion || "")) && Math.abs(centavos(o.total) - p.depositado) <= 0.011 && Math.abs(dias(o.fecha, p.vencimiento)) <= 3)
       || buscar("r", (o) => delBanco(o, "cuenta_haber", p.vencimiento, 3));
     if (r) usadas.add(r.id);
-    const i = p.interes > 0
-      ? buscar("i", (o) => esInteres(o) && (tieneCert(o, p.certificado) || (Math.abs(centavos(o.total) - p.interes) <= 1 && Math.abs(dias(o.fecha, p.vencimiento)) <= 5)))
+    // El interés: por el tipo, o lo que entró al banco contra Intereses Ganados
+    // o contra la cuenta del plazo fijo (16/11)
+    const cercaDelVencimiento = (o, importe) => Math.abs(centavos(o.total) - importe) <= 1 && Math.abs(dias(o.fecha, p.vencimiento)) <= 5;
+    const pareceInteres = (o) => esInteres(o) || deInteres.has(o.cuenta_haber) || (o.origen === "banco" && pfs.has(o.cuenta_haber) && !pfs.has(o.cuenta_debe));
+    let i = p.interes > 0
+      ? buscar("i", (o) => pareceInteres(o) && (tieneCert(o, p.certificado) || cercaDelVencimiento(o, p.interes)))
       : null;
     if (i) usadas.add(i.id);
-    out.set(p.certificado, { c, r, i });
+    // 16/11: el banco devolvió capital e interés en un solo renglón
+    let juntos = null;
+    if (!r && !i && p.interes > 0) {
+      juntos = vivas.find((o) => !usadas.has(o.id) && o.origen !== ORIGEN_PLAZO_FIJO && !pfs.has(o.cuenta_debe)
+        && (pfs.has(o.cuenta_haber) || deInteres.has(o.cuenta_haber)) && cercaDelVencimiento(o, p.reembolsar)) || null;
+      if (juntos) usadas.add(juntos.id);
+    }
+    out.set(p.certificado, { c, r: r || juntos, i: i || juntos });
   }
   return out;
 }
@@ -246,8 +264,8 @@ export function operacionPlazo(p, paso, ctx, fechaAlta = null) {
  * Los que están en dólares no se cargan solos (se avisa).
  * @returns {{ filas: { plazo, estado: "nuevo"|"cargado"|"vencido"|"dolares", ops: object[], ya: string[] }[], ops: object[] }}
  */
-export function planPlazosFijos({ plazos = [], ops = [], ctx, cuentasPf = [], hoy, fechas = {}, fechaPorDefecto = null, omitir = [] }) {
-  const estado = estadoDePlazos(plazos, ops, cuentasPf.length ? cuentasPf : [ctx.cuenta_pf]);
+export function planPlazosFijos({ plazos = [], ops = [], ctx, cuentasPf = [], cuentasInteres = [], hoy, fechas = {}, fechaPorDefecto = null, omitir = [] }) {
+  const estado = estadoDePlazos(plazos, ops, cuentasPf.length ? cuentasPf : [ctx.cuenta_pf], { cuentasInteres: [...cuentasInteres, ctx.cuenta_interes] });
   const saltear = new Set(omitir.map(String));
   const filas = plazos.map((p) => {
     const e = estado.get(p.certificado);
@@ -272,8 +290,8 @@ export function planPlazosFijos({ plazos = [], ops = [], ctx, cuentasPf = [], ho
  * vencimiento o el interés: se registran con un botón (siempre vuelven a la
  * cuenta).
  */
-export function vencidosPendientes(guardados = [], ops = [], cuentasPf = [], hoy) {
-  const estado = estadoDePlazos(guardados, ops, cuentasPf);
+export function vencidosPendientes(guardados = [], ops = [], cuentasPf = [], hoy, opts = {}) {
+  const estado = estadoDePlazos(guardados, ops, cuentasPf, opts);
   return guardados.filter((p) => {
     const e = estado.get(p.certificado);
     return p.moneda !== "USD" && p.vencimiento <= hoy && e.c && (!e.r || (!e.i && p.interes > 0));
@@ -281,8 +299,8 @@ export function vencidosPendientes(guardados = [], ops = [], cuentasPf = [], hoy
 }
 
 /** Cómo está cada plazo guardado, para la lista: vigente, vencido sin registrar o terminado. */
-export function listaPlazos(guardados = [], ops = [], cuentasPf = [], hoy) {
-  const estado = estadoDePlazos(guardados, ops, cuentasPf);
+export function listaPlazos(guardados = [], ops = [], cuentasPf = [], hoy, opts = {}) {
+  const estado = estadoDePlazos(guardados, ops, cuentasPf, opts);
   return guardados.map((p) => {
     const e = estado.get(p.certificado);
     let situacion = "vigente";
@@ -299,12 +317,38 @@ export function interesesPorCobrar(lista = [], hoy) {
     .map((p) => ({ fecha: p.vencimiento < hoy ? hoy : p.vencimiento, importe: p.interes, detalle: `Plazo fijo N° ${p.certificado} · vence ${fechaPf(p.vencimiento).slice(0, 5)}` }));
 }
 
-/** Las operaciones que hacen falta para saber qué está cargado (las de las cuentas de plazo fijo y los intereses de los últimos 2 años). */
-export function pathOpsPlazos(empresaId, cuentasPf = [], hoy) {
+/** Las cuentas de Intereses Ganados del plan de cuentas (por el nombre). */
+export function cuentasDeInteres(cuentas = []) {
+  return cuentas.filter((c) => c?.activa !== false && INTERESES.test(txt(c?.nombre))).map((c) => c.codigo);
+}
+
+/** Para leer el plan de cuentas que necesita cuentasDeInteres. */
+export const pathCuentasInteres = (empresaId) => `fin_cuentas?empresa_id=eq.${empresaId}&select=codigo,nombre,activa`;
+
+/**
+ * Lee el plan de cuentas y las operaciones de los plazos fijos.
+ * @param {(path: string) => Promise<object[]>} leer
+ * @returns {Promise<{ ops: object[], cuentasInteres: string[] }>}
+ */
+export async function leerOpsPlazos(leer, empresaId, cuentasPf = [], hoy) {
+  const cuentas = await leer(pathCuentasInteres(empresaId)).catch(() => []);
+  const cuentasInteres = cuentasDeInteres(cuentas || []);
+  const ops = await leer(pathOpsPlazos(empresaId, cuentasPf, hoy, cuentasInteres));
+  return { ops: ops || [], cuentasInteres };
+}
+
+/**
+ * Las operaciones que hacen falta para saber qué está cargado (las de las
+ * cuentas de plazo fijo, las de Intereses Ganados y los intereses de los
+ * últimos 2 años).
+ */
+export function pathOpsPlazos(empresaId, cuentasPf = [], hoy, cuentasInteres = []) {
   const desde = `${Number(hoy.slice(0, 4)) - 2}${hoy.slice(4)}`;
   const lista = cuentasPf.map((c) => `"${String(c).replace(/"/g, "")}"`).join(",");
+  const interes = cuentasInteres.filter(Boolean).map((c) => `"${String(c).replace(/"/g, "")}"`).join(",");
   const or = [
     ...(lista ? [`cuenta_debe.in.(${lista})`, `cuenta_haber.in.(${lista})`] : []),
+    ...(interes ? [`cuenta_haber.in.(${interes})`] : []),
     `tipo.in.("${TIPO_INTERES}","${TIPO_INTERES_VIEJO}")`, `origen.eq.${ORIGEN_PLAZO_FIJO}`,
   ].join(",");
   return `fin_operaciones?empresa_id=eq.${empresaId}&anulada_at=is.null&fecha=gte.${desde}&or=(${encodeURIComponent(or)})&select=id,fecha,tipo,total,cuenta_debe,cuenta_haber,descripcion,origen,origen_id,anulada_at&order=fecha.asc,id.asc`;

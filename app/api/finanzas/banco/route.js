@@ -39,7 +39,7 @@ import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { FECHA, hoyAr } from "../../../lib/finanzasOperaciones";
 import { idsParaDeshacer, pendientesDelExtracto } from "../../../lib/finanzasExtractoPendientes";
-import { CLAVE_PLAZOS_FIJOS, leerGuardados, pathOpsPlazos, vencidosPendientes } from "../../../lib/finanzasPlazosFijos";
+import { CLAVE_PLAZOS_FIJOS, leerGuardados, leerOpsPlazos, vencidosPendientes } from "../../../lib/finanzasPlazosFijos";
 import { claseDeArchivo, grillaDeArchivo, movimientosDeGrilla, movimientosDePdf } from "../../../lib/finanzasExtracto";
 import {
   CLAVE_REGLAS_BANCO, DIAS_EMPAREJAR, DIAS_SOSPECHA, MAX_MOVIMIENTOS, ORIGEN_BANCO, controlSaldo, emparejarExtracto, entidadDe, juntarReglas,
@@ -96,7 +96,8 @@ async function loQueSeEspera(sesion) {
       const guardados = leerGuardados(cfg?.[0]?.valor);
       if (!guardados.length) return [];
       const cuentasPf = tesoreria.map((t) => t.cuenta);
-      return vencidosPendientes(guardados, await leer(sesion, pathOpsPlazos(e, cuentasPf, hoy), 20000), cuentasPf, hoy);
+      const { ops, cuentasInteres } = await leerOpsPlazos((path) => leer(sesion, path, 20000), e, cuentasPf, hoy);
+      return vencidosPendientes(guardados, ops, cuentasPf, hoy, { cuentasInteres });
     })().catch(() => []),
   ]);
   return { cheques, ordenes, plazos };

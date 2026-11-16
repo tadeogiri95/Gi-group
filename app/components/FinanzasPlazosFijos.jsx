@@ -268,7 +268,7 @@ function Vencidos({ pendientes, onCerrar, onHecho }) {
 
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
 
-/** Los plazos que quedaron dos veces: se anula la que cargó Gypi y queda la del libro. */
+/** Los plazos que quedaron dos veces: se anula la que cargó Gypi y queda la del libro o el extracto. */
 function Repetidos({ repetidos, onCerrar, onHecho }) {
   const toast = useToast();
   const [ocupado, setOcupado] = useState(false);
@@ -289,8 +289,9 @@ function Repetidos({ repetidos, onCerrar, onHecho }) {
     <Modal open onClose={ocupado ? () => {} : onCerrar} title="Plazos fijos repetidos" maxWidth={680}>
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
         <p className="m-0 text-[13px] text-gypi-dim">
-          Estas operaciones las cargó Gypi y también están en el libro, con el mismo importe y las mismas cuentas.
-          Se anula la de Gypi (queda tachada y el libro borra su renglón) y queda la tuya.
+          Estas operaciones las cargó Gypi y también están en el libro o en el extracto del banco, con el mismo importe.
+          Se anula la de Gypi (queda tachada y el libro borra su renglón) y queda la otra. Si el banco devolvió capital e interés
+          en un solo renglón, se anulan el vencimiento y el interés de Gypi y queda ese renglón.
         </p>
         <ul className="list-none m-0 p-0 flex flex-col gap-2" aria-label="Repetidas">
           {repetidos.map((r) => (
@@ -357,7 +358,7 @@ export default function FinanzasPlazosFijos({ onCambio }) {
       {datos?.repetidos?.length > 0 && (
         <button type="button" onClick={() => setVerRepetidos(true)}
           className="w-full mb-2 p-3 rounded-lg border border-gypi-red/40 bg-gypi-red/10 text-left text-[14px] font-semibold text-gypi-red cursor-pointer">
-          ⚠ {datos.repetidos.length === 1 ? "1 operación de plazo fijo está" : `${datos.repetidos.length} operaciones de plazos fijos están`} dos veces (en Gypi y en el libro): revisar y anular las repetidas
+          ⚠ {datos.repetidos.length === 1 ? "1 operación de plazo fijo está" : `${datos.repetidos.length} operaciones de plazos fijos están`} dos veces (en Gypi y en el libro o el extracto): revisar y anular las repetidas
         </button>
       )}
       {datos?.pendientes.length > 0 && (
