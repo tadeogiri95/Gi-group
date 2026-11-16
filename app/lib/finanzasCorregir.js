@@ -164,3 +164,52 @@ export function plazosRepetidos(ops = [], { cuentasPf = [], cuentasInteres = [] 
   }
   return out;
 }
+
+/* ─── Cheques con el débito o el depósito dos veces (16/11) ───────────── */
+
+/** Días antes y después de la fecha de pago en que se busca el movimiento del banco. */
+const CHEQUE_ANTES = 4;
+const CHEQUE_DESPUES = 35;
+
+/**
+ * Los cheques debitados o depositados cuyo movimiento cargó Gypi (origen
+ * cheque) y que también trajo el extracto o se cargó a mano: mismo banco y
+ * sentido, el mismo importe, desde 4 días antes de la fecha de pago hasta 35
+ * después (el e-cheq se cobra cuando lo presentan). Se propone quedarse con
+ * el del banco (tiene la fecha real), unir el cheque a ese y anular el de
+ * Gypi. Cada movimiento sirve para un solo cheque.
+ * @param {object[]} cheques con op_cierre_id
+ * @param {object[]} ops las del cheque y las de los bancos
+ * @returns {{ cheque: object, gypi: object, otra: object }[]}
+ */
+export function chequesRepetidos(cheques = [], ops = []) {
+  const porId = new Map(ops.map((o) => [Number(o.id), o]));
+  const deCheques = new Set(cheques.map((c) => Number(c.op_cierre_id)).filter(Boolean));
+  const usadas = new Set();
+  const out = [];
+  const lista = cheques.filter((c) => ["debitado", "depositado"].includes(c.estado) && c.op_cierre_id)
+    .sort((a, b) => String(a.fecha_pago).localeCompare(String(b.fecha_pago)) || a.id - b.id);
+  for (const ch of lista) {
+    const g = porId.get(Number(ch.op_cierre_id));
+    if (!g || g.anulada_at || g.origen !== "cheque") continue;
+    const sale = ch.estado === "debitado";
+    const banco = sale ? g.cuenta_haber : g.cuenta_debe;
+    const importe = centavos(g.total_ars ?? g.total);
+    const desde = dias(ch.fecha_pago, "1970-01-01") - CHEQUE_ANTES;
+    const hasta = dias(ch.fecha_pago, "1970-01-01") + CHEQUE_DESPUES;
+    let mejor = null;
+    for (const o of ops) {
+      if (o.anulada_at || o.origen === "cheque" || usadas.has(Number(o.id)) || deCheques.has(Number(o.id))) continue;
+      if ((sale ? o.cuenta_haber : o.cuenta_debe) !== banco) continue;
+      if (Math.abs(centavos(o.total_ars ?? o.total) - importe) >= 0.01) continue;
+      const d = dias(o.fecha, "1970-01-01");
+      if (d < desde || d > hasta) continue;
+      const cerca = Math.abs(dias(o.fecha, g.fecha));
+      if (!mejor || cerca < mejor.cerca) mejor = { o, cerca };
+    }
+    if (!mejor) continue;
+    usadas.add(Number(mejor.o.id));
+    out.push({ cheque: ch, gypi: g, otra: mejor.o });
+  }
+  return out;
+}

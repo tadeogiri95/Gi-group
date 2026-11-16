@@ -5,7 +5,7 @@ import { test, before, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
-import { operacionCorregida, plazosRepetidos, puedeAnular, puedeCorregir, dondeSeCambia } from "../app/lib/finanzasCorregir.js";
+import { chequesRepetidos, operacionCorregida, plazosRepetidos, puedeAnular, puedeCorregir, dondeSeCambia } from "../app/lib/finanzasCorregir.js";
 import { estadoDePlazos } from "../app/lib/finanzasPlazosFijos.js";
 
 before(() => {
@@ -98,6 +98,27 @@ test("plazosRepetidos — 16/11: el interés del extracto con otro tipo y el ren
   const juntos = { id: 9, fecha: "2026-11-02", tipo: "PLAZO FIJO", total: 6035747.2, cuenta_debe: BANCO, cuenta_haber: PF, origen: "banco", descripcion: "Acred. plazo fijo" };
   assert.deepEqual(plazosRepetidos([...gypi, juntos], { cuentasPf: [PF] }).map((p) => [p.gypi.id, p.otra.id]), [[1, 9], [2, 9]]);
   assert.deepEqual(plazosRepetidos([...gypi, { ...interesExtracto, cuenta_haber: "04.09.99" }], { cuentasPf: [PF] }), [], "contra otra cuenta cualquiera no");
+});
+
+test("chequesRepetidos — 16/11: el débito que cargó Gypi y el del extracto semanas después; queda el del banco", () => {
+  const cheques = [
+    { id: 1, estado: "debitado", fecha_pago: "2026-10-05", op_cierre_id: 10 },
+    { id: 2, estado: "debitado", fecha_pago: "2026-10-05", op_cierre_id: 11 },
+    { id: 3, estado: "depositado", fecha_pago: "2026-10-10", op_cierre_id: 12 },
+    // Otro cheque ya unido al movimiento 21: no se usa
+    { id: 4, estado: "otro", op_cierre_id: 21 },
+  ];
+  const ops = [
+    { id: 10, fecha: "2026-10-05", total: 1000, cuenta_debe: "02.01", cuenta_haber: BANCO, origen: "cheque" },
+    { id: 11, fecha: "2026-10-05", total: 2000, cuenta_debe: "02.01", cuenta_haber: BANCO, origen: "cheque" },
+    { id: 12, fecha: "2026-10-10", total: 3000, cuenta_debe: BANCO, cuenta_haber: "01.03", origen: "cheque" },
+    { id: 20, fecha: "2026-10-27", total: 1000, cuenta_debe: "02.01", cuenta_haber: BANCO, origen: "banco", descripcion: "ECHEQ pago camara" },
+    { id: 21, fecha: "2026-10-06", total: 2000, cuenta_debe: "02.01", cuenta_haber: BANCO, origen: "banco" },
+    { id: 22, fecha: "2026-11-30", total: 3000, cuenta_debe: BANCO, cuenta_haber: "01.03", origen: "banco" },
+  ];
+  assert.deepEqual(chequesRepetidos(cheques, ops).map((p) => [p.cheque.id, p.gypi.id, p.otra.id]), [[1, 10, 20]],
+    "el 2 tiene su igual ya unido a otro cheque; el 3 está a más de 35 días");
+  assert.deepEqual(chequesRepetidos(cheques, ops.map((o) => (o.id === 10 ? { ...o, anulada_at: "x" } : o))), [], "si ya se anuló, nada");
 });
 
 test("estadoDePlazos — el rescate del libro sin certificado se reconoce por el capital y la fecha", () => {
