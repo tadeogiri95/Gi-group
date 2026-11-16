@@ -20,7 +20,7 @@ import { feriadosFinanzas } from "../../../lib/finanzasDiasHabiles";
 import { CLAVE_PLANIFICACION } from "../../../lib/planificacion";
 import { CLAVE_FLUJO, flujoPrevisto, flujoReal, saldoCajas, validarLineasFlujo } from "../../../lib/finanzasFlujo";
 import { cobrosDeOts, pagosAProveedores, pagosDeOcAbiertas } from "../../../lib/finanzasFlujoAdelante";
-import { CLAVE_PLAZOS_FIJOS, interesesPorCobrar, leerGuardados, listaPlazos, pathOpsPlazos } from "../../../lib/finanzasPlazosFijos";
+import { CLAVE_PLAZOS_FIJOS, interesesPorCobrar, leerGuardados, leerOpsPlazos, listaPlazos } from "../../../lib/finanzasPlazosFijos";
 import { CLAVE_SUELDOS, ORIGEN_PAGO_SUELDO, leerConfigSueldos, pagadoPorEmpleado, totalesLiquidacion } from "../../../lib/finanzasSueldos";
 
 const COLUMNAS = "id,fecha,tipo,centro_costo,total,total_ars,cuenta_debe,cuenta_haber,estado,anulada_at,origen,origen_id,proveedor_id,cliente_id,entidad,proyecto_id,referencia";
@@ -47,8 +47,8 @@ async function interesesPlazos(sesion, tesoreria, hoy) {
   const guardados = leerGuardados(await config(sesion.empresa_id, CLAVE_PLAZOS_FIJOS));
   if (!guardados.length) return [];
   const cuentasPf = tesoreria.filter((t) => t.tipo === "plazo_fijo").map((t) => t.cuenta);
-  const ops = await leer(sesion, pathOpsPlazos(sesion.empresa_id, cuentasPf, hoy), 20000);
-  return interesesPorCobrar(listaPlazos(guardados, ops, cuentasPf, hoy), hoy);
+  const { ops, cuentasInteres } = await leerOpsPlazos((path) => leer(sesion, path, 20000), sesion.empresa_id, cuentasPf, hoy);
+  return interesesPorCobrar(listaPlazos(guardados, ops, cuentasPf, hoy, { cuentasInteres }), hoy);
 }
 
 export async function GET(request) {

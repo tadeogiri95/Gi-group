@@ -90,6 +90,16 @@ test("plazosRepetidos — cada operación de Gypi con su igual del libro (mismas
   assert.deepEqual(plazosRepetidos(OPS_PF.filter((o) => o.id !== 3 && o.id !== 4)), [], "sin la del libro no hay repetidas");
 });
 
+test("plazosRepetidos — 16/11: el interés del extracto con otro tipo y el renglón con capital e interés juntos", () => {
+  const gypi = OPS_PF.slice(0, 2);
+  const interesExtracto = { id: 7, fecha: "2026-11-04", tipo: "COBRO INTERESES", total: 257958.48, cuenta_debe: BANCO, cuenta_haber: PF, origen: "banco", descripcion: "Interes plazo fijo" };
+  const capitalExtracto = { id: 8, fecha: "2026-11-02", tipo: "PLAZO FIJO", total: 5777788.72, cuenta_debe: BANCO, cuenta_haber: PF, origen: "banco", descripcion: "Acred. plazo fijo" };
+  assert.deepEqual(plazosRepetidos([...gypi, capitalExtracto, interesExtracto], { cuentasPf: [PF] }).map((p) => [p.gypi.id, p.otra.id]), [[1, 8], [2, 7]]);
+  const juntos = { id: 9, fecha: "2026-11-02", tipo: "PLAZO FIJO", total: 6035747.2, cuenta_debe: BANCO, cuenta_haber: PF, origen: "banco", descripcion: "Acred. plazo fijo" };
+  assert.deepEqual(plazosRepetidos([...gypi, juntos], { cuentasPf: [PF] }).map((p) => [p.gypi.id, p.otra.id]), [[1, 9], [2, 9]]);
+  assert.deepEqual(plazosRepetidos([...gypi, { ...interesExtracto, cuenta_haber: "04.09.99" }], { cuentasPf: [PF] }), [], "contra otra cuenta cualquiera no");
+});
+
 test("estadoDePlazos — el rescate del libro sin certificado se reconoce por el capital y la fecha", () => {
   const plazo = { certificado: "17529123", depositado: 1410199.31, interes: 22879.42, vencimiento: "2026-11-02" };
   const libro = [
@@ -184,7 +194,7 @@ test("/api/finanzas/plazos-fijos — muestra los repetidos y anula solo las de G
   assert.equal(r2.status, 200);
   assert.equal(escrito.length, 1);
   assert.match(escrito[0].url, /origen=eq\.plazo_fijo&anulada_at=is\.null&id=in\.\(1,2\)/);
-  assert.equal(escrito[0].body.anulada_por_nombre, "Tadeo (repetida con el libro)");
+  assert.equal(escrito[0].body.anulada_por_nombre, "Tadeo (repetida con el libro o el extracto)");
 });
 
 // ─── Pantalla ───
