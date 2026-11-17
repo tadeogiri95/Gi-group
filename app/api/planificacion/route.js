@@ -20,7 +20,7 @@ import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { planProduccionBody } from "../../lib/schemas";
-import { sbGet, sbPost, sbPatch, sbDelete } from "../../lib/sbHelpers";
+import { sbGet, sbGetAll, sbPost, sbPatch, sbDelete } from "../../lib/sbHelpers";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan } from "../../lib/planEnforcement";
 import { requireModuloSesion } from "../../lib/accesosServidor";
@@ -36,6 +36,8 @@ const SIN_MIGRACION_143 = "Para guardar el plan sin límite de semanas falta cor
 const falta143 = (err) => /planes_produccion_(tipo_)?check/.test(String(err?.message));
 const faltaMigracion = (err) => !falta143(err) && /planes_produccion|plan_produccion_items/.test(String(err?.message));
 const DIA_MS = 86400000;
+// Renglones de plan que se leen como máximo (en tandas de 1000)
+const MAX_ITEMS = 200000;
 const diaAntes = (f) => new Date(Date.parse(`${f}T00:00:00Z`) - DIA_MS).toISOString().slice(0, 10);
 
 async function entrar(request) {
@@ -48,7 +50,7 @@ async function entrar(request) {
 
 async function conItems(sesion, plan) {
   if (!plan) return null;
-  const items = (await sbGet(`plan_produccion_items?empresa_id=eq.${sesion.empresa_id}&plan_id=eq.${plan.id}&select=ot,etapa,fecha,horas,orden&order=fecha.asc,orden.asc`, { sesion })) || [];
+  const { data: items } = await sbGetAll(`plan_produccion_items?empresa_id=eq.${sesion.empresa_id}&plan_id=eq.${plan.id}&select=ot,etapa,fecha,horas,orden&order=fecha.asc,orden.asc,id.asc`, { sesion, maxFilas: MAX_ITEMS });
   return { ...plan, items };
 }
 
@@ -62,9 +64,12 @@ export async function GET(request) {
     try {
       if (q.get("confirmados")) {
         const limite = new Date(Date.now() - 183 * 86400000).toISOString().slice(0, 10);
-        const planes = (await sbGet(`planes_produccion?empresa_id=eq.${e}&estado=eq.confirmado&hasta=gte.${limite}&select=id,tipo,desde,hasta,division_id,dias_extra,confirmado_at&order=desde.asc&limit=60`, { sesion })) || [];
+        // Supabase corta cada respuesta en 1000 filas sin avisar: se trae todo en
+        // tandas (Tadeo, 17/11: M-7877 no salía en el Gantt porque sus días
+        // quedaban después de la fila 1000 y el plan llegaba cortado)
+        const { data: planes } = await sbGetAll(`planes_produccion?empresa_id=eq.${e}&estado=eq.confirmado&hasta=gte.${limite}&select=id,tipo,desde,hasta,division_id,dias_extra,confirmado_at&order=desde.asc,id.asc`, { sesion, maxFilas: 5000 });
         if (!planes.length) return json({ ok: true, planes: [] });
-        const items = (await sbGet(`plan_produccion_items?empresa_id=eq.${e}&plan_id=in.(${planes.map((p) => p.id).join(",")})&select=plan_id,ot,etapa,fecha,horas,orden&order=fecha.asc,orden.asc&limit=20000`, { sesion })) || [];
+        const { data: items } = await sbGetAll(`plan_produccion_items?empresa_id=eq.${e}&plan_id=in.(${planes.map((p) => p.id).join(",")})&select=plan_id,ot,etapa,fecha,horas,orden&order=fecha.asc,orden.asc,id.asc`, { sesion, maxFilas: MAX_ITEMS });
         return json({ ok: true, planes: planes.map((p) => ({ ...p, items: items.filter((i) => i.plan_id === p.id) })) });
       }
       if (q.get("horizonte")) {
