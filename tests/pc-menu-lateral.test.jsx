@@ -20,7 +20,7 @@ test("menú — los botones con sus opciones, lo no contratado con candado, y Em
   const prod = g.find((x) => x.id === "proyectos").items;
   assert.deepEqual(prod.map((i) => i.label), ["OT", "Reportes", "Instalaciones", "Planificación", "Minuta"]);
   const mat = g.find((x) => x.id === "inventario").items;
-  assert.deepEqual(mat.map((i) => [i.label, !!i.bloqueado]), [["Stock", false], ["Compras", true]]);
+  assert.deepEqual(mat.map((i) => [i.label, !!i.bloqueado]), [["Stock", false], ["Inventario", false], ["Movimientos", false], ["Compras", true]]);
   assert.equal(g.find((x) => x.id === "personal").items.find((i) => i.label === "Permisos").badge, 3);
   // Planificación y Minuta son solo del dueño
   const admin = gruposMenu(empresa, { rol: "administrativo" }).find((x) => x.id === "proyectos").items;

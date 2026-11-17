@@ -45,7 +45,10 @@ test("barra de gestión — Inicio · Producción · Materiales · Mantenimiento
 test("botones — Proyectos: OT y Reportes; Inventario: Stock y Compras; Mantenimiento: Flota vehicular", () => {
   const labels = (boton, empresa = PLANTA) => opcionesBoton(boton, empresa).map((o) => o.label);
   assert.deepEqual(labels("proyectos"), ["OT", "Reportes", "Instalaciones"]);
-  assert.deepEqual(labels("inventario"), ["Stock", "Compras"]);
+  // 17/11: Movimientos con lugar propio; Inventario (valorizado) solo para la oficina
+  assert.deepEqual(labels("inventario"), ["Stock", "Movimientos", "Compras"]);
+  assert.deepEqual(opcionesBoton("inventario", PLANTA, { rol: "gerencial" }).map((o) => o.label), ["Stock", "Inventario", "Movimientos", "Compras"]);
+  assert.deepEqual(opcionesBoton("inventario", PLANTA, { rol: "operativo" }).map((o) => o.label), ["Stock", "Movimientos", "Compras"]);
   assert.deepEqual(labels("mantenimiento"), ["Flota vehicular", "Maquinaria"]);
   // Los enlaces viejos a Planta van al botón nuevo
   assert.deepEqual(partirDestino("planta:compras"), { pantalla: "inventario", seccion: "compras" });

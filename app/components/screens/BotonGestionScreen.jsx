@@ -19,6 +19,8 @@ import GerenciaActividadScreen from "../../gerencia_actividad_screen";
 import ProyectosScreen from "../../proyectos_screen.jsx";
 import StockScreen from "../StockScreen";
 import ComprasScreen from "../ComprasScreen";
+import InventarioScreen from "../InventarioScreen";
+import MovimientosScreen, { pedirCarga } from "../MovimientosScreen";
 import FlotaScreen from "../FlotaScreen";
 import MaquinariaScreen from "../MaquinariaScreen";
 import PlanificacionScreen from "../PlanificacionScreen";
@@ -73,6 +75,9 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
   const [opcionLocal, setOpcionLocal] = useState(OPCIONES.some((o) => o.id === pedida) ? pedida : primera?.id);
   const opcion = onSeccion ? pedida : opcionLocal;
   const setOpcion = onSeccion || setOpcionLocal;
+  // 📥 Cargar ingreso / 📤 Cargar consumo (17/11): van a Movimientos con el formulario abierto
+  const irACargar = (tipo) => { pedirCarga(tipo); setOpcion("movimientos"); };
+  const conMovimientos = OPCIONES.some((o) => o.id === "movimientos");
   // Con todo apagado el botón no aparece en la barra; por las dudas, nada
   if (!primera) return null;
   const actual = OPCIONES.find((o) => o.id === opcion) || primera;
@@ -100,7 +105,9 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {!bloqueado && actual.id === "vivo" && <GerenciaActividadScreen empresaId={empresaId} />}
         {!bloqueado && actual.id === "ot" && <ProyectosScreen empresaId={empresaId} onPlanillas={onPlanillas} />}
         {!bloqueado && actual.id === "instalaciones" && <ProyectosScreen empresaId={empresaId} onPlanillas={onPlanillas} vistaInicial="gantt" ganttTipo="instalacion" />}
-        {!bloqueado && actual.id === "stock" && <StockScreen empresa={empresa} empresaId={empresaId} usuario={usuario} onPlanillas={onPlanillas} />}
+        {!bloqueado && actual.id === "stock" && <StockScreen empresa={empresa} empresaId={empresaId} usuario={usuario} onPlanillas={onPlanillas} onCargar={conMovimientos ? irACargar : null} />}
+        {!bloqueado && actual.id === "inventario-valorizado" && <InventarioScreen empresa={empresa} usuario={usuario} onCargar={conMovimientos ? irACargar : null} />}
+        {!bloqueado && actual.id === "movimientos" && <MovimientosScreen usuario={usuario} />}
         {!bloqueado && actual.id === "compras" && <ComprasScreen empresaId={empresaId} empresa={empresa} usuario={usuario} />}
         {!bloqueado && actual.id === "flota" && <FlotaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "flota-alertas" ? "alertas" : "vehiculos"} />}
         {!bloqueado && actual.id === "maquinaria" && <MaquinariaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "maquinaria-alertas" ? "alertas" : "maquinas"} />}

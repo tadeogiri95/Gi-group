@@ -250,7 +250,7 @@ test("movimientos en Stock — lista, anular y cargar un ingreso", async () => {
   fireEvent.click(screen.getByLabelText(/Anular 📦 Retiro/));
   await waitFor(() => assert.deepEqual(enviados[0], { accion: "anular", id: 4 }));
 
-  fireEvent.click(screen.getByText("＋ Cargar retiro, devolución, ingreso o ajuste"));
+  fireEvent.click(screen.getByText("📥 Cargar ingreso"));
   fireEvent.change(screen.getByLabelText("Artículo"), { target: { value: "tablilla" } });
   fireEvent.click(screen.getByText("Tablilla 0277 negra"));
   fireEvent.change(screen.getByLabelText("Cantidad (MT)"), { target: { value: "10" } });
@@ -270,7 +270,8 @@ test("accesos — botón en el inicio del operario, en la ficha y pestaña en St
   assert.match(home, /titulo="Retirar material"/);
   const ficha = readFileSync(new URL("../app/components/FichaArticulo.jsx", import.meta.url), "utf8");
   assert.match(ficha, /📦 Retirar o devolver/);
-  const stock = readFileSync(new URL("../app/components/StockScreen.jsx", import.meta.url), "utf8");
+  // 17/11: Movimientos tiene su pestaña en Materiales
+  const stock = readFileSync(new URL("../app/components/MovimientosScreen.jsx", import.meta.url), "utf8");
   assert.match(stock, /<MovimientosStock usuario=\{usuario\} articulos=\{articulos\} /);
 });
 
@@ -312,7 +313,7 @@ test("/api/stock/movimientos — varios: si uno está mal no se guarda ninguno",
 test("movimientos en Stock — varios retiros juntos con la OT de todos y una distinta", async () => {
   const enviados = mockPantalla({ articulos: [TABLILLA, BISAGRA] });
   render(<MovimientosStock usuario={{ id: OTRO, rol: "administrativo" }} articulos={[TABLILLA, BISAGRA]} />);
-  fireEvent.click(screen.getByText("＋ Cargar retiro, devolución, ingreso o ajuste"));
+  fireEvent.click(screen.getByText("📤 Cargar consumo"));
   fireEvent.click(screen.getByText("📦 Retiro"));
   fireEvent.change(screen.getByLabelText("OT para todos (opcional)"), { target: { value: "M-7495" } });
   fireEvent.change(screen.getByLabelText("Artículo"), { target: { value: "tablilla" } });
