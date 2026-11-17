@@ -38,6 +38,10 @@ export const BOTONES_GESTION = {
     detalle: "Stock y compras",
     opciones: [
       { id: "stock", label: "Stock", modulo: "stock" },
+      // 17/11 (pedido de Tadeo): inventario valorizado a una fecha (solo la
+      // oficina, muestra precios) y Movimientos con lugar propio
+      { id: "inventario-valorizado", label: "Inventario", modulo: "stock", soloOficina: true },
+      { id: "movimientos", label: "Movimientos", modulo: "stock" },
       { id: "compras", label: "Compras", modulo: "compras" },
     ],
   },
@@ -95,7 +99,7 @@ export const BOTONES_GESTION = {
 /** El ícono de cada opción (menú de la izquierda y tarjetas del Inicio de Finanzas). */
 export const ICONO_GESTION = {
   vivo: "🟢", ot: "📋", reportes: "📊", instalaciones: "🔧", planificacion: "📅", minuta: "📝",
-  stock: "📦", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-clientes": "👥", "fin-sueldos": "👷", "fin-proveedores": "🏭", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-mayor": "📚", "fin-devengamiento": "📆", "fin-resultados": "📊", "fin-patrimonio": "⚖️", "fin-flujo": "💵", "fin-reporte": "📑", "fin-cierre": "🔍", "fin-libro": "📗", "fin-config": "🧾", "fin-inversiones": "📈", "fin-cuenta-ot": "📋", "fin-unificados": "🔗", "fin-sos": "📄",
+  stock: "📦", "inventario-valorizado": "📊", movimientos: "📥", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-clientes": "👥", "fin-sueldos": "👷", "fin-proveedores": "🏭", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-mayor": "📚", "fin-devengamiento": "📆", "fin-resultados": "📊", "fin-patrimonio": "⚖️", "fin-flujo": "💵", "fin-reporte": "📑", "fin-cierre": "🔍", "fin-libro": "📗", "fin-config": "🧾", "fin-inversiones": "📈", "fin-cuenta-ot": "📋", "fin-unificados": "🔗", "fin-sos": "📄",
 };
 
 /** Pestañas de un botón para esta empresa: sin lo apagado, lo que pide el
@@ -104,6 +108,7 @@ export function opcionesBoton(boton, empresa, usuario = null) {
   return (BOTONES_GESTION[boton]?.opciones || [])
     .filter((o) => (!o.conTareas || conRegistroTareas(empresa)) && !moduloApagado(empresa, o.modulo))
     .filter((o) => !o.soloGerencia || comoDueno(usuario))
+    .filter((o) => !o.soloOficina || usuario?.rol === "gerencial" || usuario?.rol === "administrativo")
     .filter((o) => !o.soloDueno || usuario?.rol === "gerencial");
 }
 
@@ -114,7 +119,7 @@ export function conBoton(boton, empresa, usuario = null) {
 }
 
 // Los enlaces viejos a "Planta" (?screen=planta, "planta:compras") van al botón nuevo
-const PLANTA_A_BOTON = { vivo: "proyectos", ot: "proyectos", reportes: "proyectos", instalaciones: "proyectos", minuta: "proyectos", stock: "inventario", compras: "inventario", flota: "mantenimiento", maquinaria: "mantenimiento" };
+const PLANTA_A_BOTON = { vivo: "proyectos", ot: "proyectos", reportes: "proyectos", instalaciones: "proyectos", minuta: "proyectos", stock: "inventario", movimientos: "inventario", compras: "inventario", flota: "mantenimiento", maquinaria: "mantenimiento" };
 
 export function esSupervisor(usuario) {
   return usuario?.rol === "administrativo" && !!usuario?.solo_su_division;

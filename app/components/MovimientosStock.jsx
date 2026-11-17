@@ -32,17 +32,42 @@ export function cambiarOtTodos(form, ot) {
   return { ...form, otTodos: ot, renglones: form.renglones.map((r) => (r.ot === form.otTodos || !r.ot ? { ...r, ot } : r)) };
 }
 
+/**
+ * Los botones grandes para cargar (17/11, pedido de Tadeo: "más a la vista"):
+ * 📥 Ingreso y 📤 Consumo, y debajo devolución o ajuste. El ingreso y el
+ * ajuste son de la oficina.
+ */
+export function BotonesCargar({ puedeIngresar = true, onElegir }) {
+  return (
+    <div className="mb-3">
+      <div className="grid grid-cols-2 gap-2">
+        {puedeIngresar && (
+          <button onClick={() => onElegir("ingreso")} className="g-btn g-btn-primary min-h-[52px] text-[15px] whitespace-nowrap">📥 Cargar ingreso</button>
+        )}
+        <button onClick={() => onElegir("consumo")} className={`g-btn g-btn-primary min-h-[52px] text-[15px] whitespace-nowrap ${puedeIngresar ? "" : "col-span-2"}`}>📤 Cargar consumo</button>
+      </div>
+      <div className="flex flex-wrap gap-x-3 mt-1 text-[13px]">
+        <button onClick={() => onElegir("devolucion")} className="min-h-[40px] p-0 bg-transparent border-none font-semibold text-gypi-amber-ink cursor-pointer font-body">↩️ Devolución</button>
+        {puedeIngresar && (
+          <button onClick={() => onElegir("ajuste")} className="min-h-[40px] p-0 bg-transparent border-none font-semibold text-gypi-amber-ink cursor-pointer font-body">⚖️ Ajuste de inventario</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function fechaHora(iso) {
   return iso ? new Date(iso).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "";
 }
 
-export default function MovimientosStock({ usuario, articulos = [], onArticuloNuevo }) {
+export default function MovimientosStock({ usuario, articulos = [], onArticuloNuevo, tipoInicial = null }) {
   const porOt = useOts();
   const [movs, setMovs] = useState(null);
   const [creando, setCreando] = useState(false);
   const puedeCrear = usuario?.rol === "gerencial" || usuario?.rol === "administrativo";
   const [faltaMigracion, setFaltaMigracion] = useState(false);
-  const [form, setForm] = useState(null);
+  // 17/11: 📥 Cargar ingreso y 📤 Cargar consumo de Stock e Inventario abren el formulario directo
+  const [form, setForm] = useState(() => (tipoInicial && TIPOS_MOVIMIENTO[tipoInicial] ? { ...VACIO, tipo: tipoInicial } : null));
   const [error, setError] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [conRemito, setConRemito] = useState(false);
@@ -158,11 +183,11 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
       {/* El código para que la planilla MRP traiga los movimientos está en
           Más → Planillas conectadas (auditoría 01/11, PR 3) */}
 
-      {/* Ingreso por foto del remito, para revisar (11/11, parte 7) */}
+      {/* Primero los botones grandes para cargar (17/11); debajo, el ingreso por
+          foto del remito, para revisar (11/11, parte 7) */}
+      {!form && !conRemito && <BotonesCargar puedeIngresar={puedeCrear} onElegir={(tipo) => { setForm({ ...VACIO, tipo }); setError(null); }} />}
       {!form && <RemitosFoto articulos={articulos} onIngreso={cargar} onAbierto={setConRemito} />}
-      {conRemito ? null : !form ? (
-        <button onClick={() => { setForm({ ...VACIO }); setError(null); }} className="g-btn g-btn-primary w-full mb-3">＋ Cargar retiro, devolución, ingreso o ajuste</button>
-      ) : (
+      {conRemito || !form ? null : (
         <div className="p-3 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface">
           <div className="flex gap-1.5 flex-wrap mb-3" role="group" aria-label="Tipo de movimiento">
             {Object.values(TIPOS_MOVIMIENTO).map((t) => (
