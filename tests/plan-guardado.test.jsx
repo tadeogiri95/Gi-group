@@ -278,6 +278,31 @@ test("/api/planificacion — ?confirmados=1 trae los planes confirmados con sus 
   assert.equal(sin.falta_migracion, true);
 });
 
+test("/api/planificacion — ?confirmados=1 trae TODOS los días aunque pasen las 1000 filas de Supabase (Tadeo, 17/11: M-7877 no salía en el Gantt)", async () => {
+  // 1500 días de planes viejos primero y, al final, la OT M-7877 del plan nuevo
+  const viejos = Array.from({ length: 1500 }, (_, i) => ({ plan_id: 1, ot: `V${i}`, etapa: "corte", fecha: "2026-10-01", horas: 1, orden: i }));
+  const todos = [...viejos, { plan_id: 2, ot: "M-7877", etapa: "armado", fecha: "2026-12-01", horas: 4, orden: 0 }];
+  const planes = [{ id: 1, tipo: "horizonte", desde: "2026-09-01", hasta: "2026-10-31", estado: "confirmado" }, { id: 2, tipo: "horizonte", desde: "2026-11-01", hasta: "2026-12-31", estado: "confirmado" }];
+  const pagina = (lista, u) => {
+    // Como Supabase: nunca más de 1000 filas por respuesta
+    const q = new URL(u).searchParams;
+    const desde = Number(q.get("offset") || 0);
+    const cuantas = Math.min(1000, Number(q.get("limit") || 1000));
+    return lista.slice(desde, desde + cuantas);
+  };
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
+    { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
+    { match: (u) => u.includes("/rest/v1/plan_produccion_items"), respond: (u) => ({ status: 200, body: pagina(todos, u) }) },
+    { match: (u) => u.includes("/rest/v1/planes_produccion"), respond: (u) => ({ status: 200, body: pagina(planes, u) }) },
+  ]);
+  const d = await (await api.GET(req(await token("administrativo"), { query: "?confirmados=1" }))).json();
+  assert.equal(d.planes.length, 2);
+  assert.equal(d.planes[0].items.length, 1500);
+  assert.deepEqual(d.planes[1].items.map((i) => i.ot), ["M-7877"]);
+});
+
 // ─── Plan sin límite de semanas (Tadeo, 27/10; migración 143) ───
 const HORIZONTE = {
   ...CUERPO, tipo: "horizonte", desde: "2026-10-27", hasta: "2027-01-20",
