@@ -9,8 +9,13 @@
 //       importe, fecha, descripcion?, comprobante_url?, tipo_cambio? }
 //       → la operación entra a su caja como "para revisar" y se avisa a los
 //       dueños. Si la carga el dueño, entra confirmada.
+//       Un gasto con proveedor (19/11, punto 14; finanzasPagoJunto.js) se anota
+//       en su cuenta corriente: el gasto contra Proveedores y el pago desde la
+//       caja (unidos por origen_id mc… y mc…-p). Con pagado: false queda solo
+//       la deuda, para pagarla después.
 //   POST { accion: "anular", id } → anula una propia que el dueño todavía no
-//       revisó (para corregir un error). No se borra.
+//       revisó (para corregir un error). No se borra. El gasto y su pago se
+//       anulan juntos.
 //   Pases entre personas (10/11; reglas en app/lib/finanzasPases.js):
 //   POST { accion: "pasar", cuenta, hacia, importe, fecha, descripcion?, tipo_cambio? }
 //       → queda pendiente y se avisa al responsable de la otra caja.
@@ -57,6 +62,11 @@ import { buscarComprobanteRepetido, buscarMovimientoParecido } from "../../lib/f
 import { ErrorIa, leerDocumentoIa } from "../../lib/facturaIa";
 import { MAX_ARCHIVO_B64 } from "../../lib/facturasSueltas";
 import { checkRateLimit } from "../../lib/rateLimitMemory";
+import { miCajaConProveedor } from "../../lib/finanzasPagoJunto";
+import { randomUUID } from "node:crypto";
+
+/** El gasto con proveedor y su pago de Mi caja (punto 14): mc<12> y mc<12>-p. */
+const GRUPO_MI_CAJA = /^mc[0-9a-f]{12}(-p)?$/;
 import { logAudit } from "../../lib/audit";
 import { ipCliente } from "../../lib/ip";
 import { accesoSesion, requireModuloSesion } from "../../lib/accesosServidor";
@@ -231,7 +241,7 @@ async function cargar(sesion, d, cajas) {
   const e = sesion.empresa_id;
   const caja = cajas.find((c) => c.cuenta === d.cuenta);
   if (!caja) return NextResponse.json({ error: "Esa caja no está a tu cargo" }, { status: 403 });
-  const [{ lista }, proveedores] = await Promise.all([conceptos(e), proveedoresDe(e)]);
+  const [{ lista, cuentas }, proveedores] = await Promise.all([conceptos(e), proveedoresDe(e)]);
   const pideCliente = d.clase !== "gasto" && lista.ingresos.some((c) => c.codigo === d.concepto && c.pide_cliente);
   const { clientes, proyectos } = pideCliente || d.proyecto_id ? await clientesYOt(e) : { clientes: [], proyectos: [] };
   const { op, errores } = validarMovimientoMiCaja(d, {
@@ -254,16 +264,27 @@ async function cargar(sesion, d, cajas) {
   }
   const ahora = new Date().toISOString();
   const quien = await nombreEmpleado(sesion);
-  const fila = { ...op, empresa_id: e, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora };
-  if (!fila.comprobante_url) delete fila.comprobante_url; // sin foto anda aunque falte la 176
-  const [o] = (await sbPost("fin_operaciones", fila).catch((err) => {
+  // 19/11 (punto 14): con proveedor, el gasto pasa por su cuenta corriente (y el pago, si se pagó ahora)
+  const ops = d.clase === "gasto" ? miCajaConProveedor(op, { cuentas, pagado: d.pagado !== false }) : [op];
+  const grupo = ops.length > 1 || ops[0] !== op ? `mc${randomUUID().replace(/-/g, "").slice(0, 12)}` : null;
+  const filas = ops.map((x, i) => {
+    const fila = { ...x, empresa_id: e, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora, ...(grupo ? { origen_id: i ? `${grupo}-p` : grupo } : {}) };
+    if (!fila.comprobante_url) delete fila.comprobante_url; // sin foto anda aunque falte la 176
+    return fila;
+  });
+  const guardadas = (await sbPost("fin_operaciones", filas.length > 1 ? filas : filas[0]).catch((err) => {
     // Sin la 177 todavía: se guarda igual, con el nombre del cliente
-    if (fila.cliente_id && /cliente_id/.test(String(err?.message))) { delete fila.cliente_id; return sbPost("fin_operaciones", fila); }
+    if (filas.some((f) => f.cliente_id) && /cliente_id/.test(String(err?.message))) {
+      const sin = filas.map(({ cliente_id: _c, ...f }) => f);
+      return sbPost("fin_operaciones", sin.length > 1 ? sin : sin[0]);
+    }
     throw err;
   })) || [];
+  // La que se ve en la caja: el pago (o la única)
+  const o = guardadas.find((x) => x.cuenta_debe === caja.cuenta || x.cuenta_haber === caja.cuenta) || guardadas[0];
   broadcastRefresh(e, "fin_operaciones");
   if (sesion.rol !== "gerencial") await avisarDuenos(e, { quien, op, caja });
-  return NextResponse.json({ ok: true, operacion: o ? { id: o.id, estado: o.estado } : null });
+  return NextResponse.json({ ok: true, operacion: o ? { id: o.id, estado: o.estado } : null, ...(grupo && ops.length === 1 ? { solo_deuda: true } : {}) });
 }
 
 async function legajosDe(empresaId, ids = []) {
@@ -344,6 +365,15 @@ async function anular(sesion, d, cajas) {
     { anulada_at: ahora, anulada_por_nombre: await nombreEmpleado(sesion), updated_at: ahora },
   );
   if (!filas?.length) return NextResponse.json({ error: "Ese movimiento ya lo revisó el dueño o no es de tu caja: pedile que lo corrija" }, { status: 404 });
+  // 19/11 (punto 14): el gasto del proveedor y su pago se anulan juntos
+  const og = String(filas[0].origen_id || "");
+  if (GRUPO_MI_CAJA.test(og)) {
+    const base = og.slice(0, 14);
+    await sbPatch(
+      `fin_operaciones?empresa_id=eq.${e}&origen=eq.${ORIGEN_MI_CAJA}&estado=eq.para_revisar&anulada_at=is.null&origen_id=in.(${base},${base}-p)`,
+      { anulada_at: ahora, anulada_por_nombre: filas[0].anulada_por_nombre || null, updated_at: ahora },
+    ).catch(() => null);
+  }
   broadcastRefresh(e, "fin_operaciones");
   return NextResponse.json({ ok: true });
 }
@@ -365,7 +395,7 @@ async function leerTicket(request, sesion, d, cajas) {
   if (!res?.ok) return NextResponse.json({ error: "No se pudo bajar la foto del ticket" }, { status: 400 });
   const archivo = Buffer.from(await res.arrayBuffer()).toString("base64");
   if (archivo.length > MAX_ARCHIVO_B64) return NextResponse.json({ error: "La foto es muy grande para leerla: cargalo a mano" }, { status: 400 });
-  const [{ lista }, proveedores] = await Promise.all([conceptos(e), proveedoresDe(e)]);
+  const [{ lista, cuentas }, proveedores] = await Promise.all([conceptos(e), proveedoresDe(e)]);
   const opciones = lista.gastos;
   let r;
   try {

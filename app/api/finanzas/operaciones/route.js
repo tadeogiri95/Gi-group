@@ -9,6 +9,9 @@
 //       hay otra por el mismo importe con hasta 3 días (13/11), responde 409
 //       con los repetidos hasta que venga confirmar_repetido (lo mismo en
 //       gasto y corregir).
+//       Con pago: { cuenta_caja, fecha } (19/11, punto 14; finanzasPagoJunto.js)
+//       y una operación que no toca caja y deja una deuda o un crédito, se
+//       carga también el pago o el cobro desde esa caja, las dos juntas.
 //   POST { accion: "gasto", gasto } → un gasto devengado con o sin factura (y
 //       su pago, si ya se pagó): reglas en app/lib/finanzasGastos.js.
 //       Con proveedor sin tipo guardado, el tipo queda guardado para la próxima.
@@ -77,6 +80,7 @@ import { MARCA_CORREGIDA, MAX_ANULAR_JUNTAS, SE_ANULAN, SE_CONFIRMAN, operacionC
 import { AVISO_FALTA_199, conEntrada, entradaCorreccion, falta199 } from "../../../lib/historialCambios";
 import { CLAVE_LIBRO_FIN } from "../../../lib/finanzasLibro";
 import { CAMPOS_200, CAMPOS_IMPUTAR, MAX_IMPUTAR, imputacion } from "../../../lib/finanzasImputar";
+import { operacionDelPago } from "../../../lib/finanzasPagoJunto";
 
 /** ¿Faltan vehiculo_id o maquina_id (migración 200)? */
 const falta200 = (err) => /vehiculo_id|maquina_id/.test(String(err?.message)) && /42703|does not exist|PGRST204|schema cache/.test(String(err?.message));
@@ -358,9 +362,16 @@ export async function POST(request) {
       if (errores.length) return NextResponse.json({ error: errores.join(" "), errores }, { status: 400 });
       const adj = adjuntos(sesion, d.operacion?.comprobantes);
       if (adj.error) return NextResponse.json({ error: adj.error }, { status: 400 });
+      // 19/11 (punto 14): "Lo pagué ahora" / "Lo cobré ahora" — el pago o el cobro va junto
+      let pago = null;
+      if (d.pago) {
+        const r = operacionDelPago(op, d.pago, ctx);
+        if (r.error) return NextResponse.json({ error: r.error, errores: [r.error] }, { status: 400 });
+        pago = r.op;
+      }
       // 13/11: mismo importe en la misma caja y fecha cerca = sospechoso (finanzasRepetidos.js)
       if (d.confirmar_repetido !== true) {
-        const freno = frenoRepetidos(await repetidosEnBase(sesion, [op], { tesoreria: ctx.tesoreria }));
+        const freno = frenoRepetidos(await repetidosEnBase(sesion, pago ? [op, pago] : [op], { tesoreria: ctx.tesoreria }));
         if (freno) return freno;
       }
       const ahora = new Date().toISOString();
@@ -372,6 +383,17 @@ export async function POST(request) {
       const delCliente = elegido || clienteDeOperacion(op, { cuentas: ctx.cuentas, proveedores: ctx.proveedores, clientes });
       if (delCliente) Object.assign(nueva, delCliente, { proveedor_id: null });
       if (adj.lista.length) Object.assign(nueva, columnasComprobantes(adj.lista));
+      if (pago) {
+        // El pago o cobro, con la misma persona (y los mismos comprobantes)
+        const segunda = {
+          ...pago, empresa_id: e, cargada_por_nombre: nueva.cargada_por_nombre, created_at: ahora, updated_at: ahora,
+          proveedor_id: nueva.proveedor_id ?? null, entidad: nueva.entidad ?? null, ...(nueva.cliente_id ? { cliente_id: nueva.cliente_id } : {}),
+          ...(adj.lista.length ? columnasComprobantes(adj.lista) : {}),
+        };
+        const { filas, aviso } = await guardarConAdjuntos(sesion, [nueva, segunda]);
+        broadcastRefresh(e, "fin_operaciones");
+        return NextResponse.json({ ok: true, operacion: filas[0], pago: filas[1] || null, ...(aviso ? { aviso } : {}) });
+      }
       const { filas: [fila], aviso } = await guardarConAdjuntos(sesion, [nueva], { suelta: true });
       broadcastRefresh(e, "fin_operaciones");
       return NextResponse.json({ ok: true, operacion: fila, ...(aviso ? { aviso } : {}) });
@@ -432,6 +454,14 @@ export async function POST(request) {
       if (suya?.origen === ORIGEN_DOLARES && GRUPO_DOLARES.test(String(suya.origen_id || "").slice(0, 13))) {
         const grupo = String(suya.origen_id).slice(0, 13);
         const filas = await sbPatch(`fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&origen=eq.${ORIGEN_DOLARES}&origen_id=in.(${grupo},${grupo}-dif)`, marca, { sesion });
+        if (!filas?.length) return NextResponse.json({ error: "No encontré esa operación o ya estaba anulada" }, { status: 404 });
+        broadcastRefresh(e, "fin_operaciones");
+        return NextResponse.json({ ok: true, operacion: filas.find((f) => f.id === id) || filas[0], anuladas: filas.length });
+      }
+      // 19/11 (punto 14): el gasto de un proveedor en Mi caja y su pago se anulan juntos
+      if (suya?.origen === "mi_caja" && /^mc[0-9a-f]{12}(-p)?$/.test(String(suya.origen_id || ""))) {
+        const grupo = String(suya.origen_id).slice(0, 14);
+        const filas = await sbPatch(`fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&origen=eq.mi_caja&origen_id=in.(${grupo},${grupo}-p)`, marca, { sesion });
         if (!filas?.length) return NextResponse.json({ error: "No encontré esa operación o ya estaba anulada" }, { status: 404 });
         broadcastRefresh(e, "fin_operaciones");
         return NextResponse.json({ ok: true, operacion: filas.find((f) => f.id === id) || filas[0], anuladas: filas.length });

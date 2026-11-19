@@ -213,6 +213,8 @@ function Cargar({ caja, clase, conceptos, hoy, conStock = false, clientes: clien
     concepto: lista.length === 1 ? lista[0].codigo : "", importe: "", fecha: hoy, descripcion: "", tipo_cambio: "", comprobante_url: "",
     comercio: "", cuit: "", proveedor_id: "", letra: "", punto_venta: "", numero: "", neto: "", iva: "", otros_impuestos: "",
     cliente_id: "", proyecto_id: "",
+    // 19/11 (punto 14): con proveedor, el gasto y el pago quedan en su cuenta; sin tildar, solo la deuda
+    pagado: true,
   });
   const [verDatos, setVerDatos] = useState(false);
   const [repetido, setRepetido] = useState(null);
@@ -394,6 +396,17 @@ function Cargar({ caja, clase, conceptos, hoy, conStock = false, clientes: clien
             {campo(gasto ? "Qué compraste (opcional)" : "Detalle (opcional)", <input className="g-input w-full" aria-label="Detalle" maxLength={300} placeholder={gasto ? "Ej.: nafta camioneta" : "Ej.: me la dio Tadeo"} value={f.descripcion} onChange={set("descripcion")} />)}
             {gasto && <DatosTicket f={f} setF={setF} abierto={verDatos} onAbrir={setVerDatos} separa={separaIva(elegido ? { grupo: elegido.grupo_tipo || elegido.grupo } : null)} />}
           </>
+        )}
+        {gasto && (f.proveedor_id || f.comercio.trim()) && (
+          <label className="flex items-start gap-2 text-[13px] text-gypi-text cursor-pointer">
+            <input type="checkbox" className="mt-0.5" checked={f.pagado} onChange={(e) => setF((x) => ({ ...x, pagado: e.target.checked }))} />
+            <span>
+              <b>Lo pagué ahora</b> con esta caja.{" "}
+              <span className="text-gypi-dim">{f.pagado
+                ? "Queda en la cuenta del proveedor la factura y el pago."
+                : "Queda solo la deuda con el proveedor, para pagarla después: no sale de tu caja."}</span>
+            </span>
+          </label>
         )}
         {repetido && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {repetido} No lo cargues de nuevo.</p>}
         {parecido && (
