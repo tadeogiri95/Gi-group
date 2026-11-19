@@ -6,7 +6,7 @@ import { test, afterEach } from "node:test";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { informeTesoreria, exportarInformeTesoreria, periodosDias, periodosSemanas } from "../app/lib/finanzasInformeTesoreria.js";
+import { informeTesoreria, exportarInformeTesoreria, periodosDias, periodosSemanas, repartoFondos, serieCobrar, serieCalce, geometriaColumnas } from "../app/lib/finanzasInformeTesoreria.js";
 import { armarXlsx } from "../app/lib/xlsxSimple.js";
 import { opcionesBoton } from "../app/lib/menuGestion.js";
 import { GRUPOS_FINANZAS, DETALLE_FINANZAS } from "../app/lib/finanzasInicio.js";
@@ -133,4 +133,34 @@ test("pantalla: las 4 secciones, semana o día, y los botones para bajarlo", asy
   assert.ok(within(calce).getByText(/Maderera/));
   assert.ok(within(screen.getByRole("region", { name: "4. Cheques a cobrar" })).getByText(/Cliente SA/));
   assert.ok(screen.getByRole("button", { name: "📄 PDF" }));
+});
+
+test("gráficos: dónde está la plata, calce con acumulado y cobros por semana (pantalla y PDF)", async () => {
+  const rep = repartoFondos(r);
+  assert.deepEqual(rep.partes.map((p) => [p.nombre, p.valor]), [["Cajas", 1000], ["Bancos", 48000], ["FCI", 20000], ["Títulos", 15000], ["Plazos fijos", 15000]]);
+  assert.equal(rep.total, 99000);
+  assert.ok(Math.abs(rep.partes.reduce((s, p) => s + p.pct, 0) - 100) < 0.3);
+  const cob = serieCobrar(r);
+  assert.equal(cob.length, 8, "las 8 semanas, aunque estén vacías");
+  assert.equal(cob.find((t) => t.total).total, 7000);
+  const g = geometriaColumnas(serieCalce(r.calce.semanal), { linea: true });
+  assert.equal(g.cols.length, r.calce.semanal.length);
+  assert.ok(g.cols[0].linea > g.cero, "el acumulado de los vencidos queda debajo de la raya");
+  const h = exportarInformeTesoreria(r).html();
+  for (const t of ["Dónde está la plata", "Calce por semana", "Calce por día", "Cheques a cobrar por semana"]) assert.ok(h.includes(t), t);
+
+  global.fetch = async (u) => {
+    const url = String(u);
+    const json = (d) => new Response(JSON.stringify(d), { status: 200 });
+    if (url.includes("/tesoreria")) return json({ tesoreria, operaciones });
+    if (url.includes("/inversiones")) return json({ ...inversiones, hoy: HOY });
+    if (url.includes("/plazos-fijos")) return json({ hoy: HOY, plazos });
+    return json({ cheques, proveedores: [], feriados: [] });
+  };
+  render(<Pantalla />);
+  assert.ok(await screen.findByRole("img", { name: /Bancos 48,5 %/ }));
+  assert.ok(screen.getByRole("img", { name: "Calce por semana" }));
+  fireEvent.click(screen.getByRole("button", { name: /Por día/ }));
+  assert.ok(screen.getByRole("img", { name: "Calce por día" }));
+  assert.ok(screen.getByRole("img", { name: "Cheques a cobrar por semana" }));
 });

@@ -6,7 +6,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { plata } from "../lib/finanzasOperaciones";
-import { DIAS_CALCE, SEMANAS_CALCE, exportarInformeTesoreria, informeTesoreria } from "../lib/finanzasInformeTesoreria";
+import { DIAS_CALCE, SEMANAS_CALCE, exportarInformeTesoreria, geometriaColumnas, informeTesoreria, repartoFondos, serieCalce, serieCobrar } from "../lib/finanzasInformeTesoreria";
 import { Chip, Spinner } from "./ui";
 import BotonesExportar from "./FinanzasExportar";
 
@@ -86,6 +86,66 @@ function TablaCalce({ filas, titulo }) {
   );
 }
 
+/* Gráficos (19/11): los colores salen del tema de la app, así se ven bien en claro y en oscuro. */
+const C = { rojo: "var(--color-red)", verde: "var(--color-green)", cyan: "var(--color-cyan)", linea: "var(--color-text-dim)", texto: "var(--color-text-dim)" };
+const COLOR_PARTE = { caja: "var(--color-cyan)", banco: "var(--color-empresa-secondary)", fci: "var(--color-empresa-primary)", titulos: "var(--color-green)", plazo_fijo: "var(--color-text-dim)" };
+const pctTxt = (n) => `${String(n).replace(".", ",")} %`;
+
+function Leyenda({ items }) {
+  return (
+    <ul className="m-0 p-0 list-none flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-gypi-dim">
+      {items.map(([color, texto]) => (
+        <li key={texto} className="flex items-center gap-1.5">
+          <svg width="10" height="10" aria-hidden="true"><rect width="10" height="10" rx="2" fill={color} /></svg>
+          {texto}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** ¿Dónde está la plata?: una barra repartida por cajas, bancos, FCI, títulos y plazos fijos. */
+function GraficoReparto({ r }) {
+  const rep = repartoFondos(r);
+  if (!rep.partes.length) return null;
+  return (
+    <figure className="m-0 flex flex-col gap-1.5" aria-label="Dónde está la plata en pesos">
+      <svg viewBox="0 0 100 10" preserveAspectRatio="none" className="w-full h-7 rounded-md block" role="img" aria-label={rep.partes.map((p) => `${p.nombre} ${pctTxt(p.pct)}`).join(", ")}>
+        {rep.partes.map((p) => <rect key={p.id} x={p.desde} y="0" width={p.pct} height="10" fill={COLOR_PARTE[p.id]}><title>{`${p.nombre} ${pctTxt(p.pct)}`}</title></rect>)}
+      </svg>
+      <Leyenda items={rep.partes.map((p) => [COLOR_PARTE[p.id], `${p.nombre} ${pctTxt(p.pct)} · ${plata(p.valor, "ARS")}`])} />
+    </figure>
+  );
+}
+
+/** Columnas por tramo (una o dos) y, si hay, la línea del acumulado. */
+function GraficoColumnas({ serie, H = 230, linea = false, nombres, colores, titulo }) {
+  if (!serie.length) return null;
+  const g = geometriaColumnas(serie, { linea, H });
+  const Col = ({ c, color, nombre, et }) => (c && c.h > 0.4 ? <rect x={c.x} y={c.y} width={c.w} height={c.h} rx="2" fill={color}><title>{`${et} · ${nombre} ${plata(c.v, "ARS")}`}</title></rect> : null);
+  return (
+    <figure className="m-0 flex flex-col gap-1.5" aria-label={titulo}>
+      <svg viewBox={`0 0 ${g.W} ${g.H}`} className="w-full h-auto block" role="img" aria-label={titulo}>
+        <line x1={g.izq} x2={g.W - g.der} y1={g.cero} y2={g.cero} stroke={C.linea} />
+        {g.cols.map((c, i) => (
+          <g key={i}>
+            <Col c={c.a} color={colores[0]} nombre={nombres[0]} et={c.etiqueta} />
+            <Col c={c.b} color={colores[1]} nombre={nombres[1]} et={c.etiqueta} />
+            {c.mostrarEtiqueta && <text x={c.x} y={g.ejeY} textAnchor="middle" fontSize="11" fill={C.texto}>{c.etiqueta}</text>}
+          </g>
+        ))}
+        {linea && (
+          <>
+            <polyline points={g.puntos} fill="none" stroke={C.cyan} strokeWidth="2.5" strokeLinejoin="round" />
+            {g.cols.map((c, i) => <circle key={i} cx={c.x} cy={c.linea} r="3" fill={C.cyan} />)}
+          </>
+        )}
+      </svg>
+      <Leyenda items={[[colores[0], nombres[0]], ...(nombres[1] ? [[colores[1], nombres[1]]] : []), ...(linea ? [[C.cyan, "Acumulado (debajo de la raya, falta plata)"]] : [])]} />
+    </figure>
+  );
+}
+
 export default function FinanzasInformeTesoreria() {
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState(null);
@@ -148,6 +208,11 @@ export default function FinanzasInformeTesoreria() {
         ))}
       </dl>
 
+      <Seccion titulo="¿Dónde está la plata? (en pesos)">
+        <GraficoReparto r={r} />
+        {!repartoFondos(r).partes.length && <p className="m-0 text-[13px] text-gypi-dim">No hay plata en pesos.</p>}
+      </Seccion>
+
       <Seccion titulo="1. Cajas y bancos">
         {["ARS", "USD"].filter((m) => r.fondos[m].cajas.length).map((m) => (
           <Tabla key={m} cab={[m === "USD" ? "En dólares" : "En pesos", "Saldo"]}>
@@ -207,6 +272,12 @@ export default function FinanzasInformeTesoreria() {
           <Chip active={vista === "semanal"} onClick={() => setVista("semanal")}>Por semana ({SEMANAS_CALCE} semanas)</Chip>
           <Chip active={vista === "diario"} onClick={() => setVista("diario")}>Por día (próximos {DIAS_CALCE} días)</Chip>
         </div>
+        <GraficoColumnas
+          key={vista}
+          serie={serieCalce(vista === "semanal" ? r.calce.semanal : r.calce.diario)}
+          linea nombres={["Cheques a debitar", "Vencen plazos fijos"]} colores={[C.rojo, C.verde]}
+          titulo={vista === "semanal" ? "Calce por semana" : "Calce por día"}
+        />
         {vista === "semanal"
           ? <TablaCalce key="semanal" filas={r.calce.semanal} titulo="Semana" />
           : <TablaCalce key="diario" filas={r.calce.diario} titulo="Día" />}
@@ -214,6 +285,7 @@ export default function FinanzasInformeTesoreria() {
       </Seccion>
 
       <Seccion titulo="4. Cheques a cobrar">
+        {r.cobrar.length > 0 && <GraficoColumnas serie={serieCobrar(r).map((t) => ({ etiqueta: t.etiqueta, a: t.total }))} H={160} nombres={["Cheques que se acreditan"]} colores={[C.verde]} titulo="Cheques a cobrar por semana" />}
         {r.cobrar.length ? (
           <Tabla cab={["Se acredita", "Importe"]}>
             {r.cobrar.map((t) => (

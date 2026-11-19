@@ -15,7 +15,7 @@
 //      en que se acreditan.
 import { fechaDebito, fechaDeposito } from "./finanzasDiasHabiles";
 import { $, B, F, N, NB, T, dma, esc, hojaInforme } from "./finanzasInformes";
-import { movimientoCaja } from "./finanzasOperaciones";
+import { movimientoCaja, plata } from "./finanzasOperaciones";
 
 export const SEMANAS_CALCE = 8;
 export const DIAS_CALCE = 15;
@@ -184,13 +184,14 @@ ${r.fondos[m].cajas.map((c) => `<tr><td>${esc(c.nombre)}</td><td class="n ${c.sa
     const cobrar = r.cobrar.length ? `<table><thead><tr><th>Se acredita</th><th></th><th>Banco y número</th><th>De quién</th><th class="n">Importe</th></tr></thead><tbody>${r.cobrar.map((t) => `<tr class="sec"><td colspan="4">${esc(t.etiqueta)}</td><td class="n">${$(t.total)}</td></tr>${t.items.map((x) => filaItem({ ...x, clase: "cheque" })).join("")}`).join("")}
 <tr class="tot"><td colspan="4">Total a cobrar</td><td class="n">${$(r.resumen.cheques_cobrar)}</td></tr></tbody></table>` : '<p class="dim">No hay cheques de terceros en cartera.</p>';
     return `<div class="kpis">${kpi("Pesos en cajas y bancos", $(r.resumen.pesos))}${kpi("Dólares en cajas y bancos", $(r.resumen.dolares, "USD"))}${kpi("Invertido", $(r.resumen.invertido_ars) + (r.resumen.invertido_usd ? ` + ${$(r.resumen.invertido_usd, "USD")}` : ""))}${kpi("Cheques a pagar", $(r.resumen.cheques_pagar), "rojo")}${kpi("Cheques a cobrar", $(r.resumen.cheques_cobrar), "verde")}</div>
+<section><h2>¿Dónde está la plata? (en pesos)</h2>${svgReparto(repartoFondos(r)) || '<p class="dim">No hay plata en pesos.</p>'}</section>
 <section><h2>1. Posición de fondos en cajas y bancos</h2>${fondos || '<p class="dim">No hay cajas ni bancos.</p>'}</section>
 <section><h2>2. Inversiones: FCI, títulos y plazos fijos</h2>${fci + tit + pf || '<p class="dim">No hay inversiones cargadas.</p>'}</section>
 <section><h2>3. Calce de cheques a pagar y plazos fijos</h2><p class="dim">Solo cheques contra plazos fijos en pesos, sin contar la plata de los bancos. Diferencia = lo que entra por plazos fijos menos lo que se debita; en rojo, falta plata.</p>
-<h3>Por semana</h3>${tablaCalce(r.calce.semanal, "Semana")}
-<h3>Por día (próximos ${DIAS_CALCE} días)</h3>${tablaCalce(r.calce.diario, "Día")}
+<h3>Por semana</h3>${svgCalce(r.calce.semanal, "Calce por semana")}${tablaCalce(r.calce.semanal, "Semana")}
+<h3>Por día (próximos ${DIAS_CALCE} días)</h3>${svgCalce(r.calce.diario, "Calce por día")}${tablaCalce(r.calce.diario, "Día")}
 ${detalle ? `<h3>Detalle</h3><table><thead><tr><th>Fecha</th><th></th><th>Banco y número</th><th>Para quién</th><th class="n">Importe</th></tr></thead><tbody>${detalle}</tbody></table>` : ""}</section>
-<section><h2>4. Cheques a cobrar</h2>${cobrar}</section>`;
+<section><h2>4. Cheques a cobrar</h2>${r.cobrar.length ? svgCobrar(r) : ""}${cobrar}</section>`;
   };
   const filasCalce = (xs) => xs.map((t) => [t.etiqueta, N(t.cheques), N(t.plazos), N(t.diferencia), NB(t.acumulado)]);
   const cabCalce = (c) => [B(c), B("Cheques a debitar"), B("Vencen plazos fijos"), B("Diferencia"), B("Acumulado")];
@@ -240,3 +241,110 @@ ${detalle ? `<h3>Detalle</h3><table><thead><tr><th>Fecha</th><th></th><th>Banco 
     ],
   };
 }
+
+/* ─── Gráficos (19/11, pedido de Tadeo) ─────────────────────────────────
+   Las cuentas de cada gráfico salen de acá; la pantalla los dibuja con los
+   colores de la app y el PDF con colores fijos (svg* de abajo). */
+
+/** Etiqueta corta de un tramo del calce para el eje del gráfico. */
+export const etiquetaCorta = (t) => (t.id === "vencidos" ? "Vencidos" : t.id === "despues" ? "Después" : dm(t.desde));
+
+/** ¿Dónde está la plata? (en pesos): cajas, bancos, FCI, títulos y plazos fijos, con el %. */
+export function repartoFondos(r) {
+  const suma = (xs) => centavos(xs.reduce((s, x) => s + x, 0));
+  const ars = r.fondos.ARS.cajas;
+  const partes = [
+    { id: "caja", nombre: "Cajas", valor: suma(ars.filter((c) => c.tipo === "caja").map((c) => c.saldo)) },
+    { id: "banco", nombre: "Bancos", valor: suma(ars.filter((c) => c.tipo !== "caja").map((c) => c.saldo)) },
+    { id: "fci", nombre: "FCI", valor: suma(r.fci.filter((f) => f.moneda === "ARS").map((f) => f.saldo)) },
+    { id: "titulos", nombre: "Títulos", valor: centavos(r.titulos.valor) },
+    { id: "plazo_fijo", nombre: "Plazos fijos", valor: suma(r.plazos.filter((p) => p.moneda === "ARS").map((p) => p.depositado)) },
+  ].filter((p) => p.valor > 0.005);
+  const total = suma(partes.map((p) => p.valor));
+  let desde = 0;
+  return {
+    total,
+    partes: partes.map((p) => {
+      const pct = total > 0 ? (p.valor / total) * 100 : 0;
+      const parte = { ...p, pct: Math.round(pct * 10) / 10, desde };
+      desde += pct;
+      return parte;
+    }),
+  };
+}
+
+/** Cheques a cobrar por semana (las 8, aunque alguna esté vacía; vencidos y después si hay). */
+export function serieCobrar(r) {
+  const por = new Map(r.cobrar.map((t) => [t.id, t.total]));
+  const semanas = periodosSemanas(r.hoy).map((p) => ({ id: p.desde, desde: p.desde, total: por.get(p.desde) || 0 }));
+  return [
+    ...(por.has("vencidos") ? [{ id: "vencidos", desde: null, total: por.get("vencidos") }] : []),
+    ...semanas,
+    ...(por.has("despues") ? [{ id: "despues", desde: null, total: por.get("despues") }] : []),
+  ].map((t) => ({ ...t, etiqueta: etiquetaCorta(t) }));
+}
+
+/**
+ * Dónde va cada cosa en un gráfico de columnas: dos columnas por tramo
+ * (cheques y plazos fijos) o una (cobros), y la línea del acumulado con el
+ * cero marcado. Todo en un lienzo de W × H.
+ * @param {{ etiqueta: string, a?: number, b?: number, linea?: number }[]} serie
+ */
+export function geometriaColumnas(serie, { W = 700, H = 230, linea = false } = {}) {
+  const izq = 8, der = 8, arriba = 14, abajo = 30;
+  const alto = H - arriba - abajo;
+  const valores = serie.flatMap((t) => [t.a || 0, t.b || 0, ...(linea ? [t.linea || 0] : [])]);
+  const max = Math.max(1, ...valores);
+  const min = Math.min(0, ...valores);
+  const y = (v) => arriba + alto - ((v - min) / (max - min || 1)) * alto;
+  const ancho = (W - izq - der) / Math.max(1, serie.length);
+  const dos = serie.some((t) => t.b != null);
+  const barra = Math.max(3, Math.min(28, ancho * (dos ? 0.34 : 0.6)));
+  const cero = y(0);
+  const cada = Math.ceil(serie.length / 16);
+  const cols = serie.map((t, i) => {
+    const x = izq + i * ancho + ancho / 2;
+    const col = (v, xb) => ({ x: xb, y: Math.min(y(v || 0), cero), w: barra, h: Math.abs(cero - y(v || 0)), v: v || 0 });
+    return {
+      x, etiqueta: t.etiqueta, mostrarEtiqueta: i % cada === 0,
+      a: col(t.a, dos ? x - barra - 1 : x - barra / 2),
+      b: dos ? col(t.b, x + 1) : null,
+      linea: linea ? y(t.linea || 0) : null,
+    };
+  });
+  return { W, H, cero, cols, ejeY: H - abajo + 14, izq, der, puntos: linea ? cols.map((c) => `${c.x.toFixed(1)},${c.linea.toFixed(1)}`).join(" ") : "" };
+}
+
+export const serieCalce = (filas) => filas.map((t) => ({ etiqueta: etiquetaCorta(t), a: t.cheques, b: t.plazos, linea: t.acumulado }));
+
+// Colores fijos del PDF (los de la pantalla salen del tema de la app)
+const hex = (h) => `#${h}`;
+const COLOR = { rojo: hex("c62828"), verde: hex("15803d"), cyan: hex("0e7490"), linea: hex("cfd6dd"), texto: hex("444444") };
+export const COLOR_REPARTO = { caja: hex("0e7490"), banco: hex("1d4ed8"), fci: hex("6d28d9"), titulos: hex("0f766e"), plazo_fijo: hex("b45309") };
+
+function svgColumnas(serie, { H = 230, linea = false, colorA = COLOR.rojo, colorB = COLOR.verde, nombreA = "", nombreB = "", nombreLinea = "", titulo = "" } = {}) {
+  if (!serie.length) return "";
+  const g = geometriaColumnas(serie, { linea, H });
+  const rect = (c, color, nombre, et) => (c && c.h > 0.4 ? `<rect x="${c.x.toFixed(1)}" y="${c.y.toFixed(1)}" width="${c.w.toFixed(1)}" height="${c.h.toFixed(1)}" rx="2" fill="${color}"><title>${esc(et)} · ${esc(nombre)} ${esc(plata(c.v))}</title></rect>` : "");
+  const cuerpo = g.cols.map((c) => rect(c.a, colorA, nombreA, c.etiqueta) + rect(c.b, colorB, nombreB, c.etiqueta)
+    + (c.mostrarEtiqueta ? `<text x="${c.x.toFixed(1)}" y="${g.ejeY}" text-anchor="middle" font-size="10" fill="${COLOR.texto}">${esc(c.etiqueta)}</text>` : "")).join("");
+  const lin = linea ? `<polyline points="${g.puntos}" fill="none" stroke="${COLOR.cyan}" stroke-width="2.5" stroke-linejoin="round"/>${g.cols.map((c) => `<circle cx="${c.x.toFixed(1)}" cy="${c.linea.toFixed(1)}" r="3" fill="${COLOR.cyan}"/>`).join("")}` : "";
+  const leyenda = [[colorA, nombreA], ...(nombreB ? [[colorB, nombreB]] : []), ...(linea ? [[COLOR.cyan, nombreLinea]] : [])]
+    .map(([c, n]) => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${c}"></i>${esc(n)}</span>`).join("");
+  return `<svg class="graf" viewBox="0 0 ${g.W} ${g.H}" role="img" aria-label="${esc(titulo)}" style="width:100%;height:auto;display:block;margin:6px 0 2px">
+<line x1="${g.izq}" x2="${g.W - g.der}" y1="${g.cero.toFixed(1)}" y2="${g.cero.toFixed(1)}" stroke="${COLOR.linea}"/>${cuerpo}${lin}</svg>
+<div style="font-size:11px;color:#4b5563;margin:0 0 8px">${leyenda}</div>`;
+}
+
+/** La barra de "¿Dónde está la plata?" para el PDF. */
+export function svgReparto(rep) {
+  if (!rep.partes.length) return "";
+  const W = 700;
+  const tramos = rep.partes.map((p) => `<rect x="${((p.desde / 100) * W).toFixed(1)}" y="0" width="${((p.pct / 100) * W).toFixed(1)}" height="26" fill="${COLOR_REPARTO[p.id]}"><title>${esc(p.nombre)} ${esc(String(p.pct).replace(".", ","))} %</title></rect>`).join("");
+  const leyenda = rep.partes.map((p) => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${COLOR_REPARTO[p.id]}"></i>${esc(p.nombre)} ${esc(String(p.pct).replace(".", ","))} % · ${$(p.valor)}</span>`).join("");
+  return `<svg viewBox="0 0 ${W} 26" role="img" aria-label="Dónde está la plata" preserveAspectRatio="none" style="width:100%;height:26px;display:block;border-radius:6px;margin:6px 0 4px">${tramos}</svg>
+<div style="font-size:11px;color:#4b5563;margin:0 0 8px;line-height:1.7">${leyenda}</div>`;
+}
+
+export const svgCalce = (filas, titulo) => svgColumnas(serieCalce(filas), { linea: true, nombreA: "Cheques a debitar", nombreB: "Vencen plazos fijos", nombreLinea: "Acumulado (debajo de la raya gris, falta plata)", titulo });
+export const svgCobrar = (r) => svgColumnas(serieCobrar(r).map((t) => ({ etiqueta: t.etiqueta, a: t.total })), { H: 160, colorA: COLOR.verde, nombreA: "Cheques que se acreditan", titulo: "Cheques a cobrar por semana" });
