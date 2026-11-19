@@ -28,7 +28,7 @@ import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { FECHA, hoyAr } from "../../../lib/finanzasOperaciones";
 import {
   CLAVE_PLAZOS_FIJOS, MAX_PLAZOS, contextoPlazos, cuentasPorDefecto, leerGuardados, listaPlazos, operacionPlazo,
-  leerOpsPlazos, planPlazosFijos, plazoValido, unirPlazos, vencidosPendientes,
+  leerOpsPlazos, planPlazosFijos, plazoValido, unirPlazos, vencidosPendientes, repetidosConElBanco, arreglosDelBanco,
 } from "../../../lib/finanzasPlazosFijos";
 import { plazosRepetidos } from "../../../lib/finanzasCorregir";
 import { textoRepetido } from "../../../lib/finanzasRepetidos";
@@ -69,6 +69,27 @@ async function nombreEmpleado(sesion) {
   return emp?.nombre ? String(emp.nombre).slice(0, 120) : null;
 }
 
+/** Todos los repetidos: con el libro o lo cargado a mano, y con el extracto del banco (19/11). */
+function todosLosRepetidos(base) {
+  const vistos = new Set();
+  return [
+    ...plazosRepetidos(base.ops, { cuentasPf: base.cuentasPf, cuentasInteres: base.cuentasInteres }),
+    ...repetidosConElBanco(base.guardados, base.ops, base.cuentasPf),
+  ].filter((x) => !vistos.has(x.gypi.id) && vistos.add(x.gypi.id));
+}
+
+/**
+ * Pasa los renglones del extracto a la cuenta que corresponde (la del plazo
+ * fijo o Intereses Ganados). Solo toca renglones que vinieron del banco.
+ */
+async function aplicarCambios(sesion, cambios = []) {
+  const ahora = new Date().toISOString();
+  for (const c of cambios) {
+    await sbPatch(`fin_operaciones?id=eq.${Number(c.id)}&empresa_id=eq.${sesion.empresa_id}&origen=eq.banco&anulada_at=is.null`, { cuenta_haber: c.cuenta_haber, updated_at: ahora }, { sesion });
+  }
+  if (cambios.length) broadcastRefresh(sesion.empresa_id, "fin_operaciones");
+}
+
 async function insertar(sesion, ops) {
   if (!ops.length) return;
   const ahora = new Date().toISOString();
@@ -87,7 +108,7 @@ export async function GET(request) {
       hoy,
       plazos: listaPlazos(guardados, ops, cuentasPf, hoy, { cuentasInteres }),
       pendientes: vencidosPendientes(guardados, ops, cuentasPf, hoy, { cuentasInteres }),
-      repetidos: plazosRepetidos(ops, { cuentasPf, cuentasInteres }).map(parRepetido),
+      repetidos: todosLosRepetidos({ ops, cuentasPf, cuentasInteres, guardados }).map(parRepetido),
       bancos: vivas.filter((t) => t.tipo === "banco").map((t) => ({ cuenta: t.cuenta, nombre: t.nombre })),
       cuentas_pf: vivas.filter((t) => t.tipo === "plazo_fijo").map((t) => ({ cuenta: t.cuenta, nombre: t.nombre })),
       por_defecto: cuentasPorDefecto(tesoreria, guardados[0] ? tesoreria.find((t) => t.cuenta === guardados[0].cuenta_pf)?.nombre || "" : ""),
@@ -170,13 +191,14 @@ async function cargar(sesion, d) {
     return NextResponse.json({ error: `${sinOk.length === 1 ? `El plazo fijo ${sinOk[0]} parece` : `Los plazos fijos ${sinOk.join(", ")} parecen`} estar ya en el banco. ${avisos.get(sinOk[0])[0]} Destildalo o confirmá que es otro distinto.`, certificados: sinOk }, { status: 409 });
   }
   await insertar(sesion, plan.ops);
+  await aplicarCambios(sesion, plan.cambios);
   const omitidos = new Set((Array.isArray(d.omitir) ? d.omitir : []).map(String));
   const nuevos = plazos.filter((p) => !omitidos.has(p.certificado)).map((p) => ({ ...p, banco: ctx.banco, cuenta_pf: ctx.cuenta_pf, importado: base.hoy }));
   await guardar(sesion, unirPlazos(base.guardados, nuevos), base.hay);
   return NextResponse.json({ ok: true, cargadas: plan.ops.length, plazos: nuevos.length });
 }
 
-async function vencidos(sesion, confirmar = false) {
+async function vencidos(sesion, confirmar = false, { soloDelBanco = false } = {}) {
   const e = sesion.empresa_id;
   const [base, tipos, cuentas] = await Promise.all([
     leerTodo(sesion),
@@ -186,26 +208,32 @@ async function vencidos(sesion, confirmar = false) {
   const pendientes = vencidosPendientes(base.guardados, base.ops, base.cuentasPf, base.hoy, { cuentasInteres: base.cuentasInteres });
   if (!pendientes.length) return NextResponse.json({ ok: true, cargadas: 0, plazos: 0 });
   const ops = [];
+  const cambios = [];
   for (const p of pendientes) {
     const { ctx, errores } = contextoPlazos({ tipos, cuentas, tesoreria: base.tesoreria, banco: p.banco, cuenta_pf: p.cuenta_pf });
     if (errores.length) return NextResponse.json({ error: `Plazo fijo ${p.certificado}: ${errores[0]}`, errores }, { status: 400 });
-    if (p.falta.r) ops.push(operacionPlazo(p, "r", ctx));
-    if (p.falta.i) ops.push(operacionPlazo(p, "i", ctx));
+    if (p.falta.r && !soloDelBanco) ops.push(operacionPlazo(p, "r", ctx));
+    if (p.falta.i && !soloDelBanco) ops.push(operacionPlazo(p, "i", ctx));
+    const a = arreglosDelBanco(p, { ajustes: p.falta.ajustes, interesJunto: p.falta.interes_junto }, ctx);
+    ops.push(...a.ops);
+    cambios.push(...a.cambios);
   }
   if (!confirmar) {
-    const avisos = await repetidosDePlazos(sesion, pendientes.map((p) => ({ cert: p.certificado, ops: ops.filter((o) => o.referencia === p.certificado) })), base.tesoreria);
+    // El interés aparte de lo que el banco devolvió junto (:ij) no sale del banco: no se compara
+    const avisos = await repetidosDePlazos(sesion, pendientes.map((p) => ({ cert: p.certificado, ops: ops.filter((o) => o.referencia === p.certificado && !String(o.origen_id).endsWith(":ij")) })), base.tesoreria);
     if (avisos.size) {
       const [cert, textos] = [...avisos.entries()][0];
       return NextResponse.json({ error: `El vencimiento del plazo fijo ${cert} parece estar ya en el banco. ${textos[0]}`, certificados: [...avisos.keys()], repetido: true }, { status: 409 });
     }
   }
   await insertar(sesion, ops);
-  return NextResponse.json({ ok: true, cargadas: ops.length, plazos: pendientes.length });
+  await aplicarCambios(sesion, cambios);
+  return NextResponse.json({ ok: true, cargadas: ops.length, corregidas: cambios.length, plazos: pendientes.length });
 }
 
 async function anularRepetidos(sesion) {
   const base = await leerTodo(sesion);
-  const ids = plazosRepetidos(base.ops, { cuentasPf: base.cuentasPf, cuentasInteres: base.cuentasInteres }).map((p) => p.gypi.id);
+  const ids = todosLosRepetidos(base).map((p) => p.gypi.id);
   if (!ids.length) return NextResponse.json({ ok: true, anuladas: 0 });
   const ahora = new Date().toISOString();
   const quien = await nombreEmpleado(sesion);
@@ -217,7 +245,11 @@ async function anularRepetidos(sesion) {
     anuladas += filas?.length || 0;
   }
   broadcastRefresh(sesion.empresa_id, "fin_operaciones");
-  return NextResponse.json({ ok: true, anuladas });
+  // Lo que queda es el renglón del banco: se pasa a la cuenta del plazo fijo y
+  // el interés que venía junto se registra aparte (sin volver a cargar el resto)
+  // Si falla, lo anulado ya quedó anulado: se avisa igual que salió bien
+  const extra = await vencidos(sesion, true, { soloDelBanco: true }).then((r) => r.json()).catch(() => ({}));
+  return NextResponse.json({ ok: true, anuladas, corregidas: extra.corregidas || 0, intereses: extra.cargadas || 0 });
 }
 
 export async function POST(request) {
