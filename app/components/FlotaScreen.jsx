@@ -138,7 +138,7 @@ export default function FlotaScreen({ empresaId, empresa = null, usuario = null,
         <FichaVehiculo vehiculo={ficha} papeles={papeles.filter((p) => p.vehiculo_id === ficha.id)} empleados={empleados} divisiones={divisiones}
           checklists={checklists.filter((c) => c.vehiculo_id === ficha.id)} empresaNombre={empresa?.nombre || ""}
           arreglos={arreglos.filter((a) => a.vehiculo_id === ficha.id)} mantenimientos={mantenimientos.filter((m) => m.vehiculo_id === ficha.id)}
-          editable={editable} oficina={oficina} hoy={hoy} onVolver={() => setFichaId(null)} onCambio={cargar} />
+          editable={editable} oficina={oficina} hoy={hoy} onVolver={() => setFichaId(null)} onCambio={cargar} usuario={usuario} />
       </div>
     );
   }

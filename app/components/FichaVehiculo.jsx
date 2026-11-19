@@ -18,6 +18,7 @@ import { VerChecklist } from "./ChecklistsVehiculo";
 import { FRECUENCIAS, alertasVehiculo } from "../lib/alertasFlota";
 import { historialVehiculo, noCircula, pendientes } from "../lib/arreglosFlota";
 import { FormArreglo, FormMantenimiento, Historial, ListaArreglos } from "./ArreglosVehiculo";
+import GastosImputados from "./GastosImputados";
 import AsignarMantenimiento from "./AsignarMantenimiento";
 import { CAMPOS_VEHICULO, conResponsables } from "../lib/mantenimiento";
 
@@ -408,7 +409,7 @@ function Semaforo({ nivel, children }) {
   return <span className="text-[12px] font-semibold whitespace-nowrap">{SEMAFORO[nivel]?.emoji} {children}</span>;
 }
 
-export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones, checklists = [], arreglos = [], mantenimientos = [], empresaNombre = "", editable, oficina = editable, hoy, onVolver, onCambio }) {
+export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones, checklists = [], arreglos = [], mantenimientos = [], empresaNombre = "", editable, oficina = editable, hoy, onVolver, onCambio, usuario = null }) {
   const [editando, setEditando] = useState(false);
   const [papelForm, setPapelForm] = useState(null); // { papel } | { renovar } | { tipo }
   const [licencia, setLicencia] = useState(false);
@@ -611,6 +612,7 @@ export default function FichaVehiculo({ vehiculo, papeles, empleados, divisiones
         ))}
       </ul>
 
+      <GastosImputados tipo="vehiculo" id={vehiculo.id} usuario={usuario} />
       <div className="text-[13px] font-bold uppercase tracking-wide text-gypi-dim mb-1.5">Historial</div>
       <Historial eventos={historialVehiculo({ checklists, arreglos, mantenimientos, papeles, nombrePapel })} editable={oficina} onVerChecklist={setVerChecklist} onCambio={onCambio} />
 

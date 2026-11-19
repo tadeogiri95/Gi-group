@@ -34,6 +34,14 @@
 //       199, como antes (12/11): la anula ("corregida") y carga una nueva.
 //       Con el libro como copia completa de Gypi, también lo que vino del
 //       libro y los saldos iniciales.
+//   POST { accion: "imputar", ids, campo, valor } → (19/11, punto 13) a una o
+//       varias juntas les pone el cliente, el proveedor, la OT, el centro de
+//       costo, la cuenta, la caja, el vehículo o la máquina (vehículo y
+//       máquina con la migración 200; reglas en app/lib/finanzasImputar.js).
+//       Cada una anota el cambio en su historial (199). Las que no se pueden
+//       vuelven en saltadas, con el motivo.
+//   GET ?vehiculo=<id> o ?maquina=<id> → lo imputado a ese vehículo o esa
+//       máquina, para su ficha de Flota o Maquinaria (punto 13).
 //   POST { accion: "comprobantes", id, comprobantes } → cambia la lista de
 //       comprobantes (PDF o fotos) de un movimiento (13/11, parte 4; migración
 //       187). "crear" y "gasto" también aceptan comprobantes al cargar.
@@ -68,6 +76,11 @@ import { columnasComprobantes, falta187, validarComprobantes } from "../../../li
 import { MARCA_CORREGIDA, MAX_ANULAR_JUNTAS, SE_ANULAN, SE_CONFIRMAN, operacionCorregida, puedeCorregir } from "../../../lib/finanzasCorregir";
 import { AVISO_FALTA_199, conEntrada, entradaCorreccion, falta199 } from "../../../lib/historialCambios";
 import { CLAVE_LIBRO_FIN } from "../../../lib/finanzasLibro";
+import { CAMPOS_200, CAMPOS_IMPUTAR, MAX_IMPUTAR, imputacion } from "../../../lib/finanzasImputar";
+
+/** ¿Faltan vehiculo_id o maquina_id (migración 200)? */
+const falta200 = (err) => /vehiculo_id|maquina_id/.test(String(err?.message)) && /42703|does not exist|PGRST204|schema cache/.test(String(err?.message));
+const AVISO_FALTA_200 = "Para imputar a un vehículo o una máquina falta correr la migración 200 en Supabase.";
 
 // El gasto y la compra o venta de dólares se anulan con su grupo (abajo), nunca sueltos
 const ANULABLES = `origen=in.(${[...SE_ANULAN].filter((o) => o !== ORIGEN_GASTO && o !== ORIGEN_DOLARES).join(",")})`;
@@ -240,6 +253,51 @@ async function cambiarComprobantes(sesion, d) {
   }
 }
 
+/** Punto 13 (19/11): imputar después, una o varias juntas. */
+async function imputar(sesion, d) {
+  const e = sesion.empresa_id;
+  const ids = [...new Set((Array.isArray(d.ids) ? d.ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  if (!ids.length) return NextResponse.json({ error: "Tildá al menos una operación" }, { status: 400 });
+  if (ids.length > MAX_IMPUTAR) return NextResponse.json({ error: `Hasta ${MAX_IMPUTAR} por vez` }, { status: 400 });
+  const campo = String(d.campo || "");
+  if (!CAMPOS_IMPUTAR[campo]) return NextResponse.json({ error: "No sé imputar eso" }, { status: 400 });
+  const valor = d.valor === null || d.valor === undefined ? null : String(d.valor).slice(0, 60);
+  const [ctx, espejo, ops] = await Promise.all([
+    listas(sesion, { paraImputar: true }),
+    espejoCompleto(sesion),
+    sbGetAll(`fin_operaciones?empresa_id=eq.${e}&id=in.(${ids.join(",")})&select=*`, { sesion, maxFilas: MAX_IMPUTAR }).then((r) => r.data || []),
+  ]);
+  const quien = (await nombreEmpleado(sesion)) || "Dueño";
+  const porId = new Map(ops.map((o) => [Number(o.id), o]));
+  const saltadas = [];
+  const cambios = [];
+  for (const id of ids) {
+    const op = porId.get(id);
+    if (CAMPOS_200.has(campo) && op && !(campo === "vehiculo" ? "vehiculo_id" in op : "maquina_id" in op)) {
+      return NextResponse.json({ error: AVISO_FALTA_200 }, { status: 409 });
+    }
+    const r = imputacion(op, campo, valor, ctx, { espejo });
+    if (r.error) saltadas.push({ id, motivo: r.error });
+    else cambios.push({ op, ...r });
+  }
+  const ahora = new Date().toISOString();
+  let imputadas = 0;
+  // De a 10 por vez: cada una lleva su propio historial
+  for (let i = 0; i < cambios.length; i += 10) {
+    const tanda = await Promise.all(cambios.slice(i, i + 10).map(async ({ op, campos, detalle }) => {
+      const fila = { ...campos, updated_at: ahora };
+      if ("historial" in op) fila.historial = conEntrada(op.historial, entradaCorreccion({ por: quien, at: ahora, cambios: detalle, nota: `Imputada: ${CAMPOS_IMPUTAR[campo].toLowerCase()}` }));
+      const mismaVersion = op.updated_at ? `&updated_at=eq.${encodeURIComponent(op.updated_at)}` : "";
+      const filas = await sbPatch(`fin_operaciones?id=eq.${op.id}&empresa_id=eq.${e}&anulada_at=is.null${mismaVersion}`, fila, { sesion });
+      if (!filas?.length) saltadas.push({ id: Number(op.id), motivo: "Alguien la cambió recién" });
+      return filas?.length ? 1 : 0;
+    }));
+    imputadas += tanda.reduce((a, b) => a + b, 0);
+  }
+  if (imputadas) broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, imputadas, saltadas });
+}
+
 export async function GET(request) {
   const { sesion, response } = await sesionDueno(request);
   if (response) return response;
@@ -248,23 +306,37 @@ export async function GET(request) {
   const desde = FECHA.test(url.searchParams.get("desde") || "") ? url.searchParams.get("desde") : inicioMes(hoy);
   const hasta = FECHA.test(url.searchParams.get("hasta") || "") ? url.searchParams.get("hasta") : hoy;
   if (desde > hasta) return NextResponse.json({ error: "La fecha desde es posterior a la fecha hasta" }, { status: 400 });
+  // Punto 13: lo imputado a un vehículo o una máquina, para su ficha
+  for (const [param, col] of [["vehiculo", "vehiculo_id"], ["maquina", "maquina_id"]]) {
+    if (!url.searchParams.has(param)) continue;
+    const id = Number(url.searchParams.get(param));
+    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta el vehículo o la máquina" }, { status: 400 });
+    try {
+      const r = await sbGetAll(`fin_operaciones?empresa_id=eq.${sesion.empresa_id}&${col}=eq.${id}&anulada_at=is.null&select=id,fecha,tipo,total,total_ars,moneda,descripcion,referencia,entidad,proveedor_id&order=fecha.desc,id.desc`, { sesion, maxFilas: 2000 });
+      return NextResponse.json({ operaciones: r.data || [], truncado: !!r.truncado });
+    } catch (err) {
+      if (falta200(err)) return NextResponse.json({ operaciones: [], aviso: AVISO_FALTA_200 });
+      return errorFinanzas(err, "operaciones GET imputadas");
+    }
+  }
   try {
     const e = sesion.empresa_id;
     // Con los comprobantes (176 y 187) y el historial (199); sin las migraciones, sin ellos
     const leerOps = async () => {
-      let extra = ["comprobante_url", "comprobantes", "historial"];
+      let extra = ["comprobante_url", "comprobantes", "historial", "vehiculo_id", "maquina_id"];
       for (;;) {
         try {
           return await sbGetAll(`fin_operaciones?empresa_id=eq.${e}&fecha=gte.${desde}&fecha=lte.${hasta}&select=${[COLUMNAS, ...extra].join(",")}&order=fecha.desc,id.desc`, { sesion, maxFilas: MAX_OPERACIONES });
         } catch (err) {
-          const sin = falta199(err) && extra.includes("historial") ? ["historial"]
+          const sin = falta200(err) && extra.includes("vehiculo_id") ? ["vehiculo_id", "maquina_id"]
+            : falta199(err) && extra.includes("historial") ? ["historial"]
             : /comprobante/.test(String(err?.message)) && extra.some((x) => x.startsWith("comprobante")) ? ["comprobante_url", "comprobantes"] : null;
           if (!sin) throw err;
           extra = extra.filter((x) => !sin.includes(x));
         }
       }
     };
-    const [ops, datos, espejo] = await Promise.all([leerOps(), listas(sesion), espejoCompleto(sesion)]);
+    const [ops, datos, espejo] = await Promise.all([leerOps(), listas(sesion, { paraImputar: true }), espejoCompleto(sesion)]);
     return NextResponse.json({ desde, hasta, operaciones: ops.data, truncado: ops.truncado, espejo_completo: espejo, ...datos });
   } catch (err) {
     return errorFinanzas(err, "operaciones GET");
@@ -339,6 +411,7 @@ export async function POST(request) {
       return NextResponse.json({ ok: true, operaciones: filas, ...(aviso ? { aviso } : {}) });
     }
     if (d.accion === "comprobantes") return await cambiarComprobantes(sesion, d);
+    if (d.accion === "imputar") return await imputar(sesion, d);
     if (d.accion === "leer_gasto") return await leerGasto(request, sesion, d);
     if (d.accion === "proveedor_nuevo") return await proveedorNuevo(sesion, d);
     if (d.accion === "anular") {

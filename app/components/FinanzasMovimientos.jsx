@@ -26,6 +26,8 @@ import { esDeMantenimiento } from "../lib/finanzasIntegracion";
 import { CAMPOS_CORREGIBLES, MARCA_CORREGIDA, dondeSeCambia, puedeAnular, puedeConfirmar, puedeCorregir } from "../lib/finanzasCorregir";
 import { historialDe } from "../lib/historialCambios";
 import HistorialCambios from "./HistorialCambios";
+import BarraImputar, { nombreMaquina, nombreVehiculo } from "./FinanzasImputar";
+import { COLUMNAS_IMPUTAR } from "../lib/finanzasImputar";
 import CorregirOperacion from "./FinanzasCorregir";
 import DescargarExtracto from "./FinanzasDescargarExtracto";
 import Comprobantes from "./FinanzasComprobantes";
@@ -192,6 +194,8 @@ export function Detalle({ op, datos, nombres = SIN_NOMBRES, onCerrar, onAnulada,
         {fila("Proveedor o cliente", nombres.entidad(op))}
         {fila("OT", nombres.ot(op))}
         {fila("Centro de costo", op.centro_costo)}
+        {fila("Vehículo", nombreVehiculo((datos?.vehiculos || []).find((v) => Number(v.id) === Number(op.vehiculo_id))) || (op.vehiculo_id ? `#${op.vehiculo_id}` : null))}
+        {fila("Máquina", nombreMaquina((datos?.maquinas || []).find((m) => Number(m.id) === Number(op.maquina_id))) || (op.maquina_id ? `#${op.maquina_id}` : null))}
         {fila("Descripción", op.descripcion)}
         {fila("Referencia", op.referencia)}
         {fila("Cargada por", op.cargada_por_nombre)}
@@ -209,8 +213,15 @@ export function Detalle({ op, datos, nombres = SIN_NOMBRES, onCerrar, onAnulada,
         {(!op.anulada_at || comprobantesDe(op).length > 0) && <ComprobantesGuardados op={op} onCambio={onAdjuntos} />}
         {(compra || deMantenimiento) && !op.anulada_at && <CambiarTipo op={op} datos={datos} onCambiado={onAnulada} />}
         {automatica && !compra && !op.anulada_at && <p className="m-0 text-[12px] text-gypi-dim">Se cambia o se anula desde {dondeSeCambia(op, { espejo })}.</p>}
-        <HistorialCambios entradas={historial} etiquetas={CAMPOS_CORREGIBLES}
-          formato={{ cuenta_debe: nombreCuenta, cuenta_haber: nombreCuenta, total: (v) => plata(v, op.moneda) }} />
+        <HistorialCambios entradas={historial} etiquetas={{ ...COLUMNAS_IMPUTAR, ...CAMPOS_CORREGIBLES }}
+          formato={{
+            cuenta_debe: nombreCuenta, cuenta_haber: nombreCuenta, total: (v) => plata(v, op.moneda),
+            proveedor_id: (v) => (datos?.proveedores || []).find((x) => Number(x.id) === Number(v))?.nombre || `#${v}`,
+            cliente_id: (v) => (datos?.clientes || []).find((x) => Number(x.id) === Number(v))?.nombre || `#${v}`,
+            proyecto_id: (v) => { const p = (datos?.proyectos || []).find((x) => Number(x.id) === Number(v)); return p ? textoOt(p) : `#${v}`; },
+            vehiculo_id: (v) => nombreVehiculo((datos?.vehiculos || []).find((x) => Number(x.id) === Number(v))) || `#${v}`,
+            maquina_id: (v) => nombreMaquina((datos?.maquinas || []).find((x) => Number(x.id) === Number(v))) || `#${v}`,
+          }} />
         {corrigiendo && <CorregirOperacion op={op} cuentas={datos.cuentas || []} onCancelar={() => setCorrigiendo(false)} onCorregida={onAnulada} />}
         {compra && !op.anulada_at && <p className="m-0 text-[12px] text-gypi-dim">Los importes vienen de la factura: si la corregís o la anulás en Compras, esta compra se corrige o se anula sola.</p>}
         {!op.anulada_at && !automatica && !corrigiendo && (
@@ -256,6 +267,10 @@ export default function FinanzasMovimientos({ cajas = null, saldos = null, cajaN
   const [verFiltros, setVerFiltros] = useState(false);
   const [detalle, setDetalle] = useState(null);
   const [descargar, setDescargar] = useState(false);
+  // 19/11 (punto 13): ☑ Imputar después, una o varias juntas
+  const [imputando, setImputando] = useState(false);
+  const [tildadas, setTildadas] = useState(() => new Set());
+  const tildar = (id) => setTildadas((t) => { const n = new Set(t); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   const cargar = useCallback(async () => {
     try {
@@ -331,6 +346,10 @@ export default function FinanzasMovimientos({ cajas = null, saldos = null, cajaN
       )}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <input className="g-input flex-1 min-w-[180px]" aria-label="Buscar" placeholder="Buscar por descripción, proveedor u OT" value={filtros.buscar} onChange={setFiltro("buscar")} />
+        <button type="button" onClick={() => { setImputando((v) => !v); setTildadas(new Set()); }} aria-pressed={imputando}
+          className={`min-h-[44px] px-3 rounded-lg border text-[13px] font-semibold cursor-pointer ${imputando ? "bg-gypi-amber/15 border-gypi-amber text-gypi-amber-ink" : "bg-gypi-bg border-gypi-border text-gypi-dim"}`}>
+          ☑ Imputar
+        </button>
         <button type="button" onClick={() => setVerFiltros((v) => !v)} aria-expanded={verFiltros}
           className={`min-h-[44px] px-3 rounded-lg border text-[13px] font-semibold cursor-pointer ${activos ? "bg-gypi-amber/15 border-gypi-amber text-gypi-amber-ink" : "bg-gypi-bg border-gypi-border text-gypi-dim"}`}>
           ⚙ Filtros{activos ? ` (${activos})` : ""}
@@ -351,13 +370,26 @@ export default function FinanzasMovimientos({ cajas = null, saldos = null, cajaN
       </p>
       {datos.truncado && <p className="mb-2 text-[13px] text-gypi-amber-ink">⚠ Hay muchas operaciones en el período: se ven las primeras. Achicá las fechas.</p>}
 
+      {imputando && (() => {
+        const vivas = lista.slice(0, MAX_LISTA).filter((op) => !op.anulada_at);
+        return (
+          <BarraImputar datos={datos} ids={[...tildadas]} total={vivas.length}
+            onTodas={() => setTildadas(new Set(vivas.map((op) => op.id)))} onNinguna={() => setTildadas(new Set())} onHecho={cambio} />
+        );
+      })()}
       <ul className="list-none m-0 p-0 flex flex-col gap-1.5" aria-label="Operaciones">
         {lista.slice(0, MAX_LISTA).map((op) => {
           const quien = nombres.entidad(op);
           const ot = nombres.ot(op);
           const lado = ladoCaja(op, datos.tesoreria);
           return (
-            <li key={op.id}>
+            <li key={op.id} className={imputando ? "flex items-stretch gap-2" : undefined}>
+              {imputando && (
+                <label className="flex items-center px-1 cursor-pointer">
+                  <input type="checkbox" disabled={!!op.anulada_at} checked={tildadas.has(op.id)} onChange={() => tildar(op.id)}
+                    aria-label={`Tildar ${nombreDeTipo(op.tipo, datos.tipos)} del ${fechaCorta(op.fecha)} por ${plata(op.total, op.moneda)}`} />
+                </label>
+              )}
               <button type="button" onClick={() => setDetalle(op)}
                 className={`w-full text-left min-h-[48px] px-3 py-2 rounded-lg border border-gypi-border bg-gypi-surface cursor-pointer ${op.anulada_at ? "opacity-60" : ""}`}>
                 <span className={`flex items-baseline gap-2 text-[14px] text-gypi-text ${op.anulada_at ? "line-through" : ""}`}>
