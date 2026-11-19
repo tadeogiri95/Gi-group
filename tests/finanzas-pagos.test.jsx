@@ -429,3 +429,77 @@ test("pantalla — si hay varios movimientos del banco, se elige cuál es el pag
   await waitFor(() => assert.equal(enviados.length, 2));
   assert.deepEqual(enviados[1].unir, { 0: "2" });
 });
+
+// ─── 19/11 (migración 198): facturas y presupuestos adjuntos a la orden ───
+
+const BASE_ADJ = `https://test.supabase.co/storage/v1/object/public/reportes-obra/${E}/`;
+const FACTURA_PDF = { url: `${BASE_ADJ}0b9e3c1a-1111-4222-8333-444455556666.pdf`, nombre: "Factura A 0003-0001234.pdf" };
+const PRESUPUESTO = { url: `${BASE_ADJ}0b9e3c1a-1111-4222-8333-444455557777.jpg`, nombre: "Presupuesto" };
+
+test("adjuntos de la orden — se ven en el link del CFO, el resumen y el PDF (solo https)", async () => {
+  const { adjuntosDe } = await import("../app/lib/finanzasPagos.js");
+  const { datosResumenParaCfo } = await import("../app/lib/finanzasResumenPago.js");
+  const o = { ...ORDEN, adjuntos: [FACTURA_PDF, PRESUPUESTO, { url: "javascript:alert(1)", nombre: "malo" }] };
+  assert.deepEqual(adjuntosDe(o).map((a) => [a.nombre, a.tipo]), [["Factura A 0003-0001234.pdf", "pdf"], ["Presupuesto", "foto"]]);
+  assert.deepEqual(adjuntosDe({}), []);
+  assert.equal(datosParaCfo(o).adjuntos.length, 2);
+  assert.equal(datosResumenParaCfo({ numero: 1 }, [o]).ordenes[0].adjuntos.length, 2);
+  const html = htmlOrdenPago({ empresa: {}, orden: o });
+  assert.match(html, /Facturas y presupuestos adjuntos/);
+  assert.match(html, /Factura A 0003-0001234\.pdf/);
+  assert.doesNotMatch(html, /javascript:/);
+});
+
+test("migración 198 — adjuntos jsonb, lista de hasta 10, en el chequeo de la base", async () => {
+  const sql = readFileSync(new URL("../supabase/migrations/198_adjuntos_orden_pago.sql", import.meta.url), "utf8");
+  assert.match(sql, /do \$mig\$/);
+  assert.match(sql, /add column if not exists adjuntos jsonb not null default '\[\]'::jsonb/);
+  assert.match(sql, /jsonb_array_length\(adjuntos\) <= 10/);
+  const { MIGRACIONES } = await import("../app/lib/esquemaMigraciones.js");
+  assert.ok(MIGRACIONES.some((m) => m.n === 198 && m.tablas.fin_ordenes_pago.includes("adjuntos")));
+});
+
+test("/api/finanzas/pagos — crear con la factura adjunta; archivos de afuera no", async () => {
+  let { escrito } = mockApi({ ordenes: [{ ...ORDEN, numero: 3 }] });
+  let res = await pedir("gerencial", "POST", { accion: "crear", orden: { proveedor_id: 5, fecha: "2026-11-09", formas: FORMAS, adjuntos: [FACTURA_PDF, FACTURA_PDF, PRESUPUESTO] } });
+  assert.equal(res.status, 200);
+  assert.deepEqual(escrito[0].body.adjuntos.map((a) => [a.nombre, a.tipo]), [["Factura A 0003-0001234.pdf", "pdf"], ["Presupuesto", "foto"]], "sin repetir");
+
+  ({ escrito } = mockApi({ ordenes: [{ ...ORDEN, numero: 3 }] }));
+  res = await pedir("gerencial", "POST", { accion: "crear", orden: { proveedor_id: 5, fecha: "2026-11-09", formas: FORMAS, adjuntos: [{ url: "https://otro.com/x.pdf" }] } });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /Un archivo no es válido/);
+  assert.equal(escrito.length, 0);
+
+  ({ escrito } = mockApi({ ordenes: [{ ...ORDEN, numero: 3 }] }));
+  res = await pedir("gerencial", "POST", { accion: "crear", orden: { proveedor_id: 5, fecha: "2026-11-09", formas: FORMAS } });
+  assert.equal("adjuntos" in escrito[0].body, false, "sin adjuntos no manda la columna (anda sin la 198)");
+});
+
+test("/api/finanzas/pagos — cambiar los adjuntos de una orden; sin la 198 avisa", async () => {
+  let { escrito } = mockApi({ ordenes: [{ ...ORDEN, estado: "pagada" }] });
+  let res = await pedir("gerencial", "POST", { accion: "adjuntos", id: 9, lista: [PRESUPUESTO] });
+  assert.equal(res.status, 200);
+  assert.deepEqual(escrito[0].body.adjuntos, [{ ...PRESUPUESTO, tipo: "foto" }], "también en una pagada");
+
+  mockApi({ ordenes: [{ ...ORDEN, estado: "anulada" }] });
+  res = await pedir("gerencial", "POST", { accion: "adjuntos", id: 9, lista: [] });
+  assert.equal(res.status, 400);
+
+  // Sin la columna: el PATCH falla y se avisa qué migración correr
+  ({ escrito } = mockApi({ ordenes: [{ ...ORDEN }] }));
+  const original = global.fetch;
+  global.fetch = async (url, o = {}) => {
+    if (String(url).includes("/rest/v1/fin_ordenes_pago") && (o.method === "PATCH" || o.method === "POST") && String(o.body).includes("adjuntos")) {
+      return new Response(JSON.stringify({ code: "PGRST204", message: "Could not find the 'adjuntos' column of 'fin_ordenes_pago' in the schema cache" }), { status: 400 });
+    }
+    return original(url, o);
+  };
+  res = await pedir("gerencial", "POST", { accion: "adjuntos", id: 9, lista: [PRESUPUESTO] });
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /migración 198/);
+  res = await pedir("gerencial", "POST", { accion: "crear", orden: { proveedor_id: 5, fecha: "2026-11-09", formas: FORMAS, adjuntos: [PRESUPUESTO] } });
+  assert.equal(res.status, 200, "la orden se guarda igual");
+  assert.match((await res.json()).aviso, /migración 198/);
+  assert.equal("adjuntos" in escrito.at(-1).body, false);
+});

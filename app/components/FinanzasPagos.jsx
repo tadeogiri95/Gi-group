@@ -20,7 +20,7 @@ import { apiFetch } from "../lib/supabase";
 import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import { numeroWhatsapp } from "../lib/compras";
 import {
-  ESTADOS_ORDEN, FORMAS_PAGO, SIN_PAGAR, accionesOrden, cuentasParaPagar, fechaCorta, imprimirOrdenPago, mandadaAlCfo, textoForma, textoWhatsappCfo, vistaPorCfo,
+  ESTADOS_ORDEN, FORMAS_PAGO, SIN_PAGAR, accionesOrden, adjuntosDe, cuentasParaPagar, fechaCorta, imprimirOrdenPago, mandadaAlCfo, textoForma, textoWhatsappCfo, vistaPorCfo,
 } from "../lib/finanzasPagos";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -30,6 +30,7 @@ import {
   ESTADOS_RESUMEN, imprimirResumenPago, puedeEntrar, renglonesResumen, textoWhatsappResumen, totalesResumen,
 } from "../lib/finanzasResumenPago";
 import { fotoBase64, subirImagen } from "../lib/foto";
+import Comprobantes from "./FinanzasComprobantes";
 
 const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
@@ -100,6 +101,8 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
   const [elegidas, setElegidas] = useState(() => new Set());
   const [formas, setFormas] = useState([]);
   const [notas, setNotas] = useState("");
+  // 19/11 (198): la factura o el presupuesto que se paga, en PDF o foto
+  const [adjuntos, setAdjuntos] = useState([]);
   const [error, setError] = useState(null);
   const [guardando, setGuardando] = useState(false);
 
@@ -130,8 +133,10 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
           proveedor_id: proveedor ? Number(proveedor) : null, fecha, notas,
           facturas: pendientes.filter((p) => elegidas.has(p.op.id)).map((p) => ({ op_id: p.op.id, fecha: p.op.fecha, detalle: [p.op.tipo, p.op.descripcion].filter(Boolean).join(" · "), importe: p.falta })),
           formas: formas.map((f) => ({ ...f, importe: f.forma === "cheque_tercero" ? undefined : numero(f.importe) })),
+          ...(adjuntos.length ? { adjuntos } : {}),
         },
       });
+      if (d.aviso) toast.info(d.aviso);
       if (mandar && d.url) mandarWhatsapp(d.orden, d.url, datos);
       toast.success(mandar ? `Orden N° ${d.orden.numero} guardada y mandada al CFO. Ya la podés pagar.` : `Orden N° ${d.orden.numero} guardada. Ya la podés pagar.`);
       onGuardada(d.orden);
@@ -217,6 +222,7 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
           </p>
         )}
         {campo("Nota (opcional, la ve el CFO)", <textarea className="g-input w-full min-h-[60px]" aria-label="Nota" value={notas} maxLength={500} onChange={(e) => setNotas(e.target.value)} />)}
+        <Comprobantes titulo="Facturas o presupuestos (opcional, los ve el CFO)" lista={adjuntos} onCambio={setAdjuntos} disabled={guardando} />
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
@@ -254,7 +260,7 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
       const pago = d.unidas
         ? `Pago registrado. ${d.unidas === 1 ? "Se unió con el movimiento que ya estaba en el banco" : `Se unió con ${d.unidas} movimientos que ya estaban en el banco`}: no quedó repetido`
         : "Pago registrado: se generaron las operaciones y los cheques";
-      toast.success({ mandar: "Abrimos WhatsApp con el link para el CFO", pagar: pago, anular: "Orden anulada", comprobante: extra.url ? "Comprobante guardado" : "Comprobante quitado" }[accion]);
+      toast.success({ mandar: "Abrimos WhatsApp con el link para el CFO", pagar: pago, anular: "Orden anulada", comprobante: extra.url ? "Comprobante guardado" : "Comprobante quitado", adjuntos: "Adjuntos guardados" }[accion]);
       setElegir(null);
       onCambio();
     } catch (e) {
@@ -312,6 +318,11 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
           <p className="m-0 text-[12px] text-gypi-dim break-all">Link para el CFO: {url}</p>
         )}
         {resumen && <p className="m-0 text-[13px] text-gypi-dim">📋 Está en el resumen N° {resumen.numero}</p>}
+        {/* 19/11 (198): facturas o presupuestos; se pueden sumar o quitar mientras no esté anulada */}
+        {(orden.estado !== "anulada" || adjuntosDe(orden).length > 0) && (
+          <Comprobantes titulo="Facturas o presupuestos" lista={adjuntosDe(orden)} disabled={!!haciendo || orden.estado === "anulada"}
+            onCambio={(lista) => hacer("adjuntos", { lista })} />
+        )}
         {orden.estado !== "anulada" && !datos.falta_186 && (
           <div className="flex flex-wrap items-center gap-2">
             {orden.comprobante_url && <a className="text-[13px] font-semibold text-gypi-amber-ink" href={orden.comprobante_url} target="_blank" rel="noopener noreferrer">📎 Ver comprobante</a>}

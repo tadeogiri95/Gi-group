@@ -29,6 +29,10 @@
 //   POST { accion: "comprobante", id, url } → foto del comprobante de una
 //       orden (opcional; url vacía la quita).
 //
+// Facturas y presupuestos (19/11, migración 198): crear acepta
+// orden.adjuntos = [{ url, nombre }] (PDF o foto, hasta 10) y
+//   POST { accion: "adjuntos", id, lista } cambia la lista de una orden (no anulada).
+//
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige). El
 // dato del CFO va en config_sistema.
 import crypto from "node:crypto";
@@ -42,6 +46,7 @@ import { hoyAr } from "../../../lib/finanzasOperaciones";
 import { CLAVE_CFO, DIAS_UNIR, accionesOrden, cambioAlUnir, generarPago, movimientosParaUnir, validarOrden } from "../../../lib/finanzasPagos";
 import { validarResumen } from "../../../lib/finanzasResumenPago";
 import { comprobanteValido } from "../../../lib/finanzasMiCaja";
+import { validarComprobantes } from "../../../lib/finanzasAdjuntos";
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const FALTA_175 = "Para las órdenes de pago falta correr la migración 175 en Supabase.";
@@ -49,6 +54,11 @@ const falta175 = (err) => /fin_ordenes_pago/.test(String(err?.message)) && /does
 
 const FALTA_186 = "Para el resumen de órdenes de pago falta correr la migración 186 en Supabase.";
 const falta186 = (err) => /fin_resumenes_pago|resumen_id|comprobante_url/.test(String(err?.message)) && /does not exist|42P01|42703|PGRST20[045]|schema cache/.test(String(err?.message));
+
+const FALTA_198 = "Para adjuntar facturas o presupuestos a la orden falta correr la migración 198 en Supabase.";
+const falta198 = (err) => /adjuntos/.test(String(err?.message)) && /does not exist|42703|PGRST20[045]|schema cache|column/.test(String(err?.message));
+
+const errorAdjunto = (m) => m.replace("Un comprobante", "Un archivo").replace("comprobantes por movimiento", "archivos por orden");
 
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data);
 const nuevoToken = () => crypto.randomBytes(24).toString("base64url");
@@ -121,6 +131,9 @@ async function crear(request, sesion, d) {
   const ctx = await contexto(sesion);
   const { orden, errores } = validarOrden(d.orden || {}, ctx);
   if (errores.length) return NextResponse.json({ error: errores[0], errores }, { status: 400 });
+  const adj = validarComprobantes(d.orden?.adjuntos, { supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL, empresaId: e });
+  if (adj.error) return NextResponse.json({ error: errorAdjunto(adj.error) }, { status: 400 });
+  let aviso = null;
   const ahora = new Date().toISOString();
   const quien = await nombreEmpleado(sesion);
   const mandar = d.mandar === true;
@@ -131,12 +144,19 @@ async function crear(request, sesion, d) {
       ...orden, empresa_id: e, numero: (Number(ultima?.numero) || 0) + 1,
       estado: mandar ? "para_aprobar" : "borrador", token: mandar ? nuevoToken() : null, enviada_at: mandar ? ahora : null,
       cargada_por_nombre: quien, created_at: ahora, updated_at: ahora,
+      ...(adj.lista.length ? { adjuntos: adj.lista } : {}),
     };
     try {
-      const [o] = (await sbPost("fin_ordenes_pago", fila, { sesion })) || [];
+      // Sin la 198 la orden se guarda igual, sin los adjuntos, y se avisa
+      const [o] = (await sbPost("fin_ordenes_pago", fila, { sesion }).catch((err) => {
+        if (!adj.lista.length || !falta198(err)) throw err;
+        aviso = FALTA_198;
+        const { adjuntos: _sin, ...sinAdjuntos } = fila;
+        return sbPost("fin_ordenes_pago", sinAdjuntos, { sesion });
+      })) || [];
       if (!o?.id) return NextResponse.json({ error: "No se pudo guardar la orden" }, { status: 500 });
       refrescar(e, "fin_ordenes_pago");
-      return NextResponse.json({ ok: true, orden: o, url: o.token ? linkCfo(request, o.token) : null });
+      return NextResponse.json({ ok: true, orden: o, url: o.token ? linkCfo(request, o.token) : null, ...(aviso ? { aviso } : {}) });
     } catch (err) {
       if (!/23505|duplicate key/.test(String(err?.message)) || intento === 2) throw err;
     }
@@ -395,6 +415,23 @@ async function guardarComprobante(sesion, d) {
   return NextResponse.json({ ok: true, orden: hecha || { ...o, comprobante_url: url } });
 }
 
+async function guardarAdjuntos(sesion, d) {
+  const e = sesion.empresa_id;
+  const o = await leerOrden(sesion, Number(d.id));
+  if (!o) return NextResponse.json({ error: "No encontré esa orden" }, { status: 404 });
+  if (o.estado === "anulada") return NextResponse.json({ error: "La orden está anulada" }, { status: 400 });
+  const adj = validarComprobantes(d.lista ?? [], { supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL, empresaId: e });
+  if (adj.error) return NextResponse.json({ error: errorAdjunto(adj.error) }, { status: 400 });
+  try {
+    const [hecha] = (await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}`, { adjuntos: adj.lista, updated_at: new Date().toISOString() }, { sesion })) || [];
+    refrescar(e, "fin_ordenes_pago");
+    return NextResponse.json({ ok: true, orden: hecha || { ...o, adjuntos: adj.lista } });
+  } catch (err) {
+    if (falta198(err)) return NextResponse.json({ error: FALTA_198 }, { status: 409 });
+    throw err;
+  }
+}
+
 async function guardarCfo(sesion, d) {
   const e = sesion.empresa_id;
   const valor = {
@@ -423,6 +460,7 @@ export async function POST(request) {
     if (d?.accion === "resumen_mandar") return await mandarResumen(request, sesion, d);
     if (d?.accion === "resumen_anular") return await anularResumen(sesion, d);
     if (d?.accion === "comprobante") return await guardarComprobante(sesion, d);
+    if (d?.accion === "adjuntos") return await guardarAdjuntos(sesion, d);
     return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
   } catch (err) {
     return error(err, `pagos ${d?.accion}`);

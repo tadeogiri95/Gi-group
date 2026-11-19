@@ -32,7 +32,7 @@ export default async function PaginaOrdenPago({ params }) {
   const { token } = await params;
   const datos = await datosOrdenCfo(decodeURIComponent(String(token || ""))).catch(() => null);
   if (!datos) return <NoEncontrada />;
-  const { empresa, numero, fecha, proveedor, total, notas, cargada_por, facturas, formas, pagada, pagada_fecha, visto, cfo } = datos;
+  const { empresa, numero, fecha, proveedor, total, notas, cargada_por, facturas, formas, pagada, pagada_fecha, visto, cfo, adjuntos = [] } = datos;
 
   return (
     <main className="min-h-dvh bg-gypi-bg text-gypi-text font-body overflow-y-auto">
@@ -84,6 +84,19 @@ export default async function PaginaOrdenPago({ params }) {
         )}
 
         {notas && <p className="m-0 text-[14px] rounded-[14px] border border-gypi-border bg-gypi-surface p-3">📝 {notas}</p>}
+
+        {adjuntos.length > 0 && (
+          <section aria-label="Facturas y presupuestos" className="rounded-[18px] border border-gypi-border bg-gypi-surface p-4">
+            <h2 className="m-0 mb-2 text-[15px] font-bold">📎 Facturas y presupuestos</h2>
+            <ul className="list-none m-0 p-0 flex flex-col gap-1.5">
+              {adjuntos.map((a) => (
+                <li key={a.url}>
+                  <a className="text-[14px] font-semibold text-gypi-amber-ink" href={a.url} target="_blank" rel="noopener noreferrer">{a.tipo === "pdf" ? "📄" : "🖼"} {a.nombre}</a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <VistoCfo token={token} api="/api/op/visto" visto={visto} cfo={cfo} que="la orden" />
       </div>

@@ -89,6 +89,9 @@ export default async function PaginaResumenPago({ params }) {
                 </ul>
                 <div className="flex flex-wrap gap-2 mt-1">
                   {o.comprobante && <a className="g-btn g-btn-secondary text-[13px]" href={o.comprobante} target="_blank" rel="noopener noreferrer">📎 Ver comprobante</a>}
+                  {(o.adjuntos || []).map((a) => (
+                    <a key={a.url} className="g-btn g-btn-secondary text-[13px]" href={a.url} target="_blank" rel="noopener noreferrer">{a.tipo === "pdf" ? "📄" : "🖼"} {a.nombre}</a>
+                  ))}
                   {o.token && <a className="g-btn g-btn-secondary text-[13px]" href={`/op/${o.token}`}>Ver la orden</a>}
                 </div>
               </li>
