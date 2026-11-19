@@ -6,7 +6,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { plata } from "../lib/finanzasOperaciones";
-import { DIAS_CALCE, SEMANAS_CALCE, exportarInformeTesoreria, geometriaColumnas, informeTesoreria, repartoFondos, serieCalce, serieCobrar } from "../lib/finanzasInformeTesoreria";
+import { COLOR_REPARTO, DIAS_CALCE, SEMANAS_CALCE, exportarInformeTesoreria, geometriaColumnas, informeTesoreria, repartoFondos, serieCalce, serieCobrar } from "../lib/finanzasInformeTesoreria";
 import { Chip, Spinner } from "./ui";
 import BotonesExportar from "./FinanzasExportar";
 
@@ -88,7 +88,8 @@ function TablaCalce({ filas, titulo }) {
 
 /* Gráficos (19/11): los colores salen del tema de la app, así se ven bien en claro y en oscuro. */
 const C = { rojo: "var(--color-red)", verde: "var(--color-green)", cyan: "var(--color-cyan)", linea: "var(--color-text-dim)", texto: "var(--color-text-dim)" };
-const COLOR_PARTE = { caja: "var(--color-cyan)", banco: "var(--color-empresa-secondary)", fci: "var(--color-empresa-primary)", titulos: "var(--color-green)", plazo_fijo: "var(--color-text-dim)" };
+// Colores bien distintos entre sí (19/11), los mismos que en el PDF
+const COLOR_PARTE = COLOR_REPARTO;
 const pctTxt = (n) => `${String(n).replace(".", ",")} %`;
 
 function Leyenda({ items }) {
@@ -110,8 +111,13 @@ function GraficoReparto({ r }) {
   if (!rep.partes.length) return null;
   return (
     <figure className="m-0 flex flex-col gap-1.5" aria-label="Dónde está la plata en pesos">
-      <svg viewBox="0 0 100 10" preserveAspectRatio="none" className="w-full h-7 rounded-md block" role="img" aria-label={rep.partes.map((p) => `${p.nombre} ${pctTxt(p.pct)}`).join(", ")}>
-        {rep.partes.map((p) => <rect key={p.id} x={p.desde} y="0" width={p.pct} height="10" fill={COLOR_PARTE[p.id]}><title>{`${p.nombre} ${pctTxt(p.pct)}`}</title></rect>)}
+      <svg viewBox="0 0 700 26" className="w-full h-auto rounded-md block" role="img" aria-label={rep.partes.map((p) => `${p.nombre} ${pctTxt(p.pct)}`).join(", ")}>
+        {rep.partes.map((p) => (
+          <g key={p.id}>
+            <rect x={p.desde * 7} y="0" width={p.pct * 7} height="26" fill={COLOR_PARTE[p.id]}><title>{`${p.nombre} ${pctTxt(p.pct)}`}</title></rect>
+            {p.pct >= 7 && <text x={(p.desde + p.pct / 2) * 7} y="17" textAnchor="middle" fontSize="12" fontWeight="700" fill="white">{`${Math.round(p.pct)} %`}</text>}
+          </g>
+        ))}
       </svg>
       <Leyenda items={rep.partes.map((p) => [COLOR_PARTE[p.id], `${p.nombre} ${pctTxt(p.pct)} · ${plata(p.valor, "ARS")}`])} />
     </figure>
@@ -131,7 +137,9 @@ function GraficoColumnas({ serie, H = 230, linea = false, nombres, colores, titu
           <g key={i}>
             <Col c={c.a} color={colores[0]} nombre={nombres[0]} et={c.etiqueta} />
             <Col c={c.b} color={colores[1]} nombre={nombres[1]} et={c.etiqueta} />
+            {[[c.montoA, colores[0], "a"], [c.montoB, colores[1], "b"]].map(([m, color, k]) => (m ? <text key={k} x={m.x} y={m.y} textAnchor="middle" fontSize="10" fontWeight="700" fill={color}>{m.texto}</text> : null))}
             {c.mostrarEtiqueta && <text x={c.x} y={g.ejeY} textAnchor="middle" fontSize="11" fill={C.texto}>{c.etiqueta}</text>}
+            {c.dif && <text x={c.x} y={g.difY} textAnchor="middle" fontSize="10" fontWeight="700" fill={c.dif.valor < 0 ? C.rojo : C.verde}>{c.dif.texto}</text>}
           </g>
         ))}
         {linea && (
@@ -141,7 +149,7 @@ function GraficoColumnas({ serie, H = 230, linea = false, nombres, colores, titu
           </>
         )}
       </svg>
-      <Leyenda items={[[colores[0], nombres[0]], ...(nombres[1] ? [[colores[1], nombres[1]]] : []), ...(linea ? [[C.cyan, "Acumulado (debajo de la raya, falta plata)"]] : [])]} />
+      <Leyenda items={[[colores[0], nombres[0]], ...(nombres[1] ? [[colores[1], nombres[1]]] : []), ...(linea ? [[C.cyan, "Acumulado (debajo de la raya, falta plata). Abajo de cada fecha, la diferencia"]] : [])]} />
     </figure>
   );
 }

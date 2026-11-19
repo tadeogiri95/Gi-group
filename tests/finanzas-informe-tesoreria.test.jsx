@@ -6,7 +6,7 @@ import { test, afterEach } from "node:test";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { informeTesoreria, exportarInformeTesoreria, periodosDias, periodosSemanas, repartoFondos, serieCobrar, serieCalce, geometriaColumnas } from "../app/lib/finanzasInformeTesoreria.js";
+import { compacto, informeTesoreria, exportarInformeTesoreria, periodosDias, periodosSemanas, repartoFondos, serieCobrar, serieCalce, geometriaColumnas } from "../app/lib/finanzasInformeTesoreria.js";
 import { armarXlsx } from "../app/lib/xlsxSimple.js";
 import { opcionesBoton } from "../app/lib/menuGestion.js";
 import { GRUPOS_FINANZAS, DETALLE_FINANZAS } from "../app/lib/finanzasInicio.js";
@@ -97,7 +97,8 @@ test("PDF y Excel: las 4 secciones y el Excel abre", () => {
   const inf = exportarInformeTesoreria(r, { empresa: "Gi Group" });
   assert.equal(inf.titulo, "Informe de tesorería al 19/11/2026");
   const h = inf.html();
-  for (const t of ["1. Posición de fondos", "2. Inversiones", "3. Calce de cheques a pagar y plazos fijos", "4. Cheques a cobrar", "Por día (próximos 15 días)"]) assert.ok(h.includes(t), t);
+  for (const t of ["1. Posición de fondos e inversiones", "2. Calce de cheques a pagar y plazos fijos", "3. Calce por día · próximos 15 días", "4. Cheques a cobrar"]) assert.ok(h.includes(t), t);
+  assert.ok(!h.includes("Maderera"), "sin el detalle de cada cheque del calce: conciso (19/11)");
   const hojas = inf.hojas();
   assert.deepEqual(hojas.map((x) => x.nombre), ["Fondos e inversiones", "Calce", "Cheques a cobrar"]);
   assert.ok(armarXlsx(hojas).length > 100);
@@ -163,4 +164,18 @@ test("gráficos: dónde está la plata, calce con acumulado y cobros por semana 
   fireEvent.click(screen.getByRole("button", { name: /Por día/ }));
   assert.ok(screen.getByRole("img", { name: "Calce por día" }));
   assert.ok(screen.getByRole("img", { name: "Cheques a cobrar por semana" }));
+});
+
+test("gráfico del calce con los montos de cada columna y la diferencia (19/11)", () => {
+  assert.equal(compacto(2500000), "2,5 M");
+  assert.equal(compacto(-530000), "−530 mil");
+  assert.equal(compacto(250000000), "250 M");
+  const g = geometriaColumnas(serieCalce(r.calce.semanal), { linea: true });
+  const s1 = g.cols[1];
+  assert.equal(s1.montoA.texto, "8 mil");
+  assert.equal(s1.montoB.texto, "10 mil");
+  assert.equal(s1.dif.texto, "+2 mil");
+  assert.equal(g.cols.at(-1).dif, null, "sin movimiento no hay diferencia");
+  const h = exportarInformeTesoreria(r).html();
+  assert.match(h, />\+2 mil</);
 });

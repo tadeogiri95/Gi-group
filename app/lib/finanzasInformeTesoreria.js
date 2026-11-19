@@ -166,38 +166,49 @@ ${filas.map((t) => `<tr><td>${esc(t.etiqueta)}</td><td class="n">${num(t.cheques
 </tbody></table>`;
 }
 
-const filaItem = (x) => `<tr class="sub"><td>${esc(dma(x.fecha))}</td><td>${esc(x.clase === "plazo" ? "Plazo fijo" : "Cheque")}</td><td>${esc(x.detalle)}</td><td>${esc(x.quien)}</td><td class="n">${$(x.importe)}</td></tr>`;
+/** Más apretado que los otros informes, para que entre en 3 hojas A4. */
+const ESTILO_CORTO = "body{padding:16px;font-size:11px}.cabecera{padding:10px 14px;margin-bottom:8px}.cabecera h1{font-size:17px}h2{font-size:13px;margin:0 0 6px;padding:4px 8px}section{margin:10px 0 0}th,td{padding:2px 5px}.kpi{padding:5px 8px;flex:1 1 110px}.kpi b{font-size:13px}p{margin:2px 0 4px}";
+export const MAX_COBROS = 15;
+
 
 /** { titulo, html, hojas } para los botones 📄 PDF y 📊 Excel. */
 export function exportarInformeTesoreria(r, { empresa = "" } = {}) {
   const titulo = `Informe de tesorería al ${dma(r.hoy)}`;
   const sub = "Posición de fondos, inversiones, calce de cheques y plazos fijos, y cheques a cobrar";
+  // 19/11 (Tadeo): conciso, 3 páginas como máximo. Fondos e inversiones lado a
+  // lado, la tabla diaria solo con los días que tienen algo y sin el detalle de
+  // cada cheque del calce (los montos están en el gráfico); cobros hasta MAX_COBROS.
   const cuerpo = () => {
-    const fondos = ["ARS", "USD"].filter((m) => r.fondos[m].cajas.length).map((m) => `<h3>${m === "USD" ? "En dólares" : "En pesos"}</h3><table><thead><tr><th>Caja o banco</th><th class="n">Saldo</th></tr></thead><tbody>
-${r.fondos[m].cajas.map((c) => `<tr><td>${esc(c.nombre)}</td><td class="n ${c.saldo < 0 ? "rojo" : ""}">${$(c.saldo, m)}</td></tr>`).join("\n")}
-<tr class="tot"><td>Total ${m === "USD" ? "en dólares" : "en pesos"}</td><td class="n">${$(r.fondos[m].total, m)}</td></tr></tbody></table>`).join("");
-    const fci = r.fci.length ? `<h3>Fondos comunes de inversión</h3><table><thead><tr><th>Fondo</th><th class="n">Saldo</th></tr></thead><tbody>${r.fci.map((f) => `<tr><td>${esc(f.nombre)}</td><td class="n">${$(f.saldo, f.moneda)}</td></tr>`).join("")}</tbody></table>` : "";
-    const tit = r.titulos.especies.length ? `<h3>Títulos públicos y privados</h3><table><thead><tr><th>Especie</th><th class="n">Láminas</th><th class="n">Cotización</th><th class="n">Valor</th></tr></thead><tbody>${r.titulos.especies.map((e) => `<tr><td>${esc([e.especie, e.nombre].filter(Boolean).join(" · "))}</td><td class="n">${esc(e.laminas.toLocaleString("es-AR"))}</td><td class="n">${$(e.cotizacion, e.moneda)}</td><td class="n">${$(e.valor, e.moneda)}</td></tr>`).join("")}
-<tr class="tot"><td colspan="3">Total en pesos${r.titulos.tipo_cambio ? ` (dólar a ${esc($(r.titulos.tipo_cambio))})` : ""}</td><td class="n">${$(r.titulos.valor)}</td></tr></tbody></table>${r.titulos.falta_tc ? '<p class="rojo">Falta el tipo de cambio: lo que está en dólares no suma en el total.</p>' : ""}` : "";
-    const pf = r.plazos.length ? `<h3>Plazos fijos vigentes</h3><table><thead><tr><th>Certificado</th><th>Vence</th><th class="n">Capital</th><th class="n">Interés</th><th class="n">Devuelve</th></tr></thead><tbody>${r.plazos.map((p) => `<tr><td>N° ${esc(p.certificado)}${p.vencido ? ' <span class="rojo">(vencido sin registrar)</span>' : ""}</td><td>${esc(dma(p.vencimiento))}</td><td class="n">${$(p.depositado, p.moneda)}</td><td class="n">${$(p.interes, p.moneda)}</td><td class="n">${$(p.reembolsar, p.moneda)}</td></tr>`).join("")}</tbody></table>` : "";
-    const detalle = r.calce.semanal.filter((t) => t.items.length).map((t) => `<tr class="sec"><td colspan="5">${esc(t.etiqueta)}</td></tr>${t.items.map(filaItem).join("")}`).join("");
-    const cobrar = r.cobrar.length ? `<table><thead><tr><th>Se acredita</th><th></th><th>Banco y número</th><th>De quién</th><th class="n">Importe</th></tr></thead><tbody>${r.cobrar.map((t) => `<tr class="sec"><td colspan="4">${esc(t.etiqueta)}</td><td class="n">${$(t.total)}</td></tr>${t.items.map((x) => filaItem({ ...x, clase: "cheque" })).join("")}`).join("")}
-<tr class="tot"><td colspan="4">Total a cobrar</td><td class="n">${$(r.resumen.cheques_cobrar)}</td></tr></tbody></table>` : '<p class="dim">No hay cheques de terceros en cartera.</p>';
+    const fila = (nombre, valor, m = "ARS", extra = "") => `<tr><td>${nombre}</td><td class="n${valor < 0 ? " rojo" : ""}">${$(valor, m)}${extra}</td></tr>`;
+    const tot = (nombre, valor, m = "ARS") => `<tr class="tot"><td>${esc(nombre)}</td><td class="n">${$(valor, m)}</td></tr>`;
+    const sec = (nombre) => `<tr class="sec"><td colspan="2">${esc(nombre)}</td></tr>`;
+    const fondos = ["ARS", "USD"].filter((m) => r.fondos[m].cajas.length).map((m) => sec(m === "USD" ? "En dólares" : "En pesos")
+      + r.fondos[m].cajas.map((c) => fila(esc(c.nombre), c.saldo, m)).join("") + tot(`Total ${m === "USD" ? "dólares" : "pesos"}`, r.fondos[m].total, m)).join("");
+    const inv = [
+      r.fci.length ? sec("FCI") + r.fci.map((f) => fila(esc(f.nombre), f.saldo, f.moneda)).join("") : "",
+      r.titulos.especies.length ? sec(`Títulos${r.titulos.tipo_cambio ? ` (dólar a ${plata(r.titulos.tipo_cambio)})` : ""}`) + r.titulos.especies.map((e) => fila(`${esc(e.especie)} <span class="dim">· ${esc(e.laminas.toLocaleString("es-AR"))} lám.</span>`, e.valor, e.moneda)).join("") : "",
+      r.plazos.length ? sec("Plazos fijos (capital)") + r.plazos.map((p) => fila(`N° ${esc(p.certificado)} <span class="${p.vencido ? "rojo" : "dim"}">· vence ${esc(dm(p.vencimiento))}</span>`, p.depositado, p.moneda)).join("") : "",
+    ].join("");
+    const invTot = inv ? tot("Total invertido en pesos", r.invertido.ARS) + (r.invertido.USD ? tot("Total invertido en dólares", r.invertido.USD, "USD") : "") : "";
+    const diasConAlgo = r.calce.diario.filter((t) => t.cheques || t.plazos);
+    const cobros = r.cobrar.flatMap((t) => t.items);
+    const cobrar = cobros.length ? `<table><thead><tr><th>Se acredita</th><th>Banco y número</th><th>De quién</th><th class="n">Importe</th></tr></thead><tbody>${cobros.slice(0, MAX_COBROS).map((x) => `<tr><td>${esc(dma(x.fecha))}</td><td>${esc(x.detalle)}</td><td>${esc(x.quien)}</td><td class="n">${$(x.importe)}</td></tr>`).join("")}
+${cobros.length > MAX_COBROS ? `<tr><td colspan="4" class="dim">… y ${cobros.length - MAX_COBROS} cheques más (están en el Excel)</td></tr>` : ""}
+<tr class="tot"><td colspan="3">Total a cobrar</td><td class="n">${$(r.resumen.cheques_cobrar)}</td></tr></tbody></table>` : '<p class="dim">No hay cheques de terceros en cartera.</p>';
     return `<div class="kpis">${kpi("Pesos en cajas y bancos", $(r.resumen.pesos))}${kpi("Dólares en cajas y bancos", $(r.resumen.dolares, "USD"))}${kpi("Invertido", $(r.resumen.invertido_ars) + (r.resumen.invertido_usd ? ` + ${$(r.resumen.invertido_usd, "USD")}` : ""))}${kpi("Cheques a pagar", $(r.resumen.cheques_pagar), "rojo")}${kpi("Cheques a cobrar", $(r.resumen.cheques_cobrar), "verde")}</div>
-<section><h2>¿Dónde está la plata? (en pesos)</h2>${svgReparto(repartoFondos(r)) || '<p class="dim">No hay plata en pesos.</p>'}</section>
-<section><h2>1. Posición de fondos en cajas y bancos</h2>${fondos || '<p class="dim">No hay cajas ni bancos.</p>'}</section>
-<section><h2>2. Inversiones: FCI, títulos y plazos fijos</h2>${fci + tit + pf || '<p class="dim">No hay inversiones cargadas.</p>'}</section>
-<section><h2>3. Calce de cheques a pagar y plazos fijos</h2><p class="dim">Solo cheques contra plazos fijos en pesos, sin contar la plata de los bancos. Diferencia = lo que entra por plazos fijos menos lo que se debita; en rojo, falta plata.</p>
-<h3>Por semana</h3>${svgCalce(r.calce.semanal, "Calce por semana")}${tablaCalce(r.calce.semanal, "Semana")}
-<h3>Por día (próximos ${DIAS_CALCE} días)</h3>${svgCalce(r.calce.diario, "Calce por día")}${tablaCalce(r.calce.diario, "Día")}
-${detalle ? `<h3>Detalle</h3><table><thead><tr><th>Fecha</th><th></th><th>Banco y número</th><th>Para quién</th><th class="n">Importe</th></tr></thead><tbody>${detalle}</tbody></table>` : ""}</section>
-<section><h2>4. Cheques a cobrar</h2>${r.cobrar.length ? svgCobrar(r) : ""}${cobrar}</section>`;
+<section><h2>1. Posición de fondos e inversiones</h2>${svgReparto(repartoFondos(r))}
+<div style="display:flex;gap:14px;align-items:flex-start"><div style="flex:1;min-width:0"><table><thead><tr><th>Cajas y bancos</th><th class="n">Saldo</th></tr></thead><tbody>${fondos || '<tr><td colspan="2" class="dim">No hay cajas ni bancos.</td></tr>'}</tbody></table></div>
+<div style="flex:1;min-width:0"><table><thead><tr><th>Inversiones</th><th class="n">Valor</th></tr></thead><tbody>${inv + invTot || '<tr><td colspan="2" class="dim">No hay inversiones cargadas.</td></tr>'}</tbody></table>${r.titulos.falta_tc ? '<p class="rojo">Falta el tipo de cambio: los títulos en dólares no suman.</p>' : ""}</div></div></section>
+<section><h2>2. Calce de cheques a pagar y plazos fijos · por semana</h2><p class="dim">Solo cheques contra plazos fijos en pesos, sin los bancos. Diferencia = plazos fijos − cheques; en rojo, falta plata.</p>
+${svgCalce(r.calce.semanal, "Calce por semana")}${tablaCalce(r.calce.semanal.filter((t) => t.id !== "despues" || t.cheques || t.plazos), "Semana")}</section>
+<section><h2>3. Calce por día · próximos ${DIAS_CALCE} días</h2>${svgCalce(r.calce.diario, "Calce por día")}${diasConAlgo.length ? tablaCalce(diasConAlgo, "Día con movimiento") : '<p class="dim">No hay cheques ni plazos fijos en los próximos días.</p>'}</section>
+<section><h2>4. Cheques a cobrar</h2>${cobros.length ? svgCobrar(r) : ""}${cobrar}</section>`;
   };
   const filasCalce = (xs) => xs.map((t) => [t.etiqueta, N(t.cheques), N(t.plazos), N(t.diferencia), NB(t.acumulado)]);
   const cabCalce = (c) => [B(c), B("Cheques a debitar"), B("Vencen plazos fijos"), B("Diferencia"), B("Acumulado")];
   return {
     titulo,
-    html: () => hojaInforme({ titulo, subtitulo: sub, empresa, cuerpo: cuerpo().replace(/<h3>/g, '<h3 style="font-size:13px;margin:10px 0 4px">') }),
+    html: () => hojaInforme({ titulo, subtitulo: sub, empresa, cuerpo: cuerpo().replace("<div class=\"kpis\">", `<style>${ESTILO_CORTO}</style><div class="kpis">`) }),
     hojas: () => [
       {
         nombre: "Fondos e inversiones",
@@ -291,7 +302,9 @@ export function serieCobrar(r) {
  * @param {{ etiqueta: string, a?: number, b?: number, linea?: number }[]} serie
  */
 export function geometriaColumnas(serie, { W = 700, H = 230, linea = false } = {}) {
-  const izq = 8, der = 8, arriba = 14, abajo = 30;
+  // Arriba, lugar para los montos de las columnas; abajo, la fecha y la diferencia (19/11)
+  const conDif = serie.some((t) => t.dif != null);
+  const izq = 8, der = 8, arriba = 34, abajo = conDif ? 42 : 28;
   const alto = H - arriba - abajo;
   const valores = serie.flatMap((t) => [t.a || 0, t.b || 0, ...(linea ? [t.linea || 0] : [])]);
   const max = Math.max(1, ...valores);
@@ -305,29 +318,49 @@ export function geometriaColumnas(serie, { W = 700, H = 230, linea = false } = {
   const cols = serie.map((t, i) => {
     const x = izq + i * ancho + ancho / 2;
     const col = (v, xb) => ({ x: xb, y: Math.min(y(v || 0), cero), w: barra, h: Math.abs(cero - y(v || 0)), v: v || 0 });
+    const a = col(t.a, dos ? x - barra - 1 : x - barra / 2);
+    const b = dos ? col(t.b, x + 1) : null;
+    // El monto arriba de cada columna; si hay dos, el de la segunda un renglón más arriba para que no se pisen
+    const ambos = Math.abs(a.v) >= 0.5 && b && Math.abs(b.v) >= 0.5;
+    const apretado = ambos && ancho < 70;
+    const techo = apretado ? Math.min(a.y, b.y, cero) : null;
+    const monto = (c, subir) => (c && Math.abs(c.v) >= 0.5 ? { x: c.x + c.w / 2, y: (apretado ? techo : Math.min(c.y, cero)) - 3 - (subir ? 11 : 0), texto: compacto(c.v) } : null);
     return {
       x, etiqueta: t.etiqueta, mostrarEtiqueta: i % cada === 0,
-      a: col(t.a, dos ? x - barra - 1 : x - barra / 2),
-      b: dos ? col(t.b, x + 1) : null,
+      a, b, montoA: monto(a, false), montoB: monto(b, apretado),
+      dif: t.dif != null && (Math.abs(t.a || 0) >= 0.5 || Math.abs(t.b || 0) >= 0.5) ? { valor: t.dif, texto: `${t.dif > 0 ? "+" : ""}${compacto(t.dif)}` } : null,
       linea: linea ? y(t.linea || 0) : null,
     };
   });
-  return { W, H, cero, cols, ejeY: H - abajo + 14, izq, der, puntos: linea ? cols.map((c) => `${c.x.toFixed(1)},${c.linea.toFixed(1)}`).join(" ") : "" };
+  return { W, H, cero, cols, ejeY: H - abajo + 13, difY: H - abajo + 27, izq, der, puntos: linea ? cols.map((c) => `${c.x.toFixed(1)},${c.linea.toFixed(1)}`).join(" ") : "" };
 }
 
-export const serieCalce = (filas) => filas.map((t) => ({ etiqueta: etiquetaCorta(t), a: t.cheques, b: t.plazos, linea: t.acumulado }));
+export const serieCalce = (filas) => filas.map((t) => ({ etiqueta: etiquetaCorta(t), a: t.cheques, b: t.plazos, linea: t.acumulado, dif: t.diferencia }));
+
+/** Un monto corto para el gráfico: 850 mil, 2,5 M, −3,3 M. */
+export function compacto(n) {
+  const a = Math.abs(Number(n) || 0);
+  const signo = n < 0 ? "−" : "";
+  if (a >= 1e9) return `${signo}${(a / 1e9).toFixed(1).replace(".", ",")} mil M`;
+  if (a >= 1e6) return `${signo}${(a / 1e6).toFixed(a >= 1e8 ? 0 : 1).replace(".", ",")} M`;
+  if (a >= 1e3) return `${signo}${Math.round(a / 1e3)} mil`;
+  return `${signo}${Math.round(a)}`;
+}
 
 // Colores fijos del PDF (los de la pantalla salen del tema de la app)
 const hex = (h) => `#${h}`;
 const COLOR = { rojo: hex("c62828"), verde: hex("15803d"), cyan: hex("0e7490"), linea: hex("cfd6dd"), texto: hex("444444") };
-export const COLOR_REPARTO = { caja: hex("0e7490"), banco: hex("1d4ed8"), fci: hex("6d28d9"), titulos: hex("0f766e"), plazo_fijo: hex("b45309") };
+// Bien distintos entre sí (pedido de Tadeo del 19/11): azul, naranja, violeta, verde y rosa
+export const COLOR_REPARTO = { caja: hex("2563eb"), banco: hex("f97316"), fci: hex("7c3aed"), titulos: hex("16a34a"), plazo_fijo: hex("db2777") };
 
 function svgColumnas(serie, { H = 230, linea = false, colorA = COLOR.rojo, colorB = COLOR.verde, nombreA = "", nombreB = "", nombreLinea = "", titulo = "" } = {}) {
   if (!serie.length) return "";
   const g = geometriaColumnas(serie, { linea, H });
   const rect = (c, color, nombre, et) => (c && c.h > 0.4 ? `<rect x="${c.x.toFixed(1)}" y="${c.y.toFixed(1)}" width="${c.w.toFixed(1)}" height="${c.h.toFixed(1)}" rx="2" fill="${color}"><title>${esc(et)} · ${esc(nombre)} ${esc(plata(c.v))}</title></rect>` : "");
   const cuerpo = g.cols.map((c) => rect(c.a, colorA, nombreA, c.etiqueta) + rect(c.b, colorB, nombreB, c.etiqueta)
-    + (c.mostrarEtiqueta ? `<text x="${c.x.toFixed(1)}" y="${g.ejeY}" text-anchor="middle" font-size="10" fill="${COLOR.texto}">${esc(c.etiqueta)}</text>` : "")).join("");
+    + [[c.montoA, colorA], [c.montoB, colorB]].map(([m, color]) => (m ? `<text x="${m.x.toFixed(1)}" y="${m.y.toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="${color}">${esc(m.texto)}</text>` : "")).join("")
+    + (c.mostrarEtiqueta ? `<text x="${c.x.toFixed(1)}" y="${g.ejeY}" text-anchor="middle" font-size="10" fill="${COLOR.texto}">${esc(c.etiqueta)}</text>` : "")
+    + (c.dif ? `<text x="${c.x.toFixed(1)}" y="${g.difY}" text-anchor="middle" font-size="9" font-weight="700" fill="${c.dif.valor < 0 ? COLOR.rojo : COLOR.verde}">${esc(c.dif.texto)}</text>` : "")).join("");
   const lin = linea ? `<polyline points="${g.puntos}" fill="none" stroke="${COLOR.cyan}" stroke-width="2.5" stroke-linejoin="round"/>${g.cols.map((c) => `<circle cx="${c.x.toFixed(1)}" cy="${c.linea.toFixed(1)}" r="3" fill="${COLOR.cyan}"/>`).join("")}` : "";
   const leyenda = [[colorA, nombreA], ...(nombreB ? [[colorB, nombreB]] : []), ...(linea ? [[COLOR.cyan, nombreLinea]] : [])]
     .map(([c, n]) => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${c}"></i>${esc(n)}</span>`).join("");
@@ -340,11 +373,12 @@ function svgColumnas(serie, { H = 230, linea = false, colorA = COLOR.rojo, color
 export function svgReparto(rep) {
   if (!rep.partes.length) return "";
   const W = 700;
-  const tramos = rep.partes.map((p) => `<rect x="${((p.desde / 100) * W).toFixed(1)}" y="0" width="${((p.pct / 100) * W).toFixed(1)}" height="26" fill="${COLOR_REPARTO[p.id]}"><title>${esc(p.nombre)} ${esc(String(p.pct).replace(".", ","))} %</title></rect>`).join("");
+  const tramos = rep.partes.map((p) => `<rect x="${((p.desde / 100) * W).toFixed(1)}" y="0" width="${((p.pct / 100) * W).toFixed(1)}" height="26" fill="${COLOR_REPARTO[p.id]}"><title>${esc(p.nombre)} ${esc(String(p.pct).replace(".", ","))} %</title></rect>`
+    + (p.pct >= 7 ? `<text x="${(((p.desde + p.pct / 2) / 100) * W).toFixed(1)}" y="17" text-anchor="middle" font-size="11" font-weight="700" fill="white">${esc(String(Math.round(p.pct)))} %</text>` : "")).join("");
   const leyenda = rep.partes.map((p) => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px"><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${COLOR_REPARTO[p.id]}"></i>${esc(p.nombre)} ${esc(String(p.pct).replace(".", ","))} % · ${$(p.valor)}</span>`).join("");
-  return `<svg viewBox="0 0 ${W} 26" role="img" aria-label="Dónde está la plata" preserveAspectRatio="none" style="width:100%;height:26px;display:block;border-radius:6px;margin:6px 0 4px">${tramos}</svg>
+  return `<svg viewBox="0 0 ${W} 26" role="img" aria-label="Dónde está la plata" style="width:100%;height:auto;display:block;border-radius:6px;margin:6px 0 4px">${tramos}</svg>
 <div style="font-size:11px;color:#4b5563;margin:0 0 8px;line-height:1.7">${leyenda}</div>`;
 }
 
-export const svgCalce = (filas, titulo) => svgColumnas(serieCalce(filas), { linea: true, nombreA: "Cheques a debitar", nombreB: "Vencen plazos fijos", nombreLinea: "Acumulado (debajo de la raya gris, falta plata)", titulo });
+export const svgCalce = (filas, titulo) => svgColumnas(serieCalce(filas), { linea: true, nombreA: "Cheques a debitar", nombreB: "Vencen plazos fijos", nombreLinea: "Acumulado (debajo de la raya gris, falta plata). Abajo de cada fecha, la diferencia", titulo });
 export const svgCobrar = (r) => svgColumnas(serieCobrar(r).map((t) => ({ etiqueta: t.etiqueta, a: t.total })), { H: 160, colorA: COLOR.verde, nombreA: "Cheques que se acreditan", titulo: "Cheques a cobrar por semana" });
