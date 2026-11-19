@@ -840,3 +840,61 @@ test("📅 Gantt — Producción espera el fin de Técnica y avisa; con EXCEL he
     mock.timers.reset();
   }
 });
+
+// Tadeo, 19/11: M-7877 estaba planificada pero no salía en el Gantt. Las OT
+// abiertas que no están en el último plan confirmado (porque se volvió a
+// confirmar sin ellas, no entraron o solo tienen SEMANA) van al final, en su grupo.
+test("📅 Gantt — OT fuera del último plan confirmado: al final, sin correr a las del plan", async () => {
+  const { otsFueraDelPlan, itemsConFuera, motivoSinDibujar, planVivo, itemsVigentes } = await import("../app/lib/ganttPlan.js");
+  const { normalizarParametros } = await import("../app/lib/planificacion.js");
+  const viejo = { id: 1, division_id: null, confirmado_at: "2026-11-01T10:00:00Z", desde: "2026-11-01", items: [{ ot: "M-7877", etapa: "corte", fecha: "2026-11-02", horas: 4, orden: 3 }] };
+  const nuevo = { id: 2, division_id: null, confirmado_at: "2026-11-10T10:00:00Z", desde: "2026-11-10", items: [{ ot: "7100", etapa: "corte", fecha: "2026-11-19", horas: 8, orden: 0 }], pendientes: [{ ot: "7300", horas: 5 }] };
+  const proyectos = new Map([
+    ["7100", { ot: "7100", estado: "activo", placas: 48 }],
+    ["M-7877", { ot: "M-7877", estado: "activo", placas: 24 }],
+    ["7300", { ot: "7300", estado: "activo", placas: 12 }],
+    ["7400", { ot: "7400", estado: "activo", placas: 12, fecha_objetivo: "2026-12-05" }],
+    ["7500", { ot: "7500", estado: "activo", placas: 12 }], // sin plan ni semana
+    ["7600", { ot: "7600", estado: "activo", placas: 12, fecha_objetivo: "2026-12-05", terminado_planilla: true }],
+    ["7700", { ot: "7700", estado: "activo", placas: 12, fecha_objetivo: "2026-12-05" }],
+  ]);
+  const pausadas = new Set(["7700"]);
+  const fuera = otsFueraDelPlan({ planes: [viejo, nuevo], proyectos, pausadas });
+  assert.deepEqual(fuera.sort(), ["7300", "7400", "M-7877"]);
+  const hoy = "2026-11-19";
+  const items = itemsConFuera(itemsVigentes([viejo, nuevo]), fuera, hoy);
+  const params = normalizarParametros({ min_placa: 10, eficiencia: 100, etapas: { corte: 1 } });
+  const r = planVivo(items, { proyectos, params, etapasCodigo: { corte: 1 }, hoy });
+  assert.ok(r.get("M-7877"), "M-7877 se dibuja");
+  assert.equal(r.get("7100").procesos[0].desde, hoy, "la del plan sigue primera en la máquina");
+  assert.ok(r.get("M-7877").procesos[0].t0 >= r.get("7100").procesos[0].t0, "la de afuera va después");
+  // Por qué no se ve
+  const dibujadas = new Set(r.keys());
+  assert.equal(motivoSinDibujar({ ot: "7100", estado: "activo" }, { dibujadas }), null);
+  assert.match(motivoSinDibujar({ ot: "7700", estado: "activo" }, { dibujadas, pausadas }), /pausa/);
+  assert.match(motivoSinDibujar({ ot: "7600", estado: "activo", terminado_planilla: true }, { dibujadas }), /TERMINADO/);
+  assert.match(motivoSinDibujar({ ot: "7500", estado: "activo" }, { dibujadas }), /ningún plan confirmado/);
+  assert.match(motivoSinDibujar({ ot: "9", estado: "activo" }, { dibujadas, fuera: new Set(["9"]) }), /No hay horas/);
+});
+
+test("📅 Gantt — la OT de afuera sale en su grupo y el buscador dice por qué no se ve otra", () => {
+  lunes26();
+  try {
+    const proyectos = [
+      { id: 1, ot: "7100", cliente: "BCG", division: "M", estado: "activo" },
+      { id: 2, ot: "7200", cliente: "BCG", division: "M", estado: "activo" },
+      { id: 3, ot: "M-7877", cliente: "Pérez", division: "M", estado: "activo", placas: 24, fecha_objetivo: "2026-12-05" },
+      { id: 4, ot: "7999", cliente: "Gómez", division: "M", estado: "activo" },
+    ];
+    const cfg = { min_placa: 10, eficiencia: 100, etapas: { corte: 1 } };
+    const { container } = render(<GanttOt proyectos={proyectos} divisiones={DIV_M} etapas={ETAPAS_M} planes={PLAN_VIVO} cfgValor={cfg}
+      avanceHoras={{ avance: [], horas: new Set(), piezas: [] }} />);
+    assert.ok(screen.getByText(/⚠ Fuera del plan confirmado · 1/), "grupo propio al final");
+    assert.ok(container.querySelector('[data-ot="M-7877"]') || screen.getAllByText("M-7877").length, "M-7877 se ve");
+    fireEvent.change(screen.getByRole("searchbox", { name: "Buscar una OT en el Gantt" }), { target: { value: "7999" } });
+    const lista = screen.getByRole("list", { name: "OT buscadas que no se ven" });
+    assert.match(lista.textContent, /7999: No está en ningún plan confirmado/);
+  } finally {
+    mock.timers.reset();
+  }
+});

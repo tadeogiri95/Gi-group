@@ -600,7 +600,9 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null, vistaIn
       ) : vista === "gantt" && !loading ? (
         <GanttOt
           tipoInicial={ganttTipo}
-          proyectos={filtrados.filter(p => p.estado !== "cerrado")}
+          // Todas las abiertas, sin los filtros de la lista (19/11): con un filtro
+          // puesto, el Gantt perdía OT y "Confirmar orden" las sacaba del plan
+          proyectos={proyectos.filter(p => p.estado !== "cerrado")}
           etapas={etapasCtx || []}
           divisiones={divisionesCtx || []}
           avanceHoras={avanceHoras}
