@@ -73,7 +73,8 @@ export function movimientoParaPlanilla(m, timezone) {
   return {
     id: `GY-${m.id}`,
     hoja: o.hoja,
-    fecha: fechaEnZona(m.created_at, timezone),
+    // 19/11 (197): el día en que pasó; sin la columna, el día en que se cargó
+    fecha: m.fecha ? String(m.fecha).slice(0, 10) : fechaEnZona(m.created_at, timezone),
     momento: m.created_at,
     sku: m.sku,
     nombre: m.nombre || m.sku,

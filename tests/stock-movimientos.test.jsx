@@ -329,7 +329,7 @@ test("movimientos en Stock — varios retiros juntos con la OT de todos y una di
   fireEvent.click(screen.getByText("Guardar los 2"));
   await waitFor(() => assert.equal(enviados.length, 1));
   assert.deepEqual(enviados[0], {
-    accion: "registrar_varios", tipo: "consumo", notas: null,
+    accion: "registrar_varios", tipo: "consumo", notas: null, fecha: null,
     renglones: [{ sku: TABLILLA.sku, cantidad: 2.5, ot: "M-7495" }, { sku: BISAGRA.sku, cantidad: 8, ot: "M-7500" }],
   });
 });

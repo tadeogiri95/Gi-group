@@ -23,13 +23,35 @@ import { sbGet, sbPost, sbPatch } from "../../../lib/sbHelpers";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { requireModuloSesion } from "../../../lib/accesosServidor";
-import { puedeCargar, puedeAnular } from "../../../lib/movimientosStock";
+import { puedeCargar, puedeAnular, fechaDelMovimiento } from "../../../lib/movimientosStock";
 import { logger } from "../../../lib/logger";
 import { avisoIngresoRepetido, buscarIngresoRepetido } from "../../../lib/stockIngresos";
 import { avisoFaltaProveedor, faltaColumna192, proveedorDeLista } from "../../../lib/elegirDeLista";
 
 function faltaMigracion(err) {
   return String(err?.message).includes("movimientos_stock");
+}
+
+/** Sin la migración 197 no está la columna fecha: se carga como antes (con la de hoy). */
+const faltaColumnaFecha = (err) => /fecha/.test(String(err?.message)) && /42703|does not exist|PGRST204|schema cache/.test(String(err?.message));
+
+/**
+ * Guarda los movimientos. Si falta la columna proveedor_id (192) o fecha
+ * (197), los guarda sin ella, como antes.
+ */
+async function insertarMovimientos(filas, opts) {
+  let lista = Array.isArray(filas) ? filas : [filas];
+  for (let intento = 0; ; intento++) {
+    try {
+      return await sbPost("movimientos_stock", Array.isArray(filas) ? lista : lista[0], opts);
+    } catch (err) {
+      if (intento >= 2) throw err;
+      const campo = faltaColumna192(err) && lista.some((f) => "proveedor_id" in f) ? "proveedor_id"
+        : faltaColumnaFecha(err) && lista.some((f) => "fecha" in f) ? "fecha" : null;
+      if (!campo) throw err;
+      lista = lista.map(({ [campo]: _sin, ...f }) => f);
+    }
+  }
 }
 
 async function registrar(sesion, datos) {
@@ -48,6 +70,9 @@ async function registrar(sesion, datos) {
     if (!proyecto) return NextResponse.json({ error: `No encontré la OT ${datos.ot}` }, { status: 404 });
     ot = proyecto.ot;
   }
+
+  const dia = fechaDelMovimiento(datos.fecha);
+  if (dia.error) return NextResponse.json({ error: dia.error }, { status: 400 });
 
   const esIngreso = datos.tipo === "ingreso";
   // Etapa 2 (14/11, migración 192): el proveedor del ingreso es uno de la lista
@@ -81,13 +106,10 @@ async function registrar(sesion, datos) {
     empleado_id: sesion.empleado_id || null,
     legajo: Number.isInteger(sesion.legajo) ? sesion.legajo : null,
     empleado_nombre: empleado?.nombre ? String(empleado.nombre).slice(0, 120) : null,
+    fecha: dia.fecha,
   };
   if (prov) fila.proveedor_id = Number(prov.id);
-  const [creado] = (await sbPost("movimientos_stock", fila, opts).catch((err) => {
-    if (!prov || !faltaColumna192(err)) throw err;
-    const { proveedor_id: _sinId, ...sinId } = fila; // sin la migración 192, como antes
-    return sbPost("movimientos_stock", sinId, opts);
-  })) || [];
+  const [creado] = (await insertarMovimientos(fila, opts)) || [];
   broadcastRefresh(e, "movimientos_stock");
   return NextResponse.json({ ok: true, movimiento: creado || fila });
 }
@@ -98,6 +120,8 @@ async function registrarVarios(sesion, datos) {
   const e = sesion.empresa_id;
   const opts = { sesion };
   if (!puedeCargar(datos.tipo, sesion.rol)) return NextResponse.json({ error: "Ese movimiento lo carga la oficina" }, { status: 403 });
+  const dia = fechaDelMovimiento(datos.fecha);
+  if (dia.error) return NextResponse.json({ error: dia.error }, { status: 400 });
   const skus = datos.renglones.map((r) => r.sku);
   const ots = datos.renglones.map((r) => r.ot).filter(Boolean);
   const [articulos, proyectos, empleados] = await Promise.all([
@@ -125,9 +149,10 @@ async function registrarVarios(sesion, datos) {
     return {
       empresa_id: e, tipo: datos.tipo, sku: a.sku, nombre: a.nombre ?? null, unidad: a.unidad ?? null, division: a.division ?? null,
       cantidad: r.cantidad, ot: r.ot ? String(r.ot) : null, proveedor: null, comprobante: null, precio_unitario: null, notas: datos.notas, ...quien,
+      fecha: dia.fecha,
     };
   });
-  await sbPost("movimientos_stock", filas, opts);
+  await insertarMovimientos(filas, opts);
   broadcastRefresh(e, "movimientos_stock");
   return NextResponse.json({ ok: true, cargados: filas.length });
 }
