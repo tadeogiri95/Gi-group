@@ -42,7 +42,7 @@ const pedir = async (ruta, rol, metodo, body) => ruta[metodo](new Request("http:
 
 test("Inicio — las pantallas por tema cubren todo el menú de Finanzas, cada una con su línea", () => {
   const ids = GRUPOS_FINANZAS.flatMap((g) => g.opciones);
-  const menu = OPCIONES_GESTION.finanzas.map((o) => o.id).filter((id) => id !== "fin-inicio");
+  const menu = OPCIONES_GESTION.finanzas.filter((o) => o.enMenu !== false).map((o) => o.id).filter((id) => id !== "fin-inicio");
   assert.deepEqual([...ids].sort(), [...menu].sort(), "ninguna pantalla queda afuera ni repetida");
   assert.equal(OPCIONES_GESTION.finanzas[0].id, "fin-inicio", "Finanzas abre en el Inicio");
   for (const id of ids) {

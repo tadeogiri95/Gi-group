@@ -32,7 +32,7 @@ export function gruposMenu(empresa, usuario, pend = 0, abierto = null) {
   const grupos = [{ id: 'inicio', items: [{ id: 'home', destino: 'home', pantalla: 'home', label: 'Inicio', icono: '🏠' }] }];
   for (const b of BOTONES) {
     if (!conBoton(b, empresa, usuario)) continue;
-    let items = opcionesBoton(b, empresa, usuario).map((o) => ({
+    let items = opcionesBoton(b, empresa, usuario).filter((o) => o.enMenu !== false).map((o) => ({
       id: `${b}:${o.id}`, destino: `${b}:${o.id}`, pantalla: b, opcion: o.id,
       label: o.label, icono: ICONO[o.id] || '•', bloqueado: !tieneModulo(empresa, o.modulo),
       ...(b === 'finanzas' && TEMA_FINANZAS.has(o.id) ? { tema: TEMA_FINANZAS.get(o.id) } : {}),
