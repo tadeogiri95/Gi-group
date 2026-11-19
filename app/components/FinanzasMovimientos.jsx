@@ -23,7 +23,9 @@ import { nombreTipo } from "../lib/finanzasTipos";
 import { CostosMantenimiento } from "./FinanzasIntegracion";
 import { ORIGEN_GASTO, tiposDeGasto } from "../lib/finanzasGastos";
 import { esDeMantenimiento } from "../lib/finanzasIntegracion";
-import { MARCA_CORREGIDA, dondeSeCambia, puedeAnular, puedeConfirmar, puedeCorregir } from "../lib/finanzasCorregir";
+import { CAMPOS_CORREGIBLES, MARCA_CORREGIDA, dondeSeCambia, puedeAnular, puedeConfirmar, puedeCorregir } from "../lib/finanzasCorregir";
+import { historialDe } from "../lib/historialCambios";
+import HistorialCambios from "./HistorialCambios";
 import CorregirOperacion from "./FinanzasCorregir";
 import DescargarExtracto from "./FinanzasDescargarExtracto";
 import Comprobantes from "./FinanzasComprobantes";
@@ -140,7 +142,12 @@ export function Detalle({ op, datos, nombres = SIN_NOMBRES, onCerrar, onAnulada,
   const [anulando, setAnulando] = useState(false);
   const [corrigiendo, setCorrigiendo] = useState(false);
   const gasto = op.origen === ORIGEN_GASTO;
+  // Con el libro como copia completa de Gypi, lo del libro también se corrige acá (19/11)
+  const espejo = !!datos?.espejo_completo;
+  const corregible = puedeCorregir(op, { espejo });
   const automatica = !puedeAnular(op) && !op.anulada_at;
+  const nombreCuenta = (c) => (datos?.cuentas || []).find((x) => x.codigo === c)?.nombre || c;
+  const historial = historialDe(op, { anuladaAt: op.anulada_at, anuladaPor: op.anulada_por_nombre, cargadaPor: op.cargada_por_nombre });
   const compra = ["factura_oc", "factura_oc_otra", "factura_suelta"].includes(op.origen);
   const deMantenimiento = esDeMantenimiento(op);
   const estimada = puedeConfirmar(op);
@@ -201,17 +208,20 @@ export function Detalle({ op, datos, nombres = SIN_NOMBRES, onCerrar, onAnulada,
         <div className="mt-1"><Asiento op={op} datos={datos} /></div>
         {(!op.anulada_at || comprobantesDe(op).length > 0) && <ComprobantesGuardados op={op} onCambio={onAdjuntos} />}
         {(compra || deMantenimiento) && !op.anulada_at && <CambiarTipo op={op} datos={datos} onCambiado={onAnulada} />}
-        {automatica && !compra && !op.anulada_at && <p className="m-0 text-[12px] text-gypi-dim">Se cambia o se anula desde {dondeSeCambia(op)}.</p>}
+        {automatica && !compra && !op.anulada_at && <p className="m-0 text-[12px] text-gypi-dim">Se cambia o se anula desde {dondeSeCambia(op, { espejo })}.</p>}
+        <HistorialCambios entradas={historial} etiquetas={CAMPOS_CORREGIBLES}
+          formato={{ cuenta_debe: nombreCuenta, cuenta_haber: nombreCuenta, total: (v) => plata(v, op.moneda) }} />
         {corrigiendo && <CorregirOperacion op={op} cuentas={datos.cuentas || []} onCancelar={() => setCorrigiendo(false)} onCorregida={onAnulada} />}
         {compra && !op.anulada_at && <p className="m-0 text-[12px] text-gypi-dim">Los importes vienen de la factura: si la corregís o la anulás en Compras, esta compra se corrige o se anula sola.</p>}
         {!op.anulada_at && !automatica && !corrigiendo && (
           <div className="flex flex-wrap justify-end gap-2 mt-2">
-            {!confirmar && puedeCorregir(op) && <button type="button" className="g-btn g-btn-secondary" onClick={() => setCorrigiendo(true)}>✏ Corregir</button>}
+            {!confirmar && corregible && <button type="button" className="g-btn g-btn-secondary" onClick={() => setCorrigiendo(true)}>✏ Corregir</button>}
             {!confirmar && estimada && <button type="button" className="g-btn g-btn-primary" disabled={confirmando} onClick={confirmarEstimada}>{confirmando ? "Confirmando…" : "✓ Confirmar entrega"}</button>}
             {confirmar ? (
               <>
                 <span className="self-center text-[13px] text-gypi-text">{gasto ? "¿Anular este gasto? Se anula junto con su pago, si lo cargaste. Queda tachado y no suma."
-                  : op.origen === "libro" ? "¿Anular esta operación? Queda tachada y no suma. Sigue en tu planilla del libro, pero al pasar el histórico no vuelve."
+                  : op.origen === "libro" ? (espejo ? "¿Anular esta operación? Queda tachada y no suma. El libro borra su renglón solo."
+                    : "¿Anular esta operación? Queda tachada y no suma. Sigue en tu planilla del libro, pero al pasar el histórico no vuelve.")
                     : op.origen === "saldo_inicial" ? "¿Anular este saldo inicial? Queda tachado y no suma. Si volvés a pasar el histórico, la apertura se arma de nuevo."
                       : "¿Anular esta operación? Queda tachada y no suma."}</span>
                 <button type="button" className="g-btn g-btn-secondary" onClick={() => setConfirmar(false)}>No</button>

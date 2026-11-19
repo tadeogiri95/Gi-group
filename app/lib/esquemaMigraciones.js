@@ -113,6 +113,7 @@ export const MIGRACIONES = [
   { n: 196, archivo: "196_fotos_stock.sql", nombre: "Foto diaria del stock (inventario valorizado)", tablas: { stock_fotos: [] } },
   { n: 197, archivo: "197_fecha_movimientos_stock.sql", nombre: "Materiales: fecha de cada ingreso y consumo", tablas: { movimientos_stock: ["fecha"] } },
   { n: 198, archivo: "198_adjuntos_orden_pago.sql", nombre: "Finanzas: facturas y presupuestos en la orden de pago", tablas: { fin_ordenes_pago: ["adjuntos"] } },
+  { n: 199, archivo: "199_historial_cambios.sql", nombre: "Finanzas y Materiales: corregir en el lugar, con historial", tablas: { fin_operaciones: ["historial"], movimientos_stock: ["historial"] } },
 ];
 
 /** Lo que pide una migración, como lista de { tabla, columnas } y funciones. */

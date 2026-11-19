@@ -377,6 +377,19 @@ export const movimientoStockBody = z.discriminatedUnion("accion", [
     fecha: fechaMovimiento,
   }).strict().refine((m) => m.tipo === "ajuste" || m.cantidad > 0, { message: "La cantidad tiene que ser mayor a cero", path: ["cantidad"] }),
   z.object({ accion: z.literal("anular"), id: z.number().int().positive() }).strict(),
+  // 19/11 (punto 12, 199): corregir la fecha, la cantidad, la OT, las notas o el
+  // precio; lo que no viene queda como estaba (null en ot o notas = sin)
+  z.object({
+    accion: z.literal("corregir"),
+    id: z.number().int().positive(),
+    cambios: z.object({
+      fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "La fecha no es válida").optional(),
+      cantidad: cantidadMovimiento.optional(),
+      ot: z.union([z.string().trim().max(40), z.number()]).transform((v) => String(v).trim() || null).nullable().optional(),
+      notas: z.string().trim().max(300).transform((v) => v || null).nullable().optional(),
+      precio_unitario: z.number().finite().min(0).max(1e11).nullable().optional(),
+    }).strict(),
+  }).strict(),
   // 11/11 (parte 5): varios retiros o devoluciones juntos, cada uno con su OT
   z.object({
     accion: z.literal("registrar_varios"),

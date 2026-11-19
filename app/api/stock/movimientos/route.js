@@ -14,6 +14,11 @@
 //               revisa todo antes y se guardan todos o ninguno. Con OT, cada
 //               uno suma al costo de esa OT (costoMaterialesServidor).
 //   anular    → gestión, cualquiera; el resto, solo los suyos recién cargados.
+//   corregir  → (19/11, punto 12; migración 199) { id, cambios: { fecha,
+//               cantidad, ot, notas, precio_unitario } }, los mismos que anular.
+//               El movimiento queda anulado y se carga uno nuevo con lo
+//               corregido (así la planilla MRP borra el renglón viejo y escribe
+//               el nuevo); los dos guardan en su historial qué cambió y quién.
 // Con RLS_RUTAS=on todo va con el pase del usuario ({ sesion }).
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
@@ -23,7 +28,8 @@ import { sbGet, sbPost, sbPatch } from "../../../lib/sbHelpers";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { requireModuloSesion } from "../../../lib/accesosServidor";
-import { puedeCargar, puedeAnular, fechaDelMovimiento } from "../../../lib/movimientosStock";
+import { puedeCargar, puedeAnular, fechaDelMovimiento, movimientoCorregido } from "../../../lib/movimientosStock";
+import { entradaCorreccion, conEntrada, falta199 } from "../../../lib/historialCambios";
 import { logger } from "../../../lib/logger";
 import { avisoIngresoRepetido, buscarIngresoRepetido } from "../../../lib/stockIngresos";
 import { avisoFaltaProveedor, faltaColumna192, proveedorDeLista } from "../../../lib/elegirDeLista";
@@ -45,9 +51,10 @@ async function insertarMovimientos(filas, opts) {
     try {
       return await sbPost("movimientos_stock", Array.isArray(filas) ? lista : lista[0], opts);
     } catch (err) {
-      if (intento >= 2) throw err;
+      if (intento >= 3) throw err;
       const campo = faltaColumna192(err) && lista.some((f) => "proveedor_id" in f) ? "proveedor_id"
-        : faltaColumnaFecha(err) && lista.some((f) => "fecha" in f) ? "fecha" : null;
+        : faltaColumnaFecha(err) && lista.some((f) => "fecha" in f) ? "fecha"
+          : falta199(err) && lista.some((f) => "historial" in f) ? "historial" : null;
       if (!campo) throw err;
       lista = lista.map(({ [campo]: _sin, ...f }) => f);
     }
@@ -172,6 +179,58 @@ async function anular(sesion, id) {
   return NextResponse.json({ ok: true, movimiento: fila || null });
 }
 
+/** Columnas que pasan del movimiento viejo al corregido. */
+const COPIA = ["tipo", "sku", "nombre", "unidad", "division", "cantidad", "ot", "proveedor", "proveedor_id", "comprobante", "precio_unitario", "notas", "empleado_id", "legajo", "empleado_nombre", "fecha", "created_at"];
+
+async function corregir(sesion, id, cambios) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const filtro = `movimientos_stock?id=eq.${id}&empresa_id=eq.${e}`;
+  const [mov] = (await sbGet(`${filtro}&select=*&limit=1`, opts)) || [];
+  if (!mov) return NextResponse.json({ error: "No encontré ese movimiento" }, { status: 404 });
+  if (mov.anulado) return NextResponse.json({ error: "Ese movimiento ya está anulado" }, { status: 409 });
+  if (!puedeAnular(mov, { rol: sesion.rol, empleadoId: sesion.empleado_id })) {
+    return NextResponse.json({ error: "Solo podés corregir lo que cargaste vos hoy. Pedíselo a la oficina." }, { status: 403 });
+  }
+  const { campos, detalle, errores } = movimientoCorregido(mov, cambios);
+  if (errores.length) return NextResponse.json({ error: errores[0], errores }, { status: 400 });
+  if (campos.ot) {
+    const [proyecto] = (await sbGet(`proyectos?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(campos.ot)}&select=ot&limit=1`, opts)) || [];
+    if (!proyecto) return NextResponse.json({ error: `No encontré la OT ${campos.ot}` }, { status: 404 });
+    campos.ot = proyecto.ot;
+  }
+  const [empleado] = sesion.empleado_id
+    ? (await sbGet(`empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${e}&select=nombre&limit=1`, { ...opts, silent: true, fallback: [] })) || []
+    : [];
+  const quien = empleado?.nombre ? String(empleado.nombre).slice(0, 120) : "Oficina";
+  const ahora = new Date().toISOString();
+  const con199 = "historial" in mov;
+
+  // Primero se anula el viejo (si otro lo anuló recién, no se carga el nuevo)
+  const marca = { anulado: true, anulado_por: sesion.empleado_id || null, anulado_at: ahora };
+  const [viejo] = (await sbPatch(`${filtro}&anulado=eq.false`, marca, opts)) || [];
+  if (!viejo) return NextResponse.json({ error: "Ese movimiento ya está anulado" }, { status: 409 });
+  const fila = { empresa_id: e };
+  for (const c of COPIA) if (c in mov) fila[c] = mov[c];
+  Object.assign(fila, campos);
+  if (con199) fila.historial = conEntrada(mov.historial, entradaCorreccion({ por: quien, at: ahora, cambios: detalle, nota: `Corrige el movimiento GY-${mov.id}` }));
+  let nuevo;
+  try {
+    [nuevo] = (await insertarMovimientos(fila, opts)) || [];
+  } catch (err) {
+    // Si el nuevo no se pudo guardar, el viejo vuelve a estar vivo
+    await sbPatch(filtro, { anulado: false, anulado_por: null, anulado_at: null }, { ...opts, silent: true }).catch(() => null);
+    throw err;
+  }
+  if (con199 && nuevo?.id) {
+    await sbPatch(filtro, {
+      historial: conEntrada(mov.historial, entradaCorreccion({ por: quien, at: ahora, cambios: detalle, nota: `Corregido: lo reemplaza el movimiento GY-${nuevo.id}` })),
+    }, { ...opts, silent: true }).catch(() => null);
+  }
+  broadcastRefresh(e, "movimientos_stock");
+  return NextResponse.json({ ok: true, movimiento: nuevo || fila, anulado: id, ...(con199 ? {} : { aviso: "Quedó corregido, pero sin historial: falta correr la migración 199 en Supabase." }) });
+}
+
 export async function POST(request) {
   try {
     const sesion = await validarToken(request);
@@ -186,6 +245,7 @@ export async function POST(request) {
     if (sinModulo) return sinModulo;
     try {
       if (parsed.data.accion === "anular") return await anular(sesion, parsed.data.id);
+      if (parsed.data.accion === "corregir") return await corregir(sesion, parsed.data.id, parsed.data.cambios);
       if (parsed.data.accion === "registrar_varios") return await registrarVarios(sesion, parsed.data);
       return await registrar(sesion, parsed.data);
     } catch (err) {
