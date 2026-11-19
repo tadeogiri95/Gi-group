@@ -168,7 +168,7 @@ test("menú — Finanzas solo para el Dueño: ni el Supervisor ni la oficina", (
     // 19/11 (menú nuevo): Inicio · Pagar y cobrar · Saldos · Informes · Cierre y ajustes
     "fin-inicio", "fin-pagos", "fin-cheques", "fin-sueldos",
     "fin-tesoreria", "fin-cuentas", "fin-inversiones", "fin-personas",
-    "fin-resultados", "fin-patrimonio", "fin-flujo", "fin-cxp", "fin-reporte", "fin-mayor",
+    "fin-resultados", "fin-patrimonio", "fin-flujo", "fin-cxp", "fin-reporte", "fin-informe-tesoreria", "fin-mayor",
     "fin-devengamiento", "fin-cierre", "fin-libro", "fin-sos", "fin-config",
     // Se abren desde otras pantallas, no están en el menú
     "fin-cuenta-ot", "fin-unificados",
