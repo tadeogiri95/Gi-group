@@ -81,7 +81,7 @@ export function Asiento({ op, datos }) {
 /* ─── Nueva operación ────────────────────────────────────────────────── */
 
 const VACIA = {
-  fecha: "", tipo: "", proveedor_id: "", entidad: "", proyecto_id: "", centro_costo: "",
+  fecha: "", tipo: "", proveedor_id: "", cliente_id: "", entidad: "", proyecto_id: "", centro_costo: "",
   neto: "", iva: "", otros_impuestos: "", moneda: "ARS", tipo_cambio: "",
   cuenta_debe: "", cuenta_haber: "", descripcion: "", referencia: "",
   comprobantes: [],
@@ -160,7 +160,11 @@ export function NuevaOperacion({ datos, cajaInicial = "", inicial = null, titulo
   const vista = { ...f, neto: reves ? -neto : neto, iva, otros_impuestos: otros, total: reves ? -total : total, tipo_cambio: numero(f.tipo_cambio) || null, ...(reves ? { cuenta_debe: f.cuenta_haber, cuenta_haber: f.cuenta_debe } : {}) };
 
   const guardar = async (confirmarRepetido = false) => {
-    const operacion = { ...f, ...(conIva ? {} : { iva: "", otros_impuestos: "" }), proveedor_id: otroNombre ? "" : f.proveedor_id, entidad: f.proveedor_id && !otroNombre ? "" : f.entidad };
+    const operacion = {
+      ...f, ...(conIva ? {} : { iva: "", otros_impuestos: "" }), proveedor_id: otroNombre ? "" : f.proveedor_id, entidad: f.proveedor_id && !otroNombre ? "" : f.entidad,
+      // 19/11: el cliente elegido (o dado de alta recién) va con su ficha, no solo con el nombre
+      cliente_id: otroNombre || f.proveedor_id ? "" : f.cliente_id,
+    };
     const { errores: e } = validarOperacion(operacion, { ...datos, centros });
     if (obra && !f.centro_costo) e.push("Elegí la obra del Desarrollismo (centro de costo).");
     setErrores(e);
@@ -280,10 +284,12 @@ export function NuevaOperacion({ datos, cajaInicial = "", inicial = null, titulo
                 <SelectBuscable className="g-input w-full" value={otroNombre ? OTRO : f.proveedor_id ? `p${f.proveedor_id}` : f.entidad ? `n${f.entidad}` : ""}
                   nuevo={{ etiqueta: "Nuevo cliente o proveedor", onElegir: (nombre) => setAlta({ nombre }) }} onChange={(e) => {
                   const v = e.target.value;
-                  if (v === OTRO) { setOtroNombre(true); setF((x) => ({ ...x, proveedor_id: "", entidad: "" })); return; }
+                  if (v === OTRO) { setOtroNombre(true); setF((x) => ({ ...x, proveedor_id: "", cliente_id: "", entidad: "" })); return; }
                   setOtroNombre(false);
                   // p<id>: un proveedor de la lista; n<nombre>: un cliente o alguien de la agenda
-                  setF((x) => ({ ...x, proveedor_id: v.startsWith("p") ? v.slice(1) : "", entidad: v.startsWith("n") ? v.slice(1) : "" }));
+                  const nombre = v.startsWith("n") ? v.slice(1) : "";
+                  const cliente = nombre ? conNuevas(agendaDe(datos, agenda), nuevas).find((x) => !x.proveedor_id && x.nombre === nombre)?.cliente_id : null;
+                  setF((x) => ({ ...x, proveedor_id: v.startsWith("p") ? v.slice(1) : "", entidad: nombre, cliente_id: cliente ? String(cliente) : "" }));
                 }}>
                   <option value="">Ninguno</option>
                   {opcionesAgenda(conNuevas(agendaDe(datos, agenda), nuevas)).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -296,7 +302,7 @@ export function NuevaOperacion({ datos, cajaInicial = "", inicial = null, titulo
                   setNuevas((x) => [...x.filter((n) => n.clave !== p.clave), p]);
                   setOtroNombre(false);
                   // Un proveedor queda con su id; un cliente, con su nombre (como los de la agenda)
-                  setF((x) => ({ ...x, proveedor_id: p.proveedor_id ? String(p.proveedor_id) : "", entidad: p.proveedor_id ? "" : p.nombre }));
+                  setF((x) => ({ ...x, proveedor_id: p.proveedor_id ? String(p.proveedor_id) : "", entidad: p.proveedor_id ? "" : p.nombre, cliente_id: !p.proveedor_id && p.cliente_id ? String(p.cliente_id) : "" }));
                 }} />
               {otroNombre && campo("Nombre", <input className="g-input w-full" value={f.entidad} onChange={set("entidad")} placeholder="Cliente u otro" />)}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

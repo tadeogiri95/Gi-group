@@ -12,7 +12,7 @@ import Modal from "./ui/Modal";
 import SelectBuscable from "./ui/SelectBuscable";
 import BotonFoto from "./BotonFoto";
 import ExplicacionConcepto, { leyendaCorta } from "./ExplicacionConcepto";
-import BotonNuevaPersona from "./AltaPersona";
+import BotonNuevaPersona, { VentanaAltaPersona } from "./AltaPersona";
 import { Chip } from "./ui";
 import { ayerDe, conceptosPorUso } from "../lib/finanzasMiCaja";
 
@@ -202,8 +202,12 @@ export function AnticiposSueldo({ resumen }) {
 /** Gasté / Recibí plata (parte 10 del 11/11: muy fácil). Primero la foto del
  *  ticket (Gypi lee importe, fecha y concepto), los conceptos en botones con
  *  los más usados primero y la fecha en Hoy / Ayer / Otro día. */
-function Cargar({ caja, clase, conceptos, hoy, conStock = false, clientes = [], proyectos = [], onCerrar, onHecho }) {
+function Cargar({ caja, clase, conceptos, hoy, conStock = false, clientes: clientesLista = [], proyectos = [], onCerrar, onHecho }) {
   const gasto = clase === "gasto";
+  // 19/11: el cliente nuevo se da de alta acá mismo y queda elegido
+  const [clientesNuevos, setClientesNuevos] = useState([]);
+  const [altaCliente, setAltaCliente] = useState(null);
+  const clientes = [...clientesLista, ...clientesNuevos.filter((n) => !clientesLista.some((c) => String(c.id) === String(n.id)))];
   const lista = conceptosPorUso(gasto ? conceptos.gastos : conceptos.ingresos, caja.movimientos);
   const [f, setF] = useState({
     concepto: lista.length === 1 ? lista[0].codigo : "", importe: "", fecha: hoy, descripcion: "", tipo_cambio: "", comprobante_url: "",
@@ -349,13 +353,20 @@ function Cargar({ caja, clase, conceptos, hoy, conStock = false, clientes = [], 
             </div>
             {pideCliente && (
               <div className="flex flex-col gap-2">
-                {campo("¿De qué cliente?", clientes.length ? (
+                {campo("¿De qué cliente?", (
                   <SelectBuscable className="g-input w-full" aria-label="Cliente" value={f.cliente_id}
+                    nuevo={{ etiqueta: "Nuevo cliente", onElegir: (nombre) => setAltaCliente({ nombre }) }}
                     onChange={(e) => { const v = e.target.value; setF((x) => ({ ...x, cliente_id: v, proyecto_id: otDeOtro(x.proyecto_id, v) ? "" : x.proyecto_id })); }}>
                     <option value="">Elegí el cliente…</option>
                     {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                   </SelectBuscable>
-                ) : <span className="text-[13px] font-normal text-gypi-dim">Todavía no hay clientes en la lista: el dueño los carga en Finanzas → Clientes.</span>)}
+                ))}
+                <VentanaAltaPersona abierta={!!altaCliente} onCerrar={() => setAltaCliente(null)} rol="cliente" nombre={altaCliente?.nombre || ""}
+                  onCreada={(p) => {
+                    if (!p.cliente_id) return;
+                    setClientesNuevos((x) => [...x.filter((c) => String(c.id) !== String(p.cliente_id)), { id: p.cliente_id, nombre: p.nombre }]);
+                    setF((x) => ({ ...x, cliente_id: String(p.cliente_id), proyecto_id: otDeOtro(x.proyecto_id, String(p.cliente_id)) ? "" : x.proyecto_id }));
+                  }} />
                 {clientes.length > 0 && proyectos.length > 0 && campo("¿De qué OT? (opcional)", (
                   <SelectBuscable className="g-input w-full" aria-label="OT" value={f.proyecto_id}
                     onChange={(e) => { const v = e.target.value; const p = proyectos.find((x) => String(x.id) === v); setF((x) => ({ ...x, proyecto_id: v, cliente_id: p?.cliente_id ? String(p.cliente_id) : x.cliente_id })); }}>
