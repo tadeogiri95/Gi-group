@@ -14,6 +14,9 @@
 //   POST { accion: "cotizar", cotizaciones: { id: número }, tipo_cambio?, fecha }
 //       → guarda las cotizaciones y lleva la cuenta a lo que valen.
 //   POST { accion: "titulo_quitar", id } → saca de la lista uno sin láminas.
+//   POST { accion: "titulo_corregir", id, especie: { especie?, nombre?, clase?, moneda?, por?, laminas?, cotizacion? }, tipo_cambio? }
+//       → corrige los datos del título sin cargar ninguna operación (pedido
+//       del 19/11); lo que cambió queda en su historial.
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige).
 import { NextResponse } from "next/server";
@@ -23,7 +26,7 @@ import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { hoyAr } from "../../../lib/finanzasOperaciones";
 import {
-  CLAVE_TITULOS, MAX_ESPECIES, ajusteFci, ajusteTitulos, contextoInversiones, especieValida, leerTitulos, movimientoTitulo, saldoHasta, valorEspecie, valorTitulos,
+  CLAVE_TITULOS, MAX_ESPECIES, ajusteFci, corregirTitulo, ajusteTitulos, contextoInversiones, especieValida, leerTitulos, movimientoTitulo, saldoHasta, valorEspecie, valorTitulos,
 } from "../../../lib/finanzasInversiones";
 
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data || []);
@@ -170,6 +173,17 @@ export async function POST(request) {
       if (especie.laminas > 0) return error("Todavía tiene láminas: vendelas primero");
       await guardarTitulos(sesion, b, { ...valorDe(b), especies: b.guardado.especies.filter((x) => x.id !== especie.id) });
       return NextResponse.json({ ok: true });
+    }
+    if (d.accion === "titulo_corregir") {
+      const especie = b.guardado.especies.find((x) => x.id === d.id);
+      if (!especie) return error("No encontré ese título", 404);
+      const r = corregirTitulo({ especie, datos: d.especie || {}, lista: b.guardado.especies, por: await nombreEmpleado(sesion) });
+      if (r.errores.length) return error(r.errores[0]);
+      const tc = Number(d.tipo_cambio) > 0 && Number(d.tipo_cambio) < 1e7 ? Number(d.tipo_cambio) : b.guardado.tipo_cambio;
+      const especies = b.guardado.especies.map((x) => (x.id === especie.id ? r.especie : x));
+      await guardarTitulos(sesion, b, { ...valorDe(b), especies, tipo_cambio: tc || null });
+      const valor = valorTitulos(especies, tc);
+      return NextResponse.json({ ok: true, especie: r.especie, cambios: r.cambios, valor: valor.ars, falta_tc: valor.falta_tc });
     }
     return error("Acción desconocida");
   } catch (err) {

@@ -8,10 +8,13 @@
 // Títulos públicos y privados: cada especie con sus láminas y su cotización.
 // Comprar y vender mueve la plata y las láminas; al actualizar las
 // cotizaciones, la diferencia entra como diferencia de cotización.
+// ✏ Corregir (19/11): arregla los datos de un título (por ejemplo, cargado en
+// pesos cuando es en dólares) sin cargar ninguna operación, con historial.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
-import { valorEspecie, valorTitulos } from "../lib/finanzasInversiones";
+import { ETIQUETAS_TITULO, FORMATO_TITULO, valorEspecie, valorTitulos } from "../lib/finanzasInversiones";
+import HistorialCambios from "./HistorialCambios";
 import { Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
@@ -219,6 +222,91 @@ function MoverTitulo({ especie, como, datos, onCerrar, onHecho }) {
   );
 }
 
+const aTexto = (n) => (n || n === 0 ? String(n).replace(".", ",") : "");
+
+function CorregirTitulo({ especie, datos, onCerrar, onHecho }) {
+  const toast = useToast();
+  const t = datos.titulos;
+  const [f, setF] = useState({
+    especie: especie.especie, nombre: especie.nombre || "", clase: especie.clase, moneda: especie.moneda, por: String(especie.por),
+    laminas: aTexto(especie.laminas), cotizacion: aTexto(especie.cotizacion), tc: aTexto(t.tipo_cambio),
+  });
+  const [error, setError] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+  const nueva = { ...especie, moneda: f.moneda, por: Number(f.por), laminas: numero(f.laminas), cotizacion: numero(f.cotizacion) || 0 };
+  const valor = valorEspecie(nueva);
+  const tc = numero(f.tc) > 0 ? numero(f.tc) : null;
+  const total = valorTitulos(t.especies.map((x) => (x.id === especie.id ? nueva : x)), tc);
+  const dif = Math.round((total.ars - t.saldo) * 100) / 100;
+
+  async function guardar() {
+    setError(null);
+    setGuardando(true);
+    try {
+      await postInv({
+        accion: "titulo_corregir", id: especie.id,
+        especie: { especie: f.especie, nombre: f.nombre, clase: f.clase, moneda: f.moneda, por: Number(f.por), laminas: numero(f.laminas), cotizacion: numero(f.cotizacion) || 0 },
+        ...(f.moneda === "USD" && tc ? { tipo_cambio: tc } : {}),
+      });
+      toast.success(`${f.especie.toUpperCase()} corregido`);
+      onHecho();
+    } catch (e) {
+      setError(e.message);
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={onCerrar} title={`Corregir ${especie.especie}`} maxWidth={560}>
+      <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
+        <p className="m-0 text-[13px]">Arreglá los datos del título si se cargaron mal. <b>No se carga ninguna operación</b> (ni compra, ni venta, ni asiento): solo cambia el dato, y queda anotado en el historial.</p>
+        <div className="flex flex-wrap gap-2">
+          {campo("Especie", <input className="g-input w-[120px] uppercase" aria-label="Especie" maxLength={20} value={f.especie} onChange={set("especie")} />)}
+          {campo("Nombre (opcional)", <input className="g-input w-[220px]" aria-label="Nombre del título" maxLength={80} value={f.nombre} onChange={set("nombre")} />)}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {campo("Clase", (
+            <select className="g-input" aria-label="Clase" value={f.clase} onChange={set("clase")}>
+              <option value="publico">Público (bono)</option>
+              <option value="privado">Privado (acción, ON)</option>
+            </select>
+          ))}
+          {campo("Cotiza", (
+            <select className="g-input" aria-label="Cotiza cada" value={f.por} onChange={set("por")}>
+              <option value="100">cada 100 láminas</option>
+              <option value="1">por lámina</option>
+            </select>
+          ))}
+          {campo("Moneda de la cotización", (
+            <select className="g-input" aria-label="Moneda" value={f.moneda} onChange={set("moneda")}>
+              <option value="ARS">Pesos</option>
+              <option value="USD">Dólares</option>
+            </select>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {campo("Láminas", <input className="g-input w-[140px] text-right font-mono" inputMode="decimal" aria-label="Láminas" value={f.laminas} onChange={set("laminas")} />)}
+          {campo(f.moneda === "USD" ? "Cotización (en dólares)" : "Cotización (en pesos)", <input className="g-input w-[140px] text-right font-mono" inputMode="decimal" aria-label="Cotización" value={f.cotizacion} onChange={set("cotizacion")} />)}
+          {f.moneda === "USD" && campo("Tipo de cambio", <input className="g-input w-[120px] text-right font-mono" inputMode="decimal" aria-label="Tipo de cambio" value={f.tc} onChange={set("tc")} />)}
+        </div>
+        <p className="m-0 text-[13px]">
+          Este título vale <b className="font-mono">{plata(valor, f.moneda)}</b>
+          {f.moneda === "USD" && tc ? <> (<span className="font-mono">{plata(valor * tc)}</span>)</> : null}.
+          {" "}Todos los títulos valdrían <b className="font-mono">{plata(total.ars)}</b> y la cuenta dice <b className="font-mono">{plata(t.saldo)}</b>.
+        </p>
+        {total.falta_tc && <p className="m-0 text-[13px] text-gypi-amber-ink">⚠ Poné el tipo de cambio para calcular el valor en pesos.</p>}
+        {!total.falta_tc && Math.abs(dif) >= 0.01 && (
+          <p className="m-0 text-[12px] text-gypi-dim">La cuenta no cambia. La diferencia de {plata(Math.abs(dif))} se ajusta cuando actualizás las cotizaciones; si lo que cargaste al darlo de alta estaba mal, corregí esa operación en la ficha de la cuenta de títulos.</p>
+        )}
+        <HistorialCambios entradas={especie.historial || []} etiquetas={ETIQUETAS_TITULO} formato={FORMATO_TITULO} />
+        {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+        <Botones onCerrar={onCerrar} guardando={guardando} onGuardar={guardar} texto="Guardar la corrección" deshabilitado={!f.especie.trim()} />
+      </div>
+    </Modal>
+  );
+}
+
 function Cotizar({ datos, onCerrar, onHecho }) {
   const toast = useToast();
   const t = datos.titulos;
@@ -284,6 +372,7 @@ export default function FinanzasInversiones({ onCambio }) {
   const [fci, setFci] = useState(null);
   const [agregar, setAgregar] = useState(false);
   const [mover, setMover] = useState(null);
+  const [corregir, setCorregir] = useState(null);
   const [cotizar, setCotizar] = useState(false);
 
   const cargar = useCallback(async () => {
@@ -298,7 +387,7 @@ export default function FinanzasInversiones({ onCambio }) {
     }
   }, []);
   useEffect(() => { cargar(); }, [cargar]);
-  const hecho = () => { setFci(null); setAgregar(false); setMover(null); setCotizar(false); cargar(); onCambio?.(); };
+  const hecho = () => { setFci(null); setAgregar(false); setMover(null); setCorregir(null); setCotizar(false); cargar(); onCambio?.(); };
 
   async function quitar(e) {
     try {
@@ -372,6 +461,7 @@ export default function FinanzasInversiones({ onCambio }) {
                       <td className="py-1.5 text-right font-mono">{e.cotizacion ? plata(e.cotizacion, e.moneda) : "—"}</td>
                       <td className="py-1.5 text-right font-mono font-semibold">{plata(e.valor, e.moneda)}</td>
                       <td className="py-1.5 text-right whitespace-nowrap">
+                        <button type="button" className="g-btn g-btn-secondary" aria-label={`Corregir ${e.especie}`} onClick={() => setCorregir(e)}>✏ Corregir</button>{" "}
                         <button type="button" className="g-btn g-btn-secondary" aria-label={`Comprar ${e.especie}`} onClick={() => setMover({ especie: e, como: "compra" })}>Comprar</button>{" "}
                         {e.laminas > 0
                           ? <button type="button" className="g-btn g-btn-secondary" aria-label={`Vender ${e.especie}`} onClick={() => setMover({ especie: e, como: "venta" })}>Vender</button>
@@ -388,6 +478,7 @@ export default function FinanzasInversiones({ onCambio }) {
       {fci && <ActualizarFci fci={fci} hoy={datos?.hoy || hoyAr()} onCerrar={() => setFci(null)} onHecho={hecho} />}
       {agregar && <AgregarTitulo datos={datos} onCerrar={() => setAgregar(false)} onHecho={hecho} />}
       {mover && <MoverTitulo especie={mover.especie} como={mover.como} datos={datos} onCerrar={() => setMover(null)} onHecho={hecho} />}
+      {corregir && <CorregirTitulo especie={corregir} datos={datos} onCerrar={() => setCorregir(null)} onHecho={hecho} />}
       {cotizar && <Cotizar datos={datos} onCerrar={() => setCotizar(false)} onHecho={hecho} />}
     </section>
   );

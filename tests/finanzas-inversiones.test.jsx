@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
-  ajusteFci, ajusteTitulos, contextoInversiones, leerTitulos, movimientoTitulo, saldoHasta, valorEspecie, valorTitulos,
+  ajusteFci, ajusteTitulos, contextoInversiones, corregirTitulo, leerTitulos, movimientoTitulo, saldoHasta, valorEspecie, valorTitulos,
 } from "../app/lib/finanzasInversiones.js";
 
 before(() => {
@@ -117,6 +117,33 @@ test("movimientoTitulo — compra y venta mueven la plata y las láminas; inicia
   assert.equal(i.op.tipo, "SALDO INICIAL");
 });
 
+// El GD35 de Tadeo, cargado en pesos por error (19/11)
+const GD35_PESOS = { ...GD35, moneda: "ARS" };
+
+test("corregirTitulo — pasa de pesos a dólares sin operación y lo anota en el historial", () => {
+  const r = corregirTitulo({ especie: GD35_PESOS, datos: { moneda: "USD", cotizacion: 70 }, lista: [YPF, GD35_PESOS], por: "Tadeo", at: "2026-11-19T22:00:00.000Z" });
+  assert.deepEqual(r.errores, []);
+  assert.equal(r.especie.moneda, "USD");
+  assert.equal(r.especie.id, GD35.id);
+  assert.equal(r.especie.laminas, GD35.laminas);
+  assert.equal(r.especie.fecha_cotizacion, "2026-11-19");
+  assert.equal(r.especie.historial.length, 1);
+  assert.equal(r.especie.historial[0].por, "Tadeo");
+  assert.deepEqual(r.especie.historial[0].cambios.map((c) => c.campo), ["moneda"]);
+  assert.equal(r.especie.historial[0].cambios[0].antes, "ARS");
+  assert.equal(r.especie.historial[0].cambios[0].despues, "USD");
+  // El historial sobrevive a leer la lista guardada
+  const leido = leerTitulos({ especies: [r.especie] });
+  assert.equal(leido.especies[0].historial.length, 1);
+  // Una segunda corrección suma otra entrada
+  const r2 = corregirTitulo({ especie: r.especie, datos: { laminas: 12000 }, lista: [r.especie], por: "Tadeo" });
+  assert.equal(r2.especie.historial.length, 2);
+  // Sin cambios, o con el nombre de otro título: no
+  assert.match(corregirTitulo({ especie: GD35, datos: { moneda: GD35.moneda }, lista: [GD35] }).errores[0], /No cambiaste nada/);
+  assert.match(corregirTitulo({ especie: GD35, datos: { especie: "ypf" }, lista: [YPF, GD35] }).errores[0], /ya está en la lista/);
+  assert.match(corregirTitulo({ especie: GD35, datos: { laminas: -1 }, lista: [GD35] }).errores[0], /Revisá el título/);
+});
+
 // ─── Servidor ───
 
 const token = async (rol) => (await signAccessToken({ empleadoId: EMP, empresaId: E, legajo: 7, rol })).token;
@@ -209,6 +236,28 @@ test("/api/finanzas/inversiones POST — FCI, compra y cotización", async () =>
   assert.equal(m.escrito[0].body.valor.especies[0].laminas, 5000);
 });
 
+test("/api/finanzas/inversiones POST titulo_corregir — guarda el título corregido y no carga ninguna operación", async () => {
+  const m = mockApi({ titulos: { especies: [YPF, GD35_PESOS], cuenta: TIT } });
+  const res = await pedir("gerencial", "POST", { accion: "titulo_corregir", id: GD35.id, especie: { moneda: "USD", cotizacion: 70 }, tipo_cambio: 1000 });
+  assert.equal(res.status, 200);
+  const d = await res.json();
+  assert.deepEqual(d.cambios.map((c) => c.campo), ["moneda"]);
+  assert.equal(m.escrito.length, 1, "solo se guarda la lista: ninguna operación");
+  assert.equal(m.escrito[0].tabla, "config");
+  const guardado = m.escrito[0].body.valor;
+  assert.equal(guardado.tipo_cambio, 1000);
+  const gd = guardado.especies.find((x) => x.id === GD35.id);
+  assert.equal(gd.moneda, "USD");
+  assert.equal(gd.historial[0].por, "Tadeo");
+  assert.equal(guardado.especies.find((x) => x.id === YPF.id).moneda, YPF.moneda);
+  // Uno que no existe
+  mockApi();
+  assert.equal((await pedir("gerencial", "POST", { accion: "titulo_corregir", id: "NADA", especie: { moneda: "USD" } })).status, 404);
+  // Solo el Dueño
+  mockApi();
+  assert.equal((await pedir("administrativo", "POST", { accion: "titulo_corregir", id: GD35.id, especie: { moneda: "USD" } })).status, 403);
+});
+
 // ─── Pantalla ───
 
 test("Inversiones — el FCI muestra la diferencia antes de guardar y manda el saldo real", async () => {
@@ -231,4 +280,32 @@ test("Inversiones — el FCI muestra la diferencia antes de guardar y manda el s
   fireEvent.click(screen.getByRole("button", { name: "Actualizar" }));
   await waitFor(() => assert.equal(pedidos.length, 1));
   assert.deepEqual(pedidos[0], { accion: "fci", cuenta: FCI, saldo_real: 812345.67, fecha: "2026-11-12" });
+});
+
+test("Inversiones — ✏ Corregir un título manda la moneda nueva y muestra el historial", async () => {
+  const pedidos = [];
+  const gd = { ...GD35_PESOS, valor: valorEspecie(GD35_PESOS), historial: [{ at: "2026-11-18T12:00:00.000Z", por: "Tadeo", accion: "corregida", cambios: [{ campo: "laminas", antes: 9000, despues: GD35.laminas }] }] };
+  global.fetch = async (u, o) => {
+    if (o?.method === "POST") { pedidos.push(JSON.parse(o.body)); return new Response(JSON.stringify({ ok: true }), { status: 200 }); }
+    return new Response(JSON.stringify({
+      hoy: "2026-11-19", avisos: [], cajas: [{ cuenta: BANCO, nombre: "Banco Credicoop" }], fci: [],
+      titulos: { cuenta: TIT, nombre_cuenta: "Titulo Públicos y Privados", saldo: 300000, valor: gd.valor, falta_tc: false, tipo_cambio: null, especies: [gd] },
+    }), { status: 200 });
+  };
+  render(<Inversiones />);
+  await waitFor(() => screen.getByRole("button", { name: `Corregir ${GD35.especie}` }));
+  fireEvent.click(screen.getByRole("button", { name: `Corregir ${GD35.especie}` }));
+  assert.ok(screen.getByText(/No se carga ninguna operación/));
+  assert.ok(screen.getByText(/Láminas: 9\.000/));
+  fireEvent.change(screen.getByLabelText("Moneda"), { target: { value: "USD" } });
+  assert.ok(screen.getByText(/Poné el tipo de cambio/));
+  fireEvent.change(screen.getByLabelText("Cotización"), { target: { value: "71,5" } });
+  fireEvent.change(screen.getByLabelText("Tipo de cambio"), { target: { value: "1.000" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar la corrección" }));
+  await waitFor(() => assert.equal(pedidos.length, 1));
+  assert.equal(pedidos[0].accion, "titulo_corregir");
+  assert.equal(pedidos[0].id, GD35.id);
+  assert.equal(pedidos[0].especie.moneda, "USD");
+  assert.equal(pedidos[0].especie.cotizacion, 71.5);
+  assert.equal(pedidos[0].tipo_cambio, 1000);
 });
