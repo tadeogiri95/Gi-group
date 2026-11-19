@@ -11,7 +11,7 @@
 //     firmar en el banco (solo informativo desde el 13/11: puede apretar
 //     👍 Visto), o se exporta en PDF. Las anuladas no suman. Entran también
 //     las órdenes ya pagadas.
-import { FORMAS_PAGO, ESTADOS_ORDEN, fechaCorta, textoForma, vistaPorCfo } from "./finanzasPagos";
+import { FORMAS_PAGO, ESTADOS_ORDEN, adjuntosDe, fechaCorta, textoForma, vistaPorCfo } from "./finanzasPagos";
 import { plata } from "./finanzasOperaciones";
 
 /** Formas que se pagan en el momento; el resto son cheques. */
@@ -95,6 +95,7 @@ export function datosResumenParaCfo(resumen, ordenes = [], empresa = {}) {
     ordenes: vivas.map((o) => ({
       numero: o.numero, fecha: o.fecha, proveedor: o.proveedor_nombre, estado: o.estado, total: Number(o.total) || 0,
       comprobante: /^https:\/\//.test(String(o.comprobante_url || "")) ? o.comprobante_url : null,
+      adjuntos: adjuntosDe(o),
       formas: (o.formas || []).map((x) => ({ texto: textoForma(x), importe: x.importe, clase: claseForma(x.forma) })),
       // El link de la orden, para verla de a una
       token: o.token || null,

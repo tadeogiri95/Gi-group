@@ -202,7 +202,22 @@ export function datosParaCfo(orden, empresa = {}) {
     formas: (orden.formas || []).map((x) => ({ texto: textoForma(x), importe: x.importe })),
     pagada: orden.estado === "pagada", pagada_fecha: orden.pagada_fecha || null,
     visto: vistaPorCfo(orden) ? { por: orden.decidida_por_nombre || null, at: orden.decidida_at } : null,
+    adjuntos: adjuntosDe(orden),
   };
+}
+
+/**
+ * Las facturas o presupuestos adjuntos a la orden (19/11, migración 198):
+ * solo links https, con nombre y tipo, para mostrar sin riesgo.
+ * @returns {{ url: string, nombre: string, tipo: "pdf"|"foto" }[]}
+ */
+export function adjuntosDe(orden) {
+  return (Array.isArray(orden?.adjuntos) ? orden.adjuntos : [])
+    .filter((a) => a && /^https:\/\//.test(String(a.url || "")))
+    .map((a, i) => {
+      const tipo = /\.pdf$/i.test(a.url) ? "pdf" : "foto";
+      return { url: a.url, nombre: txt(a.nombre, 120) || (tipo === "pdf" ? `Archivo ${i + 1}.pdf` : `Foto ${i + 1}`), tipo };
+    });
 }
 
 /** Mensaje de WhatsApp para el CFO. */
@@ -227,6 +242,7 @@ export function htmlOrdenPago({ empresa = {}, orden }) {
   const est = ESTADOS_ORDEN[orden.estado];
   const facturas = (orden.facturas || []).map((f) => `<tr><td>${esc(fechaCorta(f.fecha))}</td><td>${esc(f.detalle)}</td><td class="n">${esc(plata(f.importe))}</td></tr>`).join("");
   const formas = (orden.formas || []).map((x) => `<tr><td>${esc(textoForma(x))}</td><td class="n">${esc(plata(x.importe))}</td></tr>`).join("");
+  const adjuntos = adjuntosDe(orden).map((a) => `<li><a href="${esc(a.url)}">${esc(a.nombre)}</a></li>`).join("");
   const decision = vistaPorCfo(orden)
     ? `<p class="nota"><b>Vista por el CFO</b>${orden.decidida_por_nombre ? ` (${esc(orden.decidida_por_nombre)})` : ""} el ${esc(fechaCorta(String(orden.decidida_at).slice(0, 10)))}.</p>`
     : "";
@@ -264,6 +280,7 @@ export function htmlOrdenPago({ empresa = {}, orden }) {
   <table><thead><tr><th>Forma</th><th class="n">Importe</th></tr></thead><tbody>${formas}</tbody></table>
   <div class="total">Total: ${esc(plata(orden.total))}</div>
   ${orden.notas ? `<p class="nota">${esc(orden.notas)}</p>` : ""}
+  ${adjuntos ? `<h2>Facturas y presupuestos adjuntos</h2><ul class="chico">${adjuntos}</ul>` : ""}
   ${decision}
   <div class="firmas"><div>Preparó${orden.cargada_por_nombre ? `: ${esc(orden.cargada_por_nombre)}` : ""}</div><div>Firma</div></div>
 </body></html>`;
