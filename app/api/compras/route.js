@@ -69,12 +69,11 @@ import { sincronizarCompra } from "../../lib/finanzasCompras";
 import { buscarFacturaRepetida } from "../../lib/facturaUnicaServidor";
 import { avisoFacturaRepetida } from "../../lib/facturaUnica";
 import { avisoIngresoRepetido, buscarIngresoRepetido } from "../../lib/stockIngresos";
-import { datosAgendaDeProveedor, moverCuentaProveedor, moverParProveedor, proveedorCorto, proveedorRepetido, sugerirUniones } from "../../lib/proveedoresUnicos";
+import { datosAgendaDeProveedor, proveedorCorto, proveedorRepetido, sugerirUniones } from "../../lib/proveedoresUnicos";
 import { clavePersona, cuitLimpio } from "../../lib/finanzasPersonas";
-import { CLAVE_CUENTAS_PROV } from "../../lib/finanzasProveedores";
-import { CLAVE_UNIFICADOS, leerPares } from "../../lib/finanzasUnificados";
 import { comoDueno } from "../../lib/alcance";
 import { ORIGENES_PEDIDO } from "../../lib/pedidoProblema";
+import { unirProveedoresEnBase } from "../../lib/unirServidor";
 
 function faltaMigracion(err) {
   const m = String(err?.message);
@@ -215,35 +214,12 @@ async function leerConfig(e, clave) {
 async function unirProveedores(sesion, d) {
   if (!(await comoDueno(sesion))) return NextResponse.json({ error: "Unir proveedores lo hacen el Dueño o el Supervisor" }, { status: 403 });
   const e = sesion.empresa_id;
-  let r;
-  try {
-    r = await sbRpc("compras_unir_proveedores", { p_empresa: e, p_queda: d.queda, p_sale: d.sale });
-  } catch (err) {
-    if (/compras_unir_proveedores/.test(String(err?.message)) && /PGRST202|42883|Could not find the function/.test(String(err?.message))) {
-      return NextResponse.json({ error: FALTA_183 }, { status: 409 });
-    }
-    throw err;
-  }
-  if (!r?.ok) {
-    const textos = { mismo: "Elegí dos proveedores distintos", no_existe: "No encontré uno de los dos proveedores", ya_unido: "Ese proveedor ya está unido a otro" };
-    return NextResponse.json({ error: textos[r?.tipo] || "No se pudo unir" }, { status: r?.tipo === "no_existe" ? 404 : 409 });
-  }
-  // La cuenta del proveedor y el par cliente-proveedor (config_sistema)
-  const cuentas = await leerConfig(e, CLAVE_CUENTAS_PROV);
-  if (cuentas?.cuentas && `p${d.sale}` in cuentas.cuentas) {
-    const valor = { ...cuentas, cuentas: moverCuentaProveedor(cuentas.cuentas, d.queda, d.sale), actualizado_at: new Date().toISOString() };
-    await sbPatch(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_CUENTAS_PROV}`, { valor }, { silent: true });
-  }
-  const unificados = await leerConfig(e, CLAVE_UNIFICADOS);
-  const pares = leerPares(unificados);
-  if (pares.some((p) => p.proveedor_id === d.sale)) {
-    const valor = { ...unificados, pares: moverParProveedor(pares, d.queda, d.sale) };
-    await sbPatch(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_UNIFICADOS}`, { valor }, { silent: true });
-  }
+  const r = await unirProveedoresEnBase(e, d.queda, d.sale);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
   broadcastRefresh(e, "proveedores");
   broadcastRefresh(e, "ordenes_compra");
   broadcastRefresh(e, "finanzas");
-  return NextResponse.json({ ok: true, movidos: r.movidos || 0 });
+  return NextResponse.json({ ok: true, movidos: r.movidos });
 }
 
 /** Proveedores que parecen el mismo (mismo CUIT o nombre), para unirlos. */

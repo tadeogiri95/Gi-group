@@ -12,7 +12,8 @@
 //   POST { accion: "guardar", clave, persona } → guarda los datos de un renglón
 //       de la agenda (y los copia al proveedor y al cliente que le corresponden).
 //   POST { accion: "unir", a, b } → b es la misma persona que a: queda como otro
-//       nombre de a.
+//       nombre de a. Si los dos son proveedores (o clientes) distintos, se
+//       juntan también ahí, con todo lo suyo (19/11).
 //   POST { accion: "proveedor", clave } → lo da de alta como proveedor (si no lo
 //       era) y devuelve proveedor_id, para elegirlo en un pago o un cheque.
 //
@@ -27,6 +28,7 @@ import {
   CAMPOS_PERSONA, armarAgenda, leerPersonasPegadas, paraLigar, planImportarPersonas, posiblesRepetidos, validarPersona,
 } from "../../../lib/finanzasPersonas";
 import { logger } from "../../../lib/logger";
+import { unirClientesEnBase, unirProveedoresEnBase } from "../../../lib/unirServidor";
 
 const COLS_PERSONA = "id,nombre,alias,cuit,telefono,email,direccion,contacto,notas,id_planilla,proveedor_id,cliente_id,activo,unido_a";
 const falta191 = (err) => /empleado_id/.test(String(err?.message)) && /does not exist|42703|PGRST20[045]|schema cache/.test(String(err?.message));
@@ -184,16 +186,27 @@ async function unir(sesion, d, agenda) {
   const a = agenda.find((x) => x.clave === d.a);
   const b = agenda.find((x) => x.clave === d.b);
   if (!a || !b || a === b) return NextResponse.json({ error: "Elegí dos personas distintas de la lista" }, { status: 400 });
-  if (a.proveedor_id && b.proveedor_id && a.proveedor_id !== b.proveedor_id) {
-    return NextResponse.json({ error: "Los dos son proveedores distintos en Compras: juntalos primero en Proveedores." }, { status: 400 });
-  }
-  if (a.cliente_id && b.cliente_id && a.cliente_id !== b.cliente_id) {
-    return NextResponse.json({ error: "Los dos son clientes distintos: juntalos primero en 👥 Clientes (Unir)." }, { status: 400 });
-  }
   if (a.empleado_id && b.empleado_id && a.empleado_id !== b.empleado_id) {
     return NextResponse.json({ error: "Los dos son empleados distintos: no se pueden unir." }, { status: 400 });
   }
   const e = sesion.empresa_id;
+  // 19/11: dos proveedores o dos clientes distintos se juntan acá mismo, con
+  // todo lo suyo (compras, pagos, cobros, cheques, OT), y queda el de arriba
+  if (a.proveedor_id && b.proveedor_id && a.proveedor_id !== b.proveedor_id) {
+    const r = await unirProveedoresEnBase(e, a.proveedor_id, b.proveedor_id);
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+    broadcastRefresh(e, "proveedores");
+    b.proveedor_id = a.proveedor_id;
+  }
+  if (a.cliente_id && b.cliente_id && a.cliente_id !== b.cliente_id) {
+    const clientes = await leer(sesion, `fin_clientes?empresa_id=eq.${e}&id=in.(${Number(a.cliente_id)},${Number(b.cliente_id)})&select=id,nombre,alias,activo,unido_a`);
+    const ca = clientes.find((c) => Number(c.id) === Number(a.cliente_id));
+    const cb = clientes.find((c) => Number(c.id) === Number(b.cliente_id));
+    if (!ca || !cb || ca.activo === false || cb.activo === false) return NextResponse.json({ error: "No encontré uno de los dos clientes" }, { status: 404 });
+    await unirClientesEnBase(sesion, ca, cb);
+    broadcastRefresh(e, "fin_operaciones");
+    b.cliente_id = a.cliente_id;
+  }
   const ahora = new Date().toISOString();
   const idA = await asegurarPersona(sesion, a);
   const cambios = { updated_at: ahora, alias: [...new Set([...(a.alias || []), b.nombre, ...(b.alias || [])])].filter((n) => n !== a.nombre).slice(0, 30) };
