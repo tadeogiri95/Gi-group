@@ -159,13 +159,14 @@ test("/api/agenda — un cliente nuevo va a la lista de clientes; un cliente que
   assert.deepEqual([p.metodo, p.body.cliente_id, p.body.proveedor_id], ["POST", 7, 50], "se crea su renglón con los dos");
 });
 
-test("/api/agenda — quién puede: administración y quien tiene caja dan de alta proveedores; clientes solo el dueño", async () => {
+test("/api/agenda — quién puede: administración y quien tiene caja dan de alta proveedores; clientes el dueño y quien tiene caja", async () => {
   mockApi();
   assert.equal((await pedir(JUAN, "administrativo", { nombre: "Pinturerías del Sur", rol: "proveedor" })).status, 200);
   assert.equal((await pedir(JUAN, "administrativo", { nombre: "Constructora Norte", rol: "cliente" })).status, 403);
   assert.equal((await pedir(JUAN, "operativo", { nombre: "Pinturerías del Sur", rol: "proveedor" })).status, 403, "sin caja a cargo, no");
   mockApi({ cajas: [{ cuenta: "01.01.01.001.001.02" }] });
   assert.equal((await pedir(JUAN, "operativo", { nombre: "Pinturerías del Sur", rol: "proveedor" })).status, 200, "con caja a cargo (Mi caja), sí");
+  assert.equal((await pedir(JUAN, "operativo", { nombre: "Constructora Norte", rol: "cliente" })).status, 200, "19/11: el cliente de un cobro de Mi caja también");
   const r = await pedir(DUENO, "gerencial", { nombre: "", rol: "proveedor" });
   assert.deepEqual([r.status, (await r.json()).error], [400, "Falta el nombre."]);
 });
@@ -241,6 +242,7 @@ test("el botón está donde se elige un proveedor o un cliente", () => {
   assert.match(leer("FinanzasNuevaOperacion.jsx"), /nuevo=\{\{ etiqueta: "Nuevo cliente o proveedor"/, "Nueva operación");
   assert.match(leer("FinanzasElegirProveedor.jsx"), /nuevo=\{\{ etiqueta: "Nuevo proveedor"/, "pagos, cheques y cargar gasto");
   assert.match(leer("MiCaja.jsx"), /BotonNuevaPersona rol="proveedor"/, "Mi caja");
+  assert.match(leer("MiCaja.jsx"), /nuevo=\{\{ etiqueta: "Nuevo cliente"/, "Mi caja: el cliente de un cobro (19/11)");
   assert.match(leer("AComprar.jsx"), /OPCION_NUEVA/, "Compras: A comprar");
   assert.equal((leer("OrdenesCompra.jsx").match(/<option value=\{OPCION_NUEVA\}>/g) || []).length, 2, "Compras: otra factura y cotizaciones");
   assert.match(leer("MovimientosStock.jsx"), /BotonNuevaPersona rol="proveedor"/, "Stock: ingreso");

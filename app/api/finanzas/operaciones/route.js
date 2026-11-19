@@ -58,7 +58,7 @@ import { avisoRepetido } from "../../../lib/finanzasComprobantes";
 import { buscarComprobanteRepetido } from "../../../lib/finanzasComprobantesServidor";
 import { randomUUID } from "node:crypto";
 import { frenoRepetidos, repetidosEnBase } from "../../../lib/finanzasRepetidosServidor";
-import { clienteDeOperacion } from "../../../lib/finanzasClientes";
+import { clienteDeOperacion, indiceClientes } from "../../../lib/finanzasClientes";
 import { listasFinanzas } from "../../../lib/finanzasListas";
 import { GRUPO_DOLARES, ORIGEN_DOLARES } from "../../../lib/finanzasDolares";
 import { columnasComprobantes, falta187, validarComprobantes } from "../../../lib/finanzasAdjuntos";
@@ -73,6 +73,14 @@ const COLUMNAS = "id,fecha,tipo,proveedor_id,cliente_id,entidad,proyecto_id,cent
 const listas = listasFinanzas;
 
 /** Los clientes de la lista (sin la 177, ninguno): para dejar el cobro a mano en su cuenta (13/11). */
+/** El cliente que mandó la pantalla (o el que quedó si se unió a otro), o null. */
+function clienteElegido(id, clientes) {
+  if (!id || !Number.isInteger(Number(id))) return null;
+  const destino = indiceClientes(clientes).destino(Number(id));
+  const c = clientes.find((x) => Number(x.id) === destino);
+  return c ? { cliente_id: Number(c.id), entidad: String(c.nombre || "").slice(0, 120) } : null;
+}
+
 async function clientesDe(sesion) {
   return sbGetAll(`fin_clientes?empresa_id=eq.${sesion.empresa_id}&select=id,nombre,alias,activo,unido_a&order=id.asc`, { sesion, maxFilas: 5000 })
     .then((r) => r.data || []).catch(() => []);
@@ -269,7 +277,10 @@ export async function POST(request) {
       const ahora = new Date().toISOString();
       const nueva = { ...op, empresa_id: e, cargada_por_nombre: await nombreEmpleado(sesion), created_at: ahora, updated_at: ahora };
       // 13/11: el cobro (o la venta) de un cliente queda en su cuenta corriente con su id
-      const delCliente = clienteDeOperacion(op, { cuentas: ctx.cuentas, proveedores: ctx.proveedores, clientes: await clientesDe(sesion) });
+      const clientes = await clientesDe(sesion);
+      // 19/11: el cliente que se eligió (o se dio de alta recién) en la pantalla
+      const elegido = !op.proveedor_id ? clienteElegido(d.operacion?.cliente_id, clientes) : null;
+      const delCliente = elegido || clienteDeOperacion(op, { cuentas: ctx.cuentas, proveedores: ctx.proveedores, clientes });
       if (delCliente) Object.assign(nueva, delCliente, { proveedor_id: null });
       if (adj.lista.length) Object.assign(nueva, columnasComprobantes(adj.lista));
       const { filas: [fila], aviso } = await guardarConAdjuntos(sesion, [nueva], { suelta: true });
