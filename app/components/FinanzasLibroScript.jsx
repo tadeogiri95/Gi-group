@@ -99,6 +99,53 @@ function EstadoDelPase({ estado, pedidos, onCambio }) {
   );
 }
 
+/**
+ * 19/11: el libro como copia completa de Gypi. Una vez pasado, el script
+ * reescribe T-OPERACIONES entera (con copia de respaldo) y lo que vino del
+ * libro se corrige en Gypi.
+ */
+export function EspejoCompleto({ cfg, onCambio }) {
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState(null);
+  if (!cfg?.hash) return null;
+  if (cfg.espejo_completo_at) {
+    return (
+      <div className="p-2 rounded-lg border border-gypi-green/40 bg-gypi-green/10 text-[13px] text-gypi-text">
+        ✓ Desde el {fechaHora(cfg.espejo_completo_at)} el libro es una <b>copia completa de Gypi</b>. Todo se carga y se corrige en Gypi, y el
+        libro se actualiza solo. La T-OPERACIONES de antes quedó en una hoja que termina en <b>_bk_espejo_</b>.
+      </div>
+    );
+  }
+  const pasar = async () => {
+    if (!window.confirm("El libro va a quedar como copia completa de Gypi. En la próxima vuelta (hasta 15 minutos), el script guarda una copia de T-OPERACIONES y la vuelve a escribir entera con lo de Gypi, incluido lo que vino del libro. Desde ahí el histórico no se vuelve a pasar: todo se corrige en Gypi. ¿Seguimos?")) return;
+    setEnviando(true);
+    setError(null);
+    try {
+      const res = await apiFetch("/api/finanzas/libro", { method: "POST", body: JSON.stringify({ accion: "espejo_completo" }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) throw new Error(d.error || "No se pudo pasar");
+      onCambio();
+    } catch (e) {
+      setError(e.message);
+    }
+    setEnviando(false);
+  };
+  return (
+    <div className="p-2 rounded-lg border border-gypi-border flex flex-col gap-1.5 text-[13px]" aria-label="Libro como copia de Gypi">
+      <b className="text-gypi-text">📚 Libro como copia completa de Gypi</b>
+      <p className="m-0 text-gypi-dim leading-relaxed">
+        Hoy lo que vino del libro (el histórico y los saldos iniciales) no se vuelve a mandar: si lo corregís en Gypi, el libro no se entera.
+        Al pasarlo, el libro recibe todo lo de Gypi, con el tipo de cambio de lo que está en dólares y el cliente de cada cobro. Antes
+        de reescribir, el script guarda una copia de T-OPERACIONES.
+      </p>
+      <button type="button" className="g-btn g-btn-primary self-start disabled:opacity-50" disabled={enviando} onClick={pasar}>
+        {enviando ? "Pasando…" : "Pasar el libro a copia completa de Gypi"}
+      </button>
+      {error && <div role="alert" className="text-gypi-red">⚠ {error}</div>}
+    </div>
+  );
+}
+
 export default function FinanzasLibroScript() {
   const [cfg, setCfg] = useState(undefined);
   const [script, setScript] = useState(null);
@@ -151,10 +198,11 @@ export default function FinanzasLibroScript() {
       <p className="m-0 text-[13px] text-gypi-dim leading-relaxed">
         Un script en el libro contable baja cada 15 minutos lo que cargues en Gypi: las operaciones a <b>T-OPERACIONES</b> (con
         referencia GY-F-…) y los cheques a <b>R-CHEQUES</b> (GY-C-…). Si una operación se anula en Gypi, su renglón se borra; los
-        renglones que cargaste a mano no se tocan. A los cheques que copiaste del libro solo les actualiza el estado.
+        renglones que cargaste a mano no se tocan (salvo al pasar el libro a copia completa de Gypi). A los cheques que copiaste del libro solo les actualiza el estado.
       </p>
       {estado && <div className={`text-xs ${cfg?.ultima_lectura ? "text-gypi-green" : "text-gypi-dim"}`}>{estado}</div>}
       {cfg?.hash && <EstadoDelPase estado={cfg.estado} pedidos={cfg.borrar} onCambio={cargar} />}
+      <EspejoCompleto cfg={cfg} onCambio={cargar} />
       {!script ? (
         <button type="button" onClick={generar} disabled={generando} className="g-btn g-btn-primary w-full disabled:opacity-50">
           {generando ? "Generando…" : cfg?.hash ? "Generar un código nuevo" : "Generar el código"}

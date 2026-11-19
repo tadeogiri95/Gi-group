@@ -15,6 +15,10 @@
 // POST { accion: "borrar_repetidos", repetidos: [{ fila, copias, firma }] } →
 //        el Dueño confirma qué copias del libro borrar; el script las borra
 //        en la próxima vuelta (antes vuelve a mirar que sigan iguales).
+// POST { accion: "espejo_completo" } → (19/11) el Dueño pasa el libro a copia
+//        completa de Gypi: desde ahí también van lo que vino del libro y los
+//        saldos iniciales, y el script reescribe T-OPERACIONES una vez
+//        (requisitosEspejo en app/lib/finanzasLibro.js).
 // POST { accion: "manuales", grilla } con la clave del script (etapa 7,
 //        14/11): los renglones CONFIRMADO de T-OPERACIONES desde la fecha del
 //        Histórico (manuales_desde del GET). Gypi deja como pendiente lo
@@ -26,7 +30,7 @@ import { sbGet, sbGetAll, sbPost, sbPatch } from "../../../lib/sbHelpers";
 import { getModulosEmpresa } from "../../../lib/planEnforcement";
 import { checkRateLimit } from "../../../lib/rateLimitMemory";
 import { sesionDueno } from "../../../lib/finanzasApi";
-import { CLAVE_LIBRO_FIN, claveValida, datosParaLibro, empresaDeClave, estadoValido, generarClave, scriptLibro } from "../../../lib/finanzasLibro";
+import { CLAVE_LIBRO_FIN, claveValida, datosParaLibro, empresaDeClave, estadoValido, generarClave, requisitosEspejo, scriptLibro } from "../../../lib/finanzasLibro";
 import { logger } from "../../../lib/logger";
 import { CLAVE_TIPOS, tiposParaLibro } from "../../../lib/finanzasTipos";
 import { cambiosCuentasLibro } from "../../../lib/finanzasLibroCuentas";
@@ -34,7 +38,7 @@ import { desdeDeExistentes, leerBaseHistorico, leerDesdeManuales } from "../../.
 import { pendientesDelLibro } from "../../../lib/finanzasLibroManual";
 
 const noAutorizado = () => NextResponse.json({ error: "Clave inválida" }, { status: 401 });
-const COLUMNAS_OP = "id,fecha,tipo,proveedor_id,entidad,proyecto_id,centro_costo,neto,iva,otros_impuestos,moneda,cuenta_debe,cuenta_haber,descripcion,referencia,origen,estado,cargada_por_nombre,anulada_at,created_at,updated_at";
+const COLUMNAS_OP = "id,fecha,tipo,proveedor_id,cliente_id,tipo_cambio,entidad,proyecto_id,centro_costo,neto,iva,otros_impuestos,moneda,cuenta_debe,cuenta_haber,descripcion,referencia,origen,estado,cargada_por_nombre,anulada_at,created_at,updated_at";
 const leer = (path, maxFilas = 20000) => sbGetAll(path, { maxFilas }).then((r) => r.data || []);
 
 export async function GET(request) {
@@ -50,8 +54,11 @@ export async function GET(request) {
     const { modulos } = await getModulosEmpresa(e);
     if (!modulos.includes("finanzas")) return NextResponse.json({ error: "La empresa no tiene Finanzas" }, { status: 402 });
 
-    const [operaciones, cheques, cuentas, proveedores, proyectos, empresas, cfgTipos, tipos, manualesDesde] = await Promise.all([
-      leer(`fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&origen=not.in.(saldo_inicial,libro)&select=${COLUMNAS_OP}&order=fecha.asc,id.asc`, 50000),
+    // 19/11: con el libro como copia completa también va lo que vino del libro
+    const espejoCompleto = cfg.valor?.espejo_completo_at || null;
+    const sinDelLibro = espejoCompleto ? "" : "&origen=not.in.(saldo_inicial,libro)";
+    const [operaciones, cheques, cuentas, proveedores, proyectos, empresas, cfgTipos, tipos, manualesDesde, clientes] = await Promise.all([
+      leer(`fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null${sinDelLibro}&select=${COLUMNAS_OP}&order=fecha.asc,id.asc`, 100000),
       // Sin la migración 174 no hay cheques
       sbGetAll(`fin_cheques?empresa_id=eq.${e}&select=*&order=id.asc`, { maxFilas: 20000 }).then((r) => r.data || []).catch(() => []),
       leer(`fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre`),
@@ -63,6 +70,8 @@ export async function GET(request) {
       leer(`fin_tipos_operacion?empresa_id=eq.${e}&select=codigo,cuenta_debe,cuenta_haber,activo`).catch(() => []),
       // Etapa 7: desde cuándo mandar lo cargado a mano (sin Histórico pasado, nada)
       leerDesdeManuales(e).catch(() => null),
+      // El cliente de los cobros va con su nombre de la lista (sin la 177, el nombre escrito)
+      leer(`fin_clientes?empresa_id=eq.${e}&select=id,nombre`).catch(() => []),
     ]);
     await sbPatch(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_LIBRO_FIN}`, {
       valor: { ...cfg.valor, ultima_lectura: new Date().toISOString() },
@@ -73,7 +82,7 @@ export async function GET(request) {
     const cambiosCuentas = cambiosCuentasLibro({ cuentas, tipos });
     const borrar = Array.isArray(cfg.valor?.borrar) ? cfg.valor.borrar : [];
     return NextResponse.json({
-      ...datosParaLibro({ operaciones, cheques, cuentas, proveedores, proyectos, empresa, tiposNuevos, cambiosCuentas }),
+      ...datosParaLibro({ operaciones, cheques, cuentas, proveedores, proyectos, clientes, empresa, tiposNuevos, cambiosCuentas, espejoCompleto }),
       ...(borrar.length ? { borrar_repetidos: borrar } : {}),
       ...(manualesDesde ? { manuales_desde: manualesDesde } : {}),
     });
@@ -152,6 +161,20 @@ async function borrarRepetidos(sesion, d) {
   return NextResponse.json({ ok: true, pedidos: borrar.length, copias: borrar.reduce((s, r) => s + r.copias, 0) });
 }
 
+/** 19/11: el Dueño pasa el libro a copia completa de Gypi (no tiene vuelta atrás desde Gypi). */
+async function pasarAEspejoCompleto(sesion) {
+  const e = sesion.empresa_id;
+  const filtro = `config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_LIBRO_FIN}`;
+  const [cfg] = (await sbGet(`${filtro}&select=valor&limit=1`, { silent: true, fallback: [] })) || [];
+  if (cfg?.valor?.espejo_completo_at) return NextResponse.json({ ok: true, espejo_completo_at: cfg.valor.espejo_completo_at });
+  const hayHistorico = !!(await leerDesdeManuales(e).catch(() => null));
+  const req = requisitosEspejo({ cfg: cfg?.valor || null, hayHistorico });
+  if (!req.ok) return NextResponse.json({ error: req.motivo }, { status: 409 });
+  const espejo_completo_at = new Date().toISOString();
+  await sbPatch(filtro, { valor: { ...cfg.valor, espejo_completo_at } });
+  return NextResponse.json({ ok: true, espejo_completo_at });
+}
+
 export async function POST(request) {
   if ((request.headers.get("authorization") || "").startsWith("Bearer gyp_")) return estadoDelScript(request);
   const { sesion, response } = await sesionDueno(request);
@@ -159,11 +182,13 @@ export async function POST(request) {
   try {
     const d = await request.json().catch(() => ({}));
     if (d?.accion === "borrar_repetidos") return await borrarRepetidos(sesion, d);
+    if (d?.accion === "espejo_completo") return await pasarAEspejoCompleto(sesion);
     const e = sesion.empresa_id;
     const { clave, hash } = generarClave(e);
-    const valor = { hash, creada_at: new Date().toISOString(), ultima_lectura: null };
     const filtro = `config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_LIBRO_FIN}`;
-    const [previa] = (await sbGet(`${filtro}&select=clave&limit=1`, { silent: true, fallback: [] })) || [];
+    const [previa] = (await sbGet(`${filtro}&select=clave,valor&limit=1`, { silent: true, fallback: [] })) || [];
+    // Con una clave nueva el libro sigue siendo copia completa si ya lo era
+    const valor = { hash, creada_at: new Date().toISOString(), ultima_lectura: null, ...(previa?.valor?.espejo_completo_at ? { espejo_completo_at: previa.valor.espejo_completo_at } : {}) };
     if (previa) await sbPatch(filtro, { valor });
     else await sbPost("config_sistema", { empresa_id: e, clave: CLAVE_LIBRO_FIN, valor });
     const url = `${(process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin).replace(/\/+$/, "")}/api/finanzas/libro`;
