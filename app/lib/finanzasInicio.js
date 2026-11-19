@@ -13,7 +13,7 @@ export const GRUPOS_FINANZAS = [
   // de Clientes y Cliente y proveedor adentro de Agenda (sus botones de siempre).
   { id: "pagar", titulo: "Pagar y cobrar", opciones: ["fin-pagos", "fin-cheques", "fin-sueldos"] },
   { id: "saldos", titulo: "Saldos", opciones: ["fin-tesoreria", "fin-cuentas", "fin-inversiones", "fin-personas"] },
-  { id: "informes", titulo: "Informes", opciones: ["fin-resultados", "fin-patrimonio", "fin-flujo", "fin-reporte", "fin-mayor"] },
+  { id: "informes", titulo: "Informes", opciones: ["fin-resultados", "fin-patrimonio", "fin-flujo", "fin-cxp", "fin-reporte", "fin-mayor"] },
   { id: "cierre", titulo: "Cierre y ajustes", opciones: ["fin-devengamiento", "fin-cierre", "fin-libro", "fin-sos", "fin-config"] },
 ];
 
@@ -22,6 +22,7 @@ export const DETALLE_FINANZAS = {
   "fin-tesoreria": "Cajas y bancos con su saldo y todo lo que se cargó; cargar, corregir o anular",
   "fin-pagos": "Órdenes de pago: armar, aprobar y pagar",
   "fin-cheques": "Cheques y e-cheq propios y de terceros",
+  "fin-cxp": "Cuánto nos deben y cuánto debemos, de quién y hace cuánto",
   "fin-cuentas": "Clientes y proveedores juntos: cuánto nos debe y cuánto le debemos a cada uno",
   "fin-sueldos": "Liquidar y pagar sueldos",
   "fin-personas": "Clientes, proveedores y empleados, cada uno una vez; quién es cliente y proveedor",

@@ -29,6 +29,7 @@ import FinanzasConfig from "../FinanzasConfig";
 import FinanzasCheques from "../FinanzasCheques";
 import FinanzasTesoreria from "../FinanzasTesoreria";
 import FinanzasCuentasCorrientes from "../FinanzasCuentasCorrientes";
+import FinanzasCuentasPagarCobrar from "../FinanzasCuentasPagarCobrar";
 import FinanzasSueldos from "../FinanzasSueldos";
 import FinanzasResultados from "../FinanzasResultados";
 import FinanzasPatrimonio from "../FinanzasPatrimonio";
@@ -124,6 +125,7 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {!bloqueado && actual.id === "fin-resultados" && <FinanzasResultados />}
         {!bloqueado && actual.id === "fin-patrimonio" && <FinanzasPatrimonio />}
         {!bloqueado && actual.id === "fin-flujo" && <FinanzasFlujo />}
+        {!bloqueado && actual.id === "fin-cxp" && <FinanzasCuentasPagarCobrar />}
         {!bloqueado && actual.id === "fin-reporte" && <FinanzasReporte />}
         {!bloqueado && actual.id === "fin-cierre" && <FinanzasCierre />}
         {!bloqueado && actual.id === "fin-libro" && <FinanzasLibroManual />}
