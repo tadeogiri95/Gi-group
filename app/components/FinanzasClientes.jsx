@@ -23,6 +23,8 @@ import {
 } from "../lib/finanzasClientes";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
+import AjusteSaldo, { anularAjuste } from "./FinanzasAjusteSaldo";
+import { ORIGEN_AJUSTE_SALDO } from "../lib/finanzasAjusteSaldo";
 import FinanzasUnificados, { LineaUnificada } from "./FinanzasUnificados";
 import FinanzasOtClientes, { ComposicionOt } from "./FinanzasOtClientes";
 
@@ -310,6 +312,16 @@ function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
     }
   }
   const grupoDe = (op) => (op.origen === ORIGEN_COBRO ? String(op.origen_id || "").split(":")[0] : null);
+  async function anularElAjuste(id) {
+    setError(null);
+    try {
+      await anularAjuste(id);
+      toast.success("Ajuste anulado");
+      onCambio();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
 
   return (
     <Modal open onClose={onCerrar} title={saldo.nombre || "Cliente"} maxWidth={1080}>
@@ -321,9 +333,13 @@ function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
             <button type="button" className="g-btn g-btn-primary" onClick={() => setModal("cobrar")}>💵 Cobrar</button>
             <button type="button" className="g-btn g-btn-secondary" onClick={() => setModal("datos")}>✏ Datos y otros nombres</button>
             <button type="button" className="g-btn g-btn-secondary" onClick={() => setModal("unir")}>🔗 Unir un repetido</button>
+            <button type="button" className="g-btn g-btn-secondary" onClick={() => setModal("ajuste")}>⚖ Ajustar saldo</button>
           </div>
         ) : (
-          <p className="m-0 text-[12px] text-gypi-dim">Este nombre no está en la lista de clientes: creá el cliente o sumalo como otro nombre de uno que ya esté.</p>
+          <div className="flex flex-col gap-2">
+            <p className="m-0 text-[12px] text-gypi-dim">Este nombre no está en la lista de clientes: creá el cliente o sumalo como otro nombre de uno que ya esté.</p>
+            <div><button type="button" className="g-btn g-btn-secondary" onClick={() => setModal("ajuste")}>⚖ Ajustar saldo</button></div>
+          </div>
         )}
         {saldo.cliente_id && <LineaUnificada clienteId={saldo.cliente_id} onCambio={onCambio} />}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
@@ -375,6 +391,7 @@ function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
                       {m.op.descripcion && <span className="block text-[12px] text-gypi-dim break-words">{m.op.descripcion}</span>}
                       {m.op.proyecto_id && ots.get(Number(m.op.proyecto_id)) && <span className="block text-[12px] text-gypi-dim">OT {ots.get(Number(m.op.proyecto_id)).ot}</span>}
                       {grupo && <button type="button" className="text-[12px] text-gypi-red underline bg-transparent border-none p-0 cursor-pointer" onClick={() => anular(grupo)}>Anular el cobro</button>}
+                      {m.op.origen === ORIGEN_AJUSTE_SALDO && <button type="button" className="text-[12px] text-gypi-red underline bg-transparent border-none p-0 cursor-pointer" onClick={() => anularElAjuste(m.op.id)}>Anular el ajuste</button>}
                     </td>
                     <td className="py-1 text-right font-mono">{m.venta ? plata(m.venta, "ARS") : ""}</td>
                     <td className="py-1 text-right font-mono">{m.cobro ? plata(m.cobro, "ARS") : ""}</td>
@@ -388,6 +405,7 @@ function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
       </div>
       {modal === "cobrar" && cliente && <Cobrar datos={datos} cliente={cliente} onCerrar={() => setModal(null)} onHecho={() => { setModal(null); onCambio(); }} />}
       {modal === "datos" && cliente && <DatosCliente cliente={cliente} onCerrar={() => setModal(null)} onGuardado={() => { setModal(null); onCambio(); }} />}
+      {modal === "ajuste" && <AjusteSaldo lado="cliente" clave={saldo.clave} nombre={saldo.nombre} saldo={saldo.saldo} onCerrar={() => setModal(null)} onHecho={() => { setModal(null); onCambio(); }} />}
       {modal === "unir" && cliente && <Unir cliente={cliente} datos={datos} onCerrar={() => setModal(null)} onHecho={() => { setModal(null); onCambio(); }} />}
     </Modal>
   );

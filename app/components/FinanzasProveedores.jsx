@@ -27,6 +27,8 @@ import BotonCargar from "./FinanzasCargar";
 import FinanzasSos from "./FinanzasSos";
 import FinanzasUnificados, { LineaUnificada } from "./FinanzasUnificados";
 import { useToast } from "./ui/Toast";
+import AjusteSaldo, { anularAjuste } from "./FinanzasAjusteSaldo";
+import { ORIGEN_AJUSTE_SALDO } from "../lib/finanzasAjusteSaldo";
 
 const MAX_LISTA = 300;
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
@@ -331,6 +333,17 @@ function CompraManual({ clase, saldo, datos, cuentasProv, cuenta, onCerrar, onCa
 function Ficha({ saldo, datos, cuentasProv, aprendidas, onCerrar, onCargada }) {
   const [vista, setVista] = useState("pendientes");
   const [manual, setManual] = useState(null);
+  const [ajuste, setAjuste] = useState(false);
+  const [errorAjuste, setErrorAjuste] = useState(null);
+  async function anularElAjuste(id) {
+    setErrorAjuste(null);
+    try {
+      await anularAjuste(id);
+      onCargada();
+    } catch (e) {
+      setErrorAjuste(e.message);
+    }
+  }
   const cuenta = cuentaDeProveedor(saldo.clave, datos.cuentas_guardadas || {}, aprendidas);
   const nombreCuenta = cuenta ? (datos.cuentas || []).find((c) => c.codigo === cuenta)?.nombre || cuenta : null;
   const [pagos, setPagos] = useState(null);
@@ -362,12 +375,17 @@ function Ficha({ saldo, datos, cuentasProv, aprendidas, onCerrar, onCargada }) {
             {/* Etapa 3 (14/11): el mismo formulario de factura o gasto que en el resto de Finanzas */}
             <BotonCargar documentos={["gasto"]} contexto={{ proveedorId: saldo.proveedor_id, cuentaGasto: cuenta }} onHecho={onCargada} className="g-btn g-btn-secondary">🧾 Factura o gasto</BotonCargar>
             <button type="button" className="g-btn g-btn-secondary" onClick={() => setManual("nota_credito")}>＋ Nota de crédito</button>
+            <button type="button" className="g-btn g-btn-secondary" onClick={() => setAjuste(true)}>⚖ Ajustar saldo</button>
           </div>
         ) : (
-          <p className="m-0 text-[12px] text-gypi-dim">Para pagarle con una orden de pago, primero sumalo a la lista de proveedores.</p>
+          <div className="flex flex-col gap-2">
+            <p className="m-0 text-[12px] text-gypi-dim">Para pagarle con una orden de pago, primero sumalo a la lista de proveedores.</p>
+            <div><button type="button" className="g-btn g-btn-secondary" onClick={() => setAjuste(true)}>⚖ Ajustar saldo</button></div>
+          </div>
         )}
         {saldo.proveedor_id && <LineaUnificada proveedorId={saldo.proveedor_id} onCambio={onCargada} />}
         {errorPago && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {errorPago}</p>}
+        {errorAjuste && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {errorAjuste}</p>}
         <div className="flex gap-2">
           <Chip active={vista === "pendientes"} onClick={() => setVista("pendientes")}>Falta pagar ({pendientes.length})</Chip>
           <Chip active={vista === "movimientos"} onClick={() => setVista("movimientos")}>Movimientos ({movimientos.length})</Chip>
@@ -414,6 +432,7 @@ function Ficha({ saldo, datos, cuentasProv, aprendidas, onCerrar, onCargada }) {
                   <td className="py-1">
                     <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(m.op.fecha)}</span> {m.op.tipo}
                     {m.op.descripcion && <span className="block text-[12px] text-gypi-dim break-words">{m.op.descripcion}</span>}
+                    {m.op.origen === ORIGEN_AJUSTE_SALDO && <button type="button" className="text-[12px] text-gypi-red underline bg-transparent border-none p-0 cursor-pointer" onClick={() => anularElAjuste(m.op.id)}>Anular el ajuste</button>}
                   </td>
                   <td className="py-1 text-right font-mono">{m.compra ? plata(m.compra, "ARS") : ""}</td>
                   <td className="py-1 text-right font-mono">{m.pago ? plata(m.pago, "ARS") : ""}</td>
@@ -428,6 +447,7 @@ function Ficha({ saldo, datos, cuentasProv, aprendidas, onCerrar, onCargada }) {
         <NuevaOrden datos={pagos} proveedorId={saldo.proveedor_id} pendientes={pendientes} onCerrar={() => setPagos(null)}
           onGuardada={() => setPagos(null)} />
       )}
+      {ajuste && <AjusteSaldo lado="proveedor" clave={saldo.clave} nombre={saldo.nombre} saldo={saldo.deuda} onCerrar={() => setAjuste(false)} onHecho={() => { setAjuste(false); onCargada(); }} />}
       {manual && (
         <CompraManual clase={manual} saldo={saldo} datos={datos} cuentasProv={cuentasProv} cuenta={cuenta}
           onCerrar={() => setManual(null)} onCargada={() => { setManual(null); onCargada(); }} />
