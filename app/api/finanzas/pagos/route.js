@@ -8,9 +8,13 @@
 //       mandada al CFO con su link si mandar).
 //   POST { accion: "mandar", id } → devuelve el link del CFO (el mismo si ya
 //       tenía uno). Solo informativo (13/11): también para una ya pagada.
-//   POST { accion: "pagar", id, fecha } → cualquier orden sin pagar, sin
+//   POST { accion: "pagar", id, fecha, unir? } → cualquier orden sin pagar, sin
 //       esperar al CFO: genera las operaciones, los e-cheq y entrega los
 //       cheques de terceros. El link del CFO sigue sirviendo.
+//       19/11: el efectivo o la transferencia que ya está en la caja o el
+//       banco (del extracto, mismo importe, hasta 5 días) se une con la orden
+//       en vez de cargarse otra vez. Si hay varios posibles → 409 { elegir }
+//       y se vuelve a mandar con unir = { <n° de pago>: id | "nueva" }.
 //   POST { accion: "anular", id } → anulada; si estaba pagada, deshace lo
 //       que generó (si ningún e-cheq se debitó ni un cheque volvió rechazado).
 //   POST { accion: "cfo", nombre, telefono } → guarda a quién se le manda.
@@ -35,7 +39,7 @@ import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { cambioDeEstado, operacionAlta } from "../../../lib/finanzasCheques";
 import { hoyAr } from "../../../lib/finanzasOperaciones";
-import { CLAVE_CFO, accionesOrden, generarPago, validarOrden } from "../../../lib/finanzasPagos";
+import { CLAVE_CFO, DIAS_UNIR, accionesOrden, cambioAlUnir, generarPago, movimientosParaUnir, validarOrden } from "../../../lib/finanzasPagos";
 import { validarResumen } from "../../../lib/finanzasResumenPago";
 import { comprobanteValido } from "../../../lib/finanzasMiCaja";
 
@@ -175,6 +179,11 @@ async function pagar(sesion, d) {
     if (r.error) return NextResponse.json({ error: r.error }, { status: 400 });
     entregas.push({ ch, ...r });
   }
+  // 19/11: lo que ya está en la caja o el banco (el extracto) se une, no se repite
+  const { unir, dudas } = await buscarParaUnir(sesion, plan.operaciones, o.proveedor_id, d.unir);
+  if (dudas.length) {
+    return NextResponse.json({ error: "Hay más de un movimiento del banco que puede ser este pago: elegí cuál es.", elegir: dudas }, { status: 409 });
+  }
   const ahora = new Date().toISOString();
   const quien = await nombreEmpleado(sesion);
   // La orden se marca primero: dos clics no pagan dos veces. El link del CFO
@@ -184,12 +193,19 @@ async function pagar(sesion, d) {
   }, { sesion })) || [];
   if (!tomada) return NextResponse.json({ error: "La orden cambió mientras tanto. Actualizá la pantalla." }, { status: 409 });
 
-  const generado = { operaciones: [], cheques_emitidos: [], cheques_entregados: [] };
+  const generado = { operaciones: [], cheques_emitidos: [], cheques_entregados: [], unidas: [] };
   const extra = { empresa_id: e, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora };
   try {
-    if (plan.operaciones.length) {
-      const ops = (await sbPost("fin_operaciones", plan.operaciones.map((op) => ({ ...op, ...extra })), { sesion })) || [];
+    const nuevas = plan.operaciones.filter((_, i) => !unir.has(i));
+    if (nuevas.length) {
+      const ops = (await sbPost("fin_operaciones", nuevas.map((op) => ({ ...op, ...extra })), { sesion })) || [];
       generado.operaciones.push(...ops.map((x) => x.id));
+    }
+    for (const [i, existente] of unir) {
+      const { id, antes, cambios } = cambioAlUnir(existente, plan.operaciones[i]);
+      const [hecho] = (await sbPatch(`fin_operaciones?id=eq.${Number(id)}&empresa_id=eq.${e}&anulada_at=is.null`, { ...cambios, updated_at: ahora }, { sesion })) || [];
+      if (!hecho) throw new Error("un movimiento del banco cambió mientras tanto");
+      generado.unidas.push({ id: Number(id), antes });
     }
     for (const ch of plan.emitir) {
       const [fila] = (await sbPost("fin_cheques", { ...ch, empresa_id: e, cargado_por_nombre: quien, created_at: ahora, updated_at: ahora }, { sesion })) || [];
@@ -215,7 +231,18 @@ async function pagar(sesion, d) {
   }
   const [final] = (await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}`, { generado, updated_at: new Date().toISOString() }, { sesion })) || [tomada];
   refrescar(e, "fin_ordenes_pago", "fin_operaciones", "fin_cheques");
-  return NextResponse.json({ ok: true, orden: final, generado });
+  return NextResponse.json({ ok: true, orden: final, generado, unidas: generado.unidas.length });
+}
+
+/** Los movimientos que ya están para los pagos de la orden (mismas cajas, fechas cerca). */
+async function buscarParaUnir(sesion, operaciones, proveedorId, elegidas) {
+  if (!operaciones.length) return { unir: new Map(), dudas: [] };
+  const cajas = [...new Set(operaciones.map((op) => op.cuenta_haber))];
+  const fecha = operaciones[0].fecha;
+  const mover = (dias) => new Date(Date.parse(`${fecha}T12:00:00Z`) + dias * 86400000).toISOString().slice(0, 10);
+  const lista = cajas.map((c) => `"${String(c).replace(/"/g, "")}"`).join(",");
+  const existentes = (await leer(sesion, `fin_operaciones?empresa_id=eq.${sesion.empresa_id}&anulada_at=is.null&cuenta_haber=in.(${encodeURIComponent(lista)})&fecha=gte.${mover(-DIAS_UNIR)}&fecha=lte.${mover(DIAS_UNIR)}&select=id,fecha,tipo,total,total_ars,cuenta_debe,cuenta_haber,proveedor_id,entidad,referencia,descripcion,origen,anulada_at&order=fecha.asc,id.asc`)) || [];
+  return movimientosParaUnir(operaciones, existentes, { proveedorId, elegidas: elegidas && typeof elegidas === "object" ? elegidas : {} });
 }
 
 async function anular(sesion, d) {
@@ -246,6 +273,12 @@ async function anular(sesion, d) {
   if (!hecha) return NextResponse.json({ error: "La orden cambió mientras tanto. Actualizá la pantalla." }, { status: 409 });
   const anularOp = (id) => sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null`, { anulada_at: ahora, anulada_por_nombre: quien || "Gypi (orden de pago anulada)", updated_at: ahora }, { sesion });
   for (const id of (g.operaciones || []).map(Number).filter(Boolean)) await anularOp(id);
+  // Lo que se unió con el extracto no se anula: vuelve a como estaba (19/11)
+  for (const u of Array.isArray(g.unidas) ? g.unidas : []) {
+    if (!Number(u?.id) || !u.antes || typeof u.antes !== "object") continue;
+    const { tipo, cuenta_debe, proveedor_id, entidad, referencia, descripcion } = u.antes;
+    await sbPatch(`fin_operaciones?id=eq.${Number(u.id)}&empresa_id=eq.${e}`, { tipo, cuenta_debe, proveedor_id, entidad, referencia, descripcion, updated_at: ahora }, { sesion });
+  }
   for (const ch of cheques) {
     if (emitidos.includes(ch.id) && ch.estado === "pendiente") {
       await sbPatch(`fin_cheques?id=eq.${ch.id}&empresa_id=eq.${e}&estado=eq.pendiente`, { estado: "anulado", estado_fecha: hoyAr(), updated_at: ahora }, { sesion });
