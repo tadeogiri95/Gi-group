@@ -16,6 +16,11 @@
 //       cuenta corriente. cliente_id null lo suelta.
 //   POST { accion: "copiar_libro", filas } → los vivos de R-CHEQUES, sin
 //       operación (ya están en el libro). Los ya copiados no se repiten.
+//   POST { accion: "deshacer", id, probar? } → 19/11: el cheque vuelve a
+//       como estaba antes del último cambio (deshacerCambio); el movimiento
+//       que había cargado Gypi queda anulado. probar = solo dice qué pasaría.
+//   POST { accion: "a_terceros", id } → 19/11: un cheque por debitar que en
+//       realidad es de terceros pasa a la cartera (pasarATerceros).
 //   16/11: GET trae también "repetidos": cheques cuyo débito o depósito
 //       está dos veces (el de Gypi y el del extracto; chequesRepetidos en
 //       finanzasCorregir.js). POST { accion: "anular_repetidos" } une cada
@@ -29,7 +34,7 @@ import { CLAVE_PLANIFICACION } from "../../../lib/planificacion";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
-import { ESTADOS_CHEQUE, TIPOS_CHEQUE, cambioDeEstado, operacionAlta, validarCheque } from "../../../lib/finanzasCheques";
+import { ESTADOS_CHEQUE, TIPOS_CHEQUE, cambioDeEstado, deshacerCambio, operacionAlta, pasarATerceros, validarCheque } from "../../../lib/finanzasCheques";
 import { hoyAr } from "../../../lib/finanzasOperaciones";
 import { frenoRepetidos, repetidosEnBase } from "../../../lib/finanzasRepetidosServidor";
 import { clienteDeLista, faltaColumna192 } from "../../../lib/elegirDeLista";
@@ -209,6 +214,61 @@ async function cambiar(sesion, d) {
   return NextResponse.json({ ok: true, cheque: final });
 }
 
+/** 19/11: deshacer el último cambio de un cheque marcado por error. */
+async function deshacer(sesion, d) {
+  const e = sesion.empresa_id;
+  const id = Number(d.id);
+  if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta el cheque" }, { status: 400 });
+  const [ch] = (await leer(sesion, `fin_cheques?id=eq.${id}&empresa_id=eq.${e}&select=*&limit=1`)) || [];
+  if (!ch) return NextResponse.json({ error: "No encontré ese cheque" }, { status: 404 });
+  const [ops, ordenes] = await Promise.all([
+    leer(sesion, `fin_operaciones?empresa_id=eq.${e}&origen=eq.cheque&origen_id=like.${id}:*&select=id,fecha,total,origen,origen_id,anulada_at&order=id.asc`),
+    leer(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&estado=neq.anulada&select=id,numero,estado,generado`).catch(() => []),
+  ]);
+  const r = deshacerCambio(ch, { ops: ops || [], ordenes: ordenes || [] });
+  if (r.error) return NextResponse.json({ error: r.error }, { status: 400 });
+  if (d.probar === true) return NextResponse.json({ ok: true, a: r.a, texto: r.texto });
+  const ahora = new Date().toISOString();
+  const quien = await nombreEmpleado(sesion);
+  const nota = `↩ ${ESTADOS_CHEQUE[ch.estado]?.nombre} deshecho por ${quien || "el Dueño"} el ${ahora.slice(8, 10)}/${ahora.slice(5, 7)}`;
+  const notas = [ch.notas, nota].filter(Boolean).join(" · ").slice(-300);
+  // Solo si el cheque sigue como lo leímos (dos personas a la vez)
+  const [hecho] = (await sbPatch(`fin_cheques?id=eq.${id}&empresa_id=eq.${e}&estado=eq.${ch.estado}`, { ...r.cambios, notas, updated_at: ahora }, { sesion })) || [];
+  if (!hecho) return NextResponse.json({ error: "El cheque cambió mientras tanto. Actualizá la pantalla." }, { status: 409 });
+  for (const opId of r.anular) {
+    await sbPatch(`fin_operaciones?id=eq.${opId}&empresa_id=eq.${e}&anulada_at=is.null`, { anulada_at: ahora, anulada_por_nombre: `${quien || "Dueño"} (cheque deshecho)`.slice(0, 120), updated_at: ahora }, { sesion });
+  }
+  for (const opId of r.revivir) {
+    await sbPatch(`fin_operaciones?id=eq.${opId}&empresa_id=eq.${e}`, { anulada_at: null, anulada_por_nombre: null, updated_at: ahora }, { sesion });
+  }
+  broadcastRefresh(e, "fin_cheques");
+  broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, cheque: hecho, texto: r.texto });
+}
+
+/** 19/11: un "propio" que es de terceros pasa a la cartera. */
+async function aTerceros(sesion, d) {
+  const e = sesion.empresa_id;
+  const id = Number(d.id);
+  if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta el cheque" }, { status: 400 });
+  const [ch] = (await leer(sesion, `fin_cheques?id=eq.${id}&empresa_id=eq.${e}&select=*&limit=1`)) || [];
+  if (!ch) return NextResponse.json({ error: "No encontré ese cheque" }, { status: 404 });
+  const ops = await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&origen=eq.cheque&origen_id=like.${id}:*&select=id,origen,origen_id,anulada_at&order=id.asc`);
+  const r = pasarATerceros(ch, { ops: ops || [] });
+  if (r.error) return NextResponse.json({ error: r.error }, { status: 400 });
+  const ahora = new Date().toISOString();
+  const quien = await nombreEmpleado(sesion);
+  const notas = [ch.notas, `Pasado de propio a de terceros por ${quien || "el Dueño"} el ${ahora.slice(8, 10)}/${ahora.slice(5, 7)}`].filter(Boolean).join(" · ").slice(-300);
+  const [hecho] = (await sbPatch(`fin_cheques?id=eq.${id}&empresa_id=eq.${e}&clase=eq.propio&estado=eq.${ch.estado}`, { ...r.cambios, notas, updated_at: ahora }, { sesion })) || [];
+  if (!hecho) return NextResponse.json({ error: "El cheque cambió mientras tanto. Actualizá la pantalla." }, { status: 409 });
+  for (const opId of r.anular) {
+    await sbPatch(`fin_operaciones?id=eq.${opId}&empresa_id=eq.${e}&anulada_at=is.null`, { anulada_at: ahora, anulada_por_nombre: `${quien || "Dueño"} (no era cheque propio)`.slice(0, 120), updated_at: ahora }, { sesion });
+  }
+  broadcastRefresh(e, "fin_cheques");
+  broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, cheque: hecho });
+}
+
 async function asignarCliente(sesion, d) {
   const e = sesion.empresa_id;
   const id = Number(d.id);
@@ -290,6 +350,8 @@ export async function POST(request) {
   try {
     if (d?.accion === "crear") return await crear(sesion, d);
     if (d?.accion === "cambiar") return await cambiar(sesion, d);
+    if (d?.accion === "deshacer") return await deshacer(sesion, d);
+    if (d?.accion === "a_terceros") return await aTerceros(sesion, d);
     if (d?.accion === "cliente") return await asignarCliente(sesion, d);
     if (d?.accion === "copiar_libro") return await copiarLibro(sesion, d);
     if (d?.accion === "anular_repetidos") return await anularRepetidos(sesion);

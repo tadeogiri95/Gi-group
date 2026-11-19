@@ -52,7 +52,9 @@ test("pendientes — cheque por debitar, cheque depositado, orden por transferen
   const m = pendientesDelExtracto(filas, { cheques: CHEQUES, ordenes: ORDENES, plazos: PLAZOS, cuenta: BANCO });
   assert.equal(m.get(0).clase, "cheque");
   assert.deepEqual(m.get(0).accion, { url: "/api/finanzas/cheques", body: { accion: "cambiar", id: 1, a: "debitado", cuenta_banco: BANCO, fecha: "2026-10-12" } });
-  assert.match(m.get(0).texto, /Débito del cheque N° 123 a Maderas SA/);
+  assert.match(m.get(0).texto, /Débito de un cheque propio N° 123 \(firmado por la empresa\) que le diste a Maderas SA/);
+  assert.equal(m.get(0).boton, "Sí, es ese cheque propio: marcarlo debitado");
+  assert.match(m.get(0).aviso, /cheques de terceros que le diste a un proveedor no salen en el extracto/);
   assert.equal(m.get(1).accion.body.a, "depositado");
   assert.deepEqual(m.get(2).accion, { url: "/api/finanzas/pagos", body: { accion: "pagar", id: 7, fecha: "2026-10-09" } });
   assert.match(m.get(3).texto, /Capital e interés del plazo fijo 415171/);

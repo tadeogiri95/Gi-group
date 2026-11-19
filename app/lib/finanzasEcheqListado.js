@@ -148,7 +148,8 @@ export function planListado(listado = [], gypi = [], { cuentaPropia = "", cuitEm
   const porId = new Map(gypi.filter((g) => g.id_banco).map((g) => [String(g.id_banco).toUpperCase(), g]));
   const usados = new Set();
   const filas = listado.map((c) => {
-    const clase = c.cuenta_emisor === cuentaPropia ? "propio" : "tercero";
+    // 19/11: sin cuenta del emisor no se sabe que es propio: va como de terceros
+    const clase = c.cuenta_emisor && c.cuenta_emisor === cuentaPropia ? "propio" : "tercero";
     const estado = estadoDelBanco(c, clase, cuitEmpresa);
     let cheque = porId.get(c.id_banco) || null;
     if (!cheque) {
