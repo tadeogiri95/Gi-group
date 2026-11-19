@@ -3,21 +3,22 @@
 // por OT (parte 6; /api/finanzas/ot-clientes; reglas en
 // app/lib/finanzasOtClientes.js).
 //
-// Cada OT del cliente con su valor (presupuesto, o materiales ÷ 0,3 marcado
+// Cada OT del cliente con su valor (presupuesto, o materiales ÷ el % de
+// materiales de Configuración, 30 % por defecto, marcado
 // "⚠ Estimado"), lo cobrado y el saldo; los cobros sin OT restan del total.
 // Con IVA o sin IVA, todas las OT o desde una fecha, y la lista de OT
 // estimadas para salir a buscar el presupuesto.
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { plata } from "../lib/finanzasOperaciones";
-import { resumirCliente } from "../lib/finanzasOtClientes";
+import { resumirCliente, textoPctEstimado } from "../lib/finanzasOtClientes";
 import { Chip, Modal, Spinner } from "./ui";
 
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
 const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 const MAX = 200;
 
-function TablaOt({ r }) {
+function TablaOt({ r, pct }) {
   return (
     <table className="w-full border-collapse text-[13px] mt-1" aria-label="OT del cliente">
       <thead>
@@ -34,7 +35,7 @@ function TablaOt({ r }) {
             <td className="py-1">
               <span className="font-semibold">{o.ot}</span> {o.obra}
               <span className="block text-[12px] text-gypi-dim">{[fechaCorta(o.fecha), o.descripcion].filter(Boolean).join(" · ")}</span>
-              {o.estimado && <span className="block text-[12px] font-semibold text-gypi-amber-ink">⚠ Estimado: falta el presupuesto (materiales {plata(o.materiales, "ARS")} ÷ 0,3{o.sin_precio_materiales ? `; ${o.sin_precio_materiales} artículos sin precio` : ""})</span>}
+              {o.estimado && <span className="block text-[12px] font-semibold text-gypi-amber-ink">⚠ Estimado: falta el presupuesto (materiales {plata(o.materiales, "ARS")} ÷ {textoPctEstimado(pct)}{o.sin_precio_materiales ? `; ${o.sin_precio_materiales} artículos sin precio` : ""})</span>}
               {o.sin_valor && <span className="block text-[12px] text-gypi-red">Sin presupuesto ni materiales con precio</span>}
             </td>
             <td className="py-1 text-right font-mono">{plata(o.valor, "ARS")}</td>
@@ -84,9 +85,9 @@ export function ComposicionOt({ clave }) {
         <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={conIva} onChange={(e) => setConIva(e.target.checked)} /> Con IVA (21 %)</label>
       </div>
       <p className="m-0 text-[12px] text-gypi-dim">
-        {r.ots.length} OT · Valor {plata(r.valor, "ARS")} · Cobrado {plata(r.cobrado, "ARS")}{r.estimadas ? ` · ⚠ ${r.estimadas} estimadas (sin presupuesto: materiales ÷ 0,3)` : ""}
+        {r.ots.length} OT · Valor {plata(r.valor, "ARS")} · Cobrado {plata(r.cobrado, "ARS")}{r.estimadas ? ` · ⚠ ${r.estimadas} estimadas (sin presupuesto: materiales ÷ ${textoPctEstimado(d.materiales_pct)})` : ""}
       </p>
-      <TablaOt r={r} />
+      <TablaOt r={r} pct={d.materiales_pct} />
     </div>
   );
 }
@@ -122,7 +123,7 @@ export default function FinanzasOtClientes({ onCerrar }) {
     <Modal open onClose={onCerrar} title="Cuenta por OT" maxWidth={1080}>
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
         <p className="m-0 text-[13px] text-gypi-dim">
-          Cada OT con su presupuesto (PRECIO del Plan, sin IVA). Si no tiene, va el costo de materiales ÷ 0,3, en amarillo. Se restan todos los cobros; los que no tienen OT restan del total del cliente. Es para seguir lo que falta cobrar: no cambia la contabilidad.
+          Cada OT con su presupuesto (PRECIO del Plan, sin IVA). Si no tiene, va el costo de materiales ÷ {textoPctEstimado(d?.materiales_pct)} (el % de materiales de Finanzas → Configuración), en amarillo. Se restan todos los cobros; los que no tienen OT restan del total del cliente. Es para seguir lo que falta cobrar: no cambia la contabilidad.
         </p>
         {!d && !error && <Spinner size={18} />}
         {d?.sin_deudores && <p className="m-0 text-[13px] text-gypi-amber-ink">Falta la cuenta &quot;Deudores por Ventas&quot; en el plan de cuentas: no se ven los cobros.</p>}
@@ -152,7 +153,7 @@ export default function FinanzasOtClientes({ onCerrar }) {
                             {c.r.ots.length} OT · Valor {plata(c.r.valor, "ARS")} · Cobrado {plata(c.r.cobrado, "ARS")}{c.r.estimadas ? ` · ⚠ ${c.r.estimadas} estimadas` : ""}
                           </span>
                         </summary>
-                        <TablaOt r={c.r} />
+                        <TablaOt r={c.r} pct={d.materiales_pct} />
                       </details>
                     </li>
                   ))}

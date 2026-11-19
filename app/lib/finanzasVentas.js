@@ -33,7 +33,8 @@ import {
 } from "./finanzasConsumoOt";
 import { materialesRealesDeOts } from "./costoRealServidor";
 import { materialesDeOts } from "./finanzasMaterialesOt";
-import { valorOt } from "./finanzasOtClientes";
+import { FACTOR_ESTIMADO, valorOt } from "./finanzasOtClientes";
+import { factorMateriales } from "./finanzasPctMateriales";
 
 export const CLAVE_VENTAS_OT = "finanzas_ventas_ot";
 /**
@@ -252,12 +253,14 @@ async function sincronizarConsumosOt(e, { proyectos, entregas, fechasEstimadas, 
   const reales = aCalcular.size ? await materialesRealesDeOts(e, de(aCalcular)) : new Map();
   const materiales = new Map(de(aCalcular).map((p) => [`p${p.id}`, Number(reales.get(String(p.ot))) || 0]));
   const necesidades = aEstimar.size ? await materialesDeOts(null, de(aEstimar), e) : new Map();
-  const valores = new Map(de(aEstimar).map((p) => [`p${p.id}`, valorOt(0, necesidades.get(String(p.ot))).valor]));
+  // 19/11 (punto 9): el mismo % de materiales de Finanzas → Configuración
+  const factor = aEstimar.size ? await factorMateriales(e) : FACTOR_ESTIMADO;
+  const valores = new Map(de(aEstimar).map((p) => [`p${p.id}`, valorOt(0, necesidades.get(String(p.ot)), factor).valor]));
   const centro = (division) => centroDeDivision(division, centros);
 
   const pc = consumo.error ? { crear: [], corregir: [], anular: [] }
     : planConsumos({ proyectos, entregas, materiales, operaciones: deOrigen(ORIGEN_CONSUMO), cuentas: consumo, centro, hoy });
-  const pe = planEstimadas({ proyectos, fechas: fechasEstimadas || {}, valores, operaciones: deOrigen(ORIGEN_ESTIMADA), clientes, cuentas: cuentasVenta, centro, hoy });
+  const pe = planEstimadas({ proyectos, fechas: fechasEstimadas || {}, valores, operaciones: deOrigen(ORIGEN_ESTIMADA), clientes, cuentas: cuentasVenta, centro, hoy, factor });
   for (const nombre of clientesNuevosDe(pe.crear)) {
     if (emparejarCliente(nombre, clientes)) continue;
     const [c] = (await sbPost("fin_clientes", { empresa_id: e, nombre, notas: "Creado por Gypi desde el Plan de trabajo", created_at: ahora, updated_at: ahora })) || [];

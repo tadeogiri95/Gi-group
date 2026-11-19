@@ -1,5 +1,6 @@
 // app/lib/finanzasEntregasEstimadas.js — las OT terminadas sin precio en el
-// Plan, con su valor estimado por materiales (÷ 0,3, igual que la cuenta
+// Plan, con su valor estimado por materiales (÷ el % de materiales de
+// Configuración, 30 % por defecto; igual que la cuenta
 // corriente de clientes). Lo usan el Estado de Resultados (13/11) y el Reporte
 // financiero (18/11), los dos pedidos de Tadeo. Solo servidor.
 import { sbGet, sbGetAll } from "./sbHelpers";
@@ -8,6 +9,7 @@ import { materialesDeOts } from "./finanzasMaterialesOt";
 import { valorOt } from "./finanzasOtClientes";
 import { hoyAr } from "./finanzasOperaciones";
 import { logger } from "./logger";
+import { factorMateriales } from "./finanzasPctMateriales";
 
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data);
 
@@ -64,7 +66,7 @@ export async function entregasEstimadas(sesion, desde, hasta) {
     const conPrecio = new Set((precios || []).filter((f) => Number(f.precio) > 0).map((f) => String(f.ot)));
     const sinPrecio = (p) => !conPrecio.has(String(p.ot));
     const vivos = [...proyectos.values()].filter((p) => p.estado === "cerrado" && sinPrecio(p));
-    const materiales = await materialesDeOts(sesion, vivos);
+    const [materiales, factor] = await Promise.all([materialesDeOts(sesion, vivos), factorMateriales(e)]);
     const estimadas = [];
     const noEstimadas = [];
     const fila_ = (p, fecha, motivo) => ({ ot: String(p.ot), cliente: String(p.cliente || p.obra || "").trim(), fecha, motivo });
@@ -72,7 +74,7 @@ export async function entregasEstimadas(sesion, desde, hasta) {
       const fecha = anotadas.get(Number(p.id)) || String(p.fecha_entrega || p.fecha_objetivo || "").slice(0, 10);
       if (!(fecha >= desde && fecha <= hasta)) continue;
       const m = materiales.get(String(p.ot));
-      const valor = valorOt(0, m).valor;
+      const valor = valorOt(0, m, factor).valor;
       if (valor > 0) estimadas.push({ proyecto_id: Number(p.id), ot: String(p.ot), fecha, valor });
       else noEstimadas.push(fila_(p, fecha, !(m?.articulos > 0) ? "sin_necesidades" : "sin_precios"));
     }

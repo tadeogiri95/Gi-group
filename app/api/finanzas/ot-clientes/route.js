@@ -2,7 +2,7 @@
 // por OT (reglas en app/lib/finanzasOtClientes.js). Sin migración.
 //
 //   GET → cada cliente con sus OT (valor sin IVA: presupuesto o materiales ÷
-//       0,3 estimado) y sus cobros. El IVA y el "desde" se aplican en la
+//       el % de materiales de Configuración, estimado) y sus cobros. El IVA y el "desde" se aplican en la
 //       pantalla. No guarda nada: el costo de materiales se calcula sin fijar
 //       precios (eso lo sigue haciendo el Costo de la OT).
 //
@@ -11,7 +11,8 @@ import { NextResponse } from "next/server";
 import { sbGet, sbGetAll } from "../../../lib/sbHelpers";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { cuentasDeudores } from "../../../lib/finanzasClientes";
-import { cuentasPorOt } from "../../../lib/finanzasOtClientes";
+import { cuentasPorOt, factorDePct } from "../../../lib/finanzasOtClientes";
+import { configMateriales } from "../../../lib/finanzasPctMateriales";
 import { materialesDeOts } from "../../../lib/finanzasMaterialesOt";
 
 const COLUMNAS = "id,fecha,tipo,cliente_id,entidad,proyecto_id,total_ars,cuenta_debe,cuenta_haber,descripcion,anulada_at";
@@ -37,9 +38,10 @@ export async function GET(request) {
       : [];
     const precios = new Map((preciosFilas || []).map((f) => [String(f.ot), Number(f.precio) || 0]));
     const sinPresupuesto = proyectos.filter((p) => !(precios.get(String(p.ot)) > 0) && (String(p.cliente || "").trim() || p.cliente_id));
-    const materiales = await materialesDeOts(sesion, sinPresupuesto);
-    const clientesOt = cuentasPorOt({ proyectos, precios, materiales, ops, cuentasDeu, clientes });
-    return NextResponse.json({ clientes: clientesOt, sin_deudores: !deu.length });
+    const [materiales, config] = await Promise.all([materialesDeOts(sesion, sinPresupuesto), configMateriales(e)]);
+    const factor = factorDePct(config.materiales_pct);
+    const clientesOt = cuentasPorOt({ proyectos, precios, materiales, ops, cuentasDeu, clientes, factor });
+    return NextResponse.json({ clientes: clientesOt, sin_deudores: !deu.length, materiales_pct: Math.round(factor * 1000) / 10 });
   } catch (err) {
     return errorFinanzas(err, "ot-clientes GET");
   }

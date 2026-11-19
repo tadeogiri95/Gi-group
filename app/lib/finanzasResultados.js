@@ -9,8 +9,8 @@
 //   - El importe de cada operación es el neto (sin IVA ni otros impuestos),
 //     en pesos. Ingresos = haber − debe; el resto = debe − haber.
 //   - Las entregas y ventas se abren por división de la OT.
-//   - Materiales: como el libro, se estima un % de las entregas (40 % por
-//     defecto; config_sistema "finanzas_resultados") en lugar de las cuentas
+//   - Materiales: como el libro, se estima un % de las entregas (30 % por
+//     defecto desde el 19/11, el mismo % que valoriza las OT sin precio; config_sistema "finanzas_resultados") en lugar de las cuentas
 //     CMV_MAT (Materias Primas es stock: la compra no es el consumo). Con 0 %
 //     se usan las cuentas.
 //   - Desde el 12/11 (auditoría, parte 4) el Dueño puede elegir el costo real
@@ -50,7 +50,9 @@
 export const CLAVE_RESULTADOS = "finanzas_resultados";
 /** finanzasConsumoOt.ORIGEN_CONSUMO (acá sin importar el lado del servidor). */
 export const ORIGEN_CONSUMO_OT = "consumo_ot";
-export const MATERIALES_PCT = 40;
+/** Un solo % de materiales para toda Finanzas (19/11, punto 9): estado de
+ * resultados, cuenta de clientes por OT, entregas estimadas y reporte. */
+export const MATERIALES_PCT = 30;
 export const MESES_VENTANA = 12;
 
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];

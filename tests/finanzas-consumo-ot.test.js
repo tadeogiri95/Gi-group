@@ -123,14 +123,14 @@ test("estado de resultados — el asiento de consumo es el costo de materiales d
     // Una compra de material: es stock, no costo
     op("2026-11-02", "01.01.04.001.002", "02.01.02.001.001", 800000),
   ];
-  const r = estadoResultados({ ops, cuentas, proyectos: [{ id: 1, division: "MUEBLES" }, { id: 2, division: "MUEBLES" }], hasta: "2026-11" });
+  const r = estadoResultados({ ops, cuentas, proyectos: [{ id: 1, division: "MUEBLES" }, { id: 2, division: "MUEBLES" }], hasta: "2026-11", materialesPct: 40 });
   const fila = (re) => r.filas.find((f) => re.test(f.nombre || ""));
   assert.equal(fila(/asiento de consumo/).valores[11], 300000);
   assert.equal(fila(/asiento de consumo/).estimado, false);
   assert.equal(fila(/estimado 40/).valores[11], 200000, "solo la entrega sin consumo va al %");
   assert.equal(r.sin_linea.length, 0, "Costo de Mercadería Vendida no queda como cuenta sin clasificar");
   // Sin consumo, igual que antes
-  const antes = estadoResultados({ ops: ops.filter((o) => o.origen !== "consumo_ot"), cuentas, proyectos: [], hasta: "2026-11" });
+  const antes = estadoResultados({ ops: ops.filter((o) => o.origen !== "consumo_ot"), cuentas, proyectos: [], hasta: "2026-11", materialesPct: 40 });
   assert.equal(antes.filas.find((f) => /estimado 40/.test(f.nombre || "")).valores[11], 600000);
 });
 
