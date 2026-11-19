@@ -69,8 +69,7 @@ export const BOTONES_GESTION = {
       { id: "fin-sueldos", label: "Sueldos", modulo: "finanzas", soloDueno: true },
       // Saldos: 13/11 (parte 3 del plan de Tesorería) Movimientos y Cajas y bancos en una sola
       { id: "fin-tesoreria", label: "Cajas y bancos", modulo: "finanzas", soloDueno: true },
-      { id: "fin-clientes", label: "Clientes", modulo: "finanzas", soloDueno: true },
-      { id: "fin-proveedores", label: "Proveedores", modulo: "finanzas", soloDueno: true },
+      { id: "fin-cuentas", label: "Cuentas corrientes", modulo: "finanzas", soloDueno: true },
       { id: "fin-inversiones", label: "Inversiones", modulo: "finanzas", soloDueno: true },
       { id: "fin-personas", label: "Agenda", modulo: "finanzas", soloDueno: true },
       // Informes (14/11, etapa 6: situación patrimonial; 13/11: el mayor de cada cuenta)
@@ -97,7 +96,7 @@ export const BOTONES_GESTION = {
 /** El ícono de cada opción (menú de la izquierda y tarjetas del Inicio de Finanzas). */
 export const ICONO_GESTION = {
   vivo: "🟢", ot: "📋", reportes: "📊", instalaciones: "🔧", planificacion: "📅", minuta: "📝",
-  stock: "📦", "inventario-valorizado": "💲", movimientos: "📥", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-clientes": "👥", "fin-sueldos": "👷", "fin-proveedores": "🏭", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-mayor": "📚", "fin-devengamiento": "📆", "fin-resultados": "📊", "fin-patrimonio": "⚖️", "fin-flujo": "💵", "fin-reporte": "📑", "fin-cierre": "🔍", "fin-libro": "📗", "fin-config": "🧾", "fin-inversiones": "📈", "fin-cuenta-ot": "📋", "fin-unificados": "🔗", "fin-sos": "📄",
+  stock: "📦", "inventario-valorizado": "💲", movimientos: "📥", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-cuentas": "📒", "fin-sueldos": "👷", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-mayor": "📚", "fin-devengamiento": "📆", "fin-resultados": "📊", "fin-patrimonio": "⚖️", "fin-flujo": "💵", "fin-reporte": "📑", "fin-cierre": "🔍", "fin-libro": "📗", "fin-config": "🧾", "fin-inversiones": "📈", "fin-cuenta-ot": "📋", "fin-unificados": "🔗", "fin-sos": "📄",
 };
 
 /** Pestañas de un botón para esta empresa: sin lo apagado, lo que pide el

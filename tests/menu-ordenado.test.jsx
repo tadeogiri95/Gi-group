@@ -20,7 +20,7 @@ test("Finanzas: fuera de Finanzas un solo renglón; adentro, todo por tema", () 
   const fuera = gruposMenu(empresa, dueno, 0, "home").find((g) => g.id === "finanzas").items;
   assert.deepEqual(fuera.map((i) => i.label), ["Inicio y todo Finanzas"]);
   const adentro = gruposMenu(empresa, dueno, 0, "finanzas").find((g) => g.id === "finanzas").items;
-  assert.equal(adentro.length, 19, "19: Cuenta por OT y Cliente y proveedor se abren desde las fichas (menú nuevo, 19/11)");
+  assert.equal(adentro.length, 18, "18: Cuenta por OT y Cliente y proveedor se abren desde las fichas; Clientes y Proveedores son una sola, Cuentas corrientes (19/11)");
   assert.ok(!adentro.some((i) => ["fin-cuenta-ot", "fin-unificados"].includes(i.opcion)));
   assert.equal(adentro.find((i) => i.opcion === "fin-libro").tema, "Cierre y ajustes");
   assert.equal(adentro.find((i) => i.opcion === "fin-cierre").tema, "Cierre y ajustes");
