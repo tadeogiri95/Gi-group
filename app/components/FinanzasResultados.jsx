@@ -15,56 +15,14 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { hoyAr } from "../lib/finanzasOperaciones";
 import { nombreMes } from "../lib/finanzasResultados";
+import { textoPctEstimado } from "../lib/finanzasOtClientes";
+import ConfigMateriales from "./FinanzasPctMateriales";
 import { Chip, Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
 const miles = (n) => (n == null ? "" : Math.round(Number(n) || 0).toLocaleString("es-AR"));
 const dma = (f) => (/^\d{4}-\d{2}-\d{2}$/.test(String(f || "")) ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
 const pct = (n) => (n == null ? "" : `${String(n).replace(".", ",")} %`);
-
-function ConfigMateriales({ valor, real: realGuardado = false, onCerrar, onGuardado }) {
-  const toast = useToast();
-  const [v, setV] = useState(String(valor ?? 40).replace(".", ","));
-  const [real, setReal] = useState(!!realGuardado);
-  const [error, setError] = useState(null);
-  const [guardando, setGuardando] = useState(false);
-  async function guardar() {
-    setGuardando(true);
-    setError(null);
-    try {
-      const res = await apiFetch("/api/finanzas/resultados", { method: "POST", body: JSON.stringify({ accion: "config", materiales_pct: v, materiales_real: real }) });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d.error || "No se pudo guardar");
-      toast.success("Guardado");
-      onGuardado();
-    } catch (e) {
-      setError(e.message);
-      setGuardando(false);
-    }
-  }
-  return (
-    <Modal open onClose={onCerrar} title="Costo de materiales" maxWidth={420}>
-      <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
-        <p className="m-0 text-[13px] text-gypi-dim">
-          Mientras no haya cuentas de materiales (CMV_MAT) con movimientos, se estima como un % de las entregas, igual que el libro. Con 0 no se estima.
-        </p>
-        <label className="flex items-start gap-2 text-[13px]">
-          <input type="checkbox" className="mt-1" checked={real} onChange={(e) => setReal(e.target.checked)} />
-          <span><span className="font-semibold">Usar el costo real de cada OT entregada</span><br /><span className="text-gypi-dim">Lo del MRP, lo retirado de más y las compras sin stock de cada OT (💲 Costo por OT). Las entregas de OT sin materiales en Gypi siguen con el %.</span></span>
-        </label>
-        <label className="flex flex-col gap-1 text-[13px] font-semibold">
-          {real ? "% de las entregas sin costo en Gypi" : "% de las entregas"}
-          <input className="g-input w-[120px] text-right" inputMode="decimal" aria-label="Porcentaje de materiales" value={v} onChange={(e) => setV(e.target.value)} />
-        </label>
-        {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
-        <div className="flex justify-end gap-2">
-          <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
-          <button type="button" className="g-btn g-btn-primary" disabled={guardando} onClick={guardar}>{guardando ? "Guardando…" : "Guardar"}</button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
 
 function ConfigPonderador({ divisiones, valor, onCerrar, onGuardado }) {
   const toast = useToast();
@@ -153,13 +111,13 @@ const ESTILO = {
 };
 
 /** Las OT terminadas sin precio en el Plan que entran con valor estimado. */
-function EntregasEstimadas({ ots }) {
+function EntregasEstimadas({ ots, pctMateriales }) {
   const total = ots.reduce((s, o) => s + (Number(o.valor) || 0), 0);
   return (
     <details className="mt-1 text-[12px] text-gypi-cyan-ink">
       <summary className="cursor-pointer">
         <span className="inline-block w-3 h-3 align-middle rounded-sm border border-gypi-border bg-gypi-estimado mr-1" aria-hidden="true" />
-        ** Entregas con valor estimado: {ots.length === 1 ? "1 OT terminada" : `${ots.length} OT terminadas`} sin precio en el Plan de trabajo. Valen lo mismo que en la cuenta corriente de clientes (materiales de sus necesidades ÷ 0,3). Cuando le cargues el precio, pasa a la entrega de verdad.
+        ** Entregas con valor estimado: {ots.length === 1 ? "1 OT terminada" : `${ots.length} OT terminadas`} sin precio en el Plan de trabajo. Valen lo mismo que en la cuenta corriente de clientes (materiales de sus necesidades ÷ {textoPctEstimado(pctMateriales)}). Cuando le cargues el precio, pasa a la entrega de verdad.
       </summary>
       <ul className="list-none m-0 mt-1 p-0 flex flex-col gap-0.5 text-gypi-text">
         {ots.map((o) => (
@@ -294,7 +252,7 @@ export default function FinanzasResultados() {
         </table>
       </div>
       {datos.materiales_estimados && <p className="m-0 mt-1 text-[12px] text-gypi-dim">* Estimado: no hay costo real de materiales cargado.</p>}
-      {datos.entregas_estimadas > 0 && <EntregasEstimadas ots={datos.estimadas_ot || []} />}
+      {datos.entregas_estimadas > 0 && <EntregasEstimadas ots={datos.estimadas_ot || []} pctMateriales={datos.config?.materiales_pct} />}
       {(datos.no_estimadas_ot || []).length > 0 && <NoEstimadas ots={datos.no_estimadas_ot} />}
 
       {datos.sin_linea.length > 0 && (

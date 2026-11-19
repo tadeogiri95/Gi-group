@@ -27,6 +27,7 @@
 import { claveNombre } from "./finanzasProveedores";
 import { clienteDeOt, indiceClientes } from "./finanzasClientes";
 import { textoOt } from "./nombreOt";
+import { FACTOR_ESTIMADO } from "./finanzasOtClientes";
 
 export const ORIGEN_CONSUMO = "consumo_ot";
 export const ORIGEN_ESTIMADA = "entrega_estimada";
@@ -148,7 +149,7 @@ export function planConsumos({ proyectos = [], entregas = new Map(), materiales 
  * @returns {{ crear: object[], corregir: {id: number, cambios: object}[], anular: {id: number, motivo: string}[] }}
  *   crear lleva cliente_nombre cuando el cliente no está en la lista (se crea al guardar)
  */
-export function planEstimadas({ proyectos = [], fechas = {}, valores = new Map(), operaciones = [], clientes = [], cuentas, centro = () => null, hoy }) {
+export function planEstimadas({ proyectos = [], fechas = {}, valores = new Map(), operaciones = [], clientes = [], cuentas, centro = () => null, hoy, factor = FACTOR_ESTIMADO }) {
   const { vivas, aMano } = indiceOps(operaciones.map((o) => ({ origen: ORIGEN_ESTIMADA, ...o })));
   const porId = new Map(proyectos.map((p) => [`p${p.id}`, p]));
   const indice = indiceClientes(clientes);
@@ -185,7 +186,7 @@ export function planEstimadas({ proyectos = [], fechas = {}, valores = new Map()
       proyecto_id: Number(p.id), centro_costo: centro(p.division) || null,
       neto: valor, iva: 0, otros_impuestos: 0, total: valor, total_ars: valor, moneda: "ARS", tipo_cambio: null,
       cuenta_debe: cuentas.deudores, cuenta_haber: cuentas.entregas,
-      descripcion: `Entrega estimada ${ot} (sin precio en el Plan: materiales ÷ 0,3)`.slice(0, 500), referencia: `OT ${txt(p.ot, 100)}`,
+      descripcion: `Entrega estimada ${ot} (sin precio en el Plan: materiales ÷ ${String(Math.round(factor * 1000) / 1000).replace(".", ",")})`.slice(0, 500), referencia: `OT ${txt(p.ot, 100)}`,
       origen: ORIGEN_ESTIMADA, origen_id: id, estado: "para_revisar",
     });
   }

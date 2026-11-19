@@ -17,6 +17,7 @@
 // Las operaciones anuladas y las "para revisar" no cuentan (se avisa cuántas
 // hay en el período).
 import { estadoResultados } from "./finanzasResultados";
+import { textoPctEstimado } from "./finanzasOtClientes";
 import { flujoReal, cajasPorMoneda, deltaCaja, lunesDe } from "./finanzasFlujo";
 import { saldosTesoreria, totalesTesoreria, NOMBRE_GRUPO, ORDEN_TIPOS } from "./finanzasTesoreria";
 import { saldosClientes, cuentasDeudores } from "./finanzasClientes";
@@ -247,6 +248,7 @@ export function reporteFinanciero({
     },
     resultados, materiales_estimados: er.materiales_estimados, hay_entregas: er.hay_entregas,
     entregas_estimadas: { ot: er.entregas_estimadas || 0, total: estimadoTotal },
+    materiales_pct: materialesPct ?? null,
     flujo, fondos, total_fondos: totalFondos, valores,
     cuentas_a_cobrar: cuentasACobrar, cuentas_a_pagar: cuentasAPagar,
   };
@@ -432,8 +434,8 @@ ${r.para_revisar ? `<p class="aviso">⚠ Hay ${r.para_revisar} operaciones para 
 ${r.hay_entregas ? "" : '<p class="aviso">⚠ No hay entregas en el período.</p>'}
 ${resultados.length > 1 ? svgBarras(resultados) : ""}
 ${tablaResultados(r)}
-${r.materiales_estimados ? '<p class="nota">El costo de materiales es estimado (un % de las entregas).</p>' : ""}
-${r.entregas_estimadas?.ot ? `<p class="nota">Las entregas incluyen ${$(r.entregas_estimadas.total)} con valor estimado (renglón celeste): ${r.entregas_estimadas.ot} OT terminada${r.entregas_estimadas.ot === 1 ? "" : "s"} sin precio en el Plan, valorizada${r.entregas_estimadas.ot === 1 ? "" : "s"} por sus materiales (costo ÷ 0,3, igual que la cuenta corriente de clientes).</p>` : ""}
+${r.materiales_estimados ? `<p class="nota">El costo de materiales es estimado (${r.materiales_pct != null ? textoPctEstimado(r.materiales_pct) : "un %"} de las entregas).</p>` : ""}
+${r.entregas_estimadas?.ot ? `<p class="nota">Las entregas incluyen ${$(r.entregas_estimadas.total)} con valor estimado (renglón celeste): ${r.entregas_estimadas.ot} OT terminada${r.entregas_estimadas.ot === 1 ? "" : "s"} sin precio en el Plan, valorizada${r.entregas_estimadas.ot === 1 ? "" : "s"} por sus materiales (costo ÷ ${textoPctEstimado(r.materiales_pct)}, igual que la cuenta corriente de clientes).</p>` : ""}
 </section>
 
 <section class="s2">

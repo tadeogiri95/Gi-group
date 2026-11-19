@@ -1,6 +1,8 @@
 // /api/finanzas/resultados — Finanzas, parte F6a (migración 179): el estado
 // de resultados (reglas en app/lib/finanzasResultados.js).
 //
+//   GET ?solo=config → solo la configuración (el % de materiales, 30 % por
+//       defecto; uno solo para toda Finanzas desde el 19/11).
 //   GET ?hasta=AAAA-MM[&division=X] → los 12 meses que terminan en ese mes
 //       (por defecto, el mes en curso), ya calculados; con division, lo de esa
 //       división y su % de lo compartido. Trae el resumen por división.
@@ -11,7 +13,7 @@
 //       entregada (auditoría 12/11, parte 4); las demás entregas, el %.
 //
 // Entregas con valor estimado (13/11): las OT terminadas sin PRECIO en el
-// Plan valen materiales de sus necesidades ÷ 0,3, como en la cuenta corriente
+// Plan valen materiales de sus necesidades ÷ el % de materiales, como en la cuenta corriente
 // de clientes. El mes: el día que la sync de ventas la vio terminada
 // (config_sistema "finanzas_entregas_estimadas") o, si no la anotó (cargada
 // antes del "desde"), su fecha de entrega del Plan o, si ENTREGA no es una
@@ -64,6 +66,8 @@ export async function GET(request) {
   if (response) return response;
   const e = sesion.empresa_id;
   const q = new URL(request.url).searchParams;
+  // 19/11 (punto 9): solo el % de materiales, para Finanzas → Configuración
+  if (q.get("solo") === "config") return NextResponse.json({ config: await leerConfig(e) });
   const pedido = q.get("hasta");
   const hasta = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(pedido || "")) ? pedido : hoyAr().slice(0, 7);
   const meses = mesesHasta(hasta);

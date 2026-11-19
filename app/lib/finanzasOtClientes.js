@@ -4,7 +4,8 @@
 // Es una vista de gestión (no crea asientos): cada OT del cliente es un
 // renglón con su valor, y se restan todos los cobros.
 //   - Valor = el presupuesto (PRECIO del Plan, sin IVA). Si no tiene, costo de
-//     materiales ÷ 0,3, marcado como estimado. El costo de materiales sale de
+//     materiales ÷ el % de materiales (30 % por defecto, Finanzas →
+//     Configuración), marcado como estimado. El costo de materiales sale de
 //     las necesidades de la OT con el precio de cada artículo, igual que el
 //     Costo de la OT (precio fijo de la OT o el elegido por fecha).
 //   - Cobros = todo lo que baja lo que nos debe (efectivo, transferencia,
@@ -17,6 +18,19 @@ import { claveCliente, clienteDeOt, efectoCliente, indiceClientes } from "./fina
 import { elegirPrecio, fechaCargaOt } from "./costoMateriales";
 
 export const FACTOR_ESTIMADO = 0.3;
+
+/**
+ * El factor de las OT sin precio a partir del % de materiales de Finanzas →
+ * Configuración (19/11, punto 9: un solo %). Con 0 (el estado de resultados
+ * usa las cuentas) o un valor raro, el 30 % de siempre.
+ */
+export function factorDePct(pct) {
+  const n = Number(pct);
+  return Number.isFinite(n) && n > 0 && n <= 100 ? n / 100 : FACTOR_ESTIMADO;
+}
+
+/** "30 %" o "27,5 %": el % con que se valorizan las OT sin precio. */
+export const textoPctEstimado = (pct) => `${String(Math.round(factorDePct(pct) * 1000) / 10).replace(".", ",")} %`;
 export const IVA_OT = 0.21;
 
 const centavos = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -43,12 +57,12 @@ export function materialesOt({ necesidades = [], fijos = new Map(), precios = ne
   return { total: centavos(total), sinPrecio, articulos };
 }
 
-/** Valor de la OT: el presupuesto, o materiales ÷ 0,3 (estimado), o nada. */
-export function valorOt(precio, materiales) {
+/** Valor de la OT: el presupuesto, o materiales ÷ factor (estimado), o nada. */
+export function valorOt(precio, materiales, factor = FACTOR_ESTIMADO) {
   const p = Number(precio) || 0;
   if (p > 0) return { valor: centavos(p), estimado: false };
   const m = Number(materiales?.total) || 0;
-  if (m > 0) return { valor: centavos(m / FACTOR_ESTIMADO), estimado: true };
+  if (m > 0) return { valor: centavos(m / (factor > 0 ? factor : FACTOR_ESTIMADO)), estimado: true };
   return { valor: 0, estimado: false, sin_valor: true };
 }
 
@@ -56,7 +70,7 @@ export function valorOt(precio, materiales) {
  * Las OT y los cobros de cada cliente (sin recortar por fecha).
  * @returns {{ clave, cliente_id, nombre, ots: object[], cobros: object[] }[]}
  */
-export function cuentasPorOt({ proyectos = [], precios = new Map(), materiales = new Map(), ops = [], cuentasDeu, clientes = [] }) {
+export function cuentasPorOt({ proyectos = [], precios = new Map(), materiales = new Map(), ops = [], cuentasDeu, clientes = [], factor = FACTOR_ESTIMADO }) {
   const indice = indiceClientes(clientes);
   const nombreDe = new Map(clientes.map((c) => [Number(c.id), c.nombre]));
   const por = new Map();
@@ -71,7 +85,7 @@ export function cuentasPorOt({ proyectos = [], precios = new Map(), materiales =
     const id = clienteDeOt(p, clientes, indice);
     if (!k && !id) continue;
     const clave = id ? `c${id}` : `e${k}`;
-    const v = valorOt(precios.get(String(p.ot)), materiales.get(String(p.ot)));
+    const v = valorOt(precios.get(String(p.ot)), materiales.get(String(p.ot)), factor);
     const ot = {
       proyecto_id: Number(p.id), ot: String(p.ot), obra: p.obra || "", descripcion: p.descripcion || "", estado: p.estado || "",
       fecha: fechaCargaOt(p) || "", ...v, materiales: centavos(materiales.get(String(p.ot))?.total),

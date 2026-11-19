@@ -203,7 +203,7 @@ export function Detalle({ op, datos, nombres = SIN_NOMBRES, onCerrar, onAnulada,
         {op.estado === "para_revisar" && !op.anulada_at && (
           <p className="m-0 text-[13px] font-semibold text-gypi-amber-ink">
             {estimada
-              ? "Para revisar: la OT se terminó sin PRECIO en el Plan y Gypi estimó la entrega con sus materiales ÷ 0,3. Si el valor está bien, confirmala. Si no, ponele el precio en el Plan (esta se anula sola y va la venta de verdad) o anulala."
+              ? "Para revisar: la OT se terminó sin PRECIO en el Plan y Gypi estimó la entrega con sus materiales ÷ el % de materiales (Finanzas → Configuración). Si el valor está bien, confirmala. Si no, ponele el precio en el Plan (esta se anula sola y va la venta de verdad) o anulala."
               : deMantenimiento
               ? "Para revisar: Gypi lo pasó solo desde Mantenimiento. Mirá el tipo y el importe y confirmalo. Si tenía factura con IVA, anulalo: vuelve a aparecer en el aviso 🔧 de Flota y Maquinaria para cargarlo con la factura."
               : "Para revisar: el proveedor no tiene tipo de compra. Elegí el que corresponde."}
