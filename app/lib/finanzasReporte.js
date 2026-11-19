@@ -133,7 +133,7 @@ export function serieFlujo({ ops = [], cajas, desde, hasta, tramo, apertura = 0 
  */
 export function reporteFinanciero({
   tipo, fecha, hasta: hastaRango, ops = [], cuentas = [], tesoreria = [], proyectos = [], centros = [], lineas = {},
-  materialesPct, cheques = [], clientes = [], proveedores = [], hoy = "",
+  materialesPct, cheques = [], clientes = [], proveedores = [], hoy = "", entregasEstimadas = [],
 }) {
   const periodo = periodoReporte(tipo, fecha, hastaRango);
   if (!periodo) return null;
@@ -145,12 +145,22 @@ export function reporteFinanciero({
   const paraRevisar = vivas.filter((o) => o.estado === "para_revisar" && o.fecha >= desde && o.fecha <= hasta).length;
 
   // 1. Resultados: solo lo del período (el estado suma por mes; el total es el período)
-  const er = estadoResultados({ ops: enPeriodo, cuentas, proyectos, centros, hasta: hasta.slice(0, 7), materialesPct });
+  // Las OT terminadas sin precio en el Plan suman con su valor estimado por
+  // materiales, igual que en la pantalla del Estado de Resultados (18/11, pedido de Tadeo)
+  const estimadas = entregasEstimadas.filter((x) => String(x.fecha || "") >= desde && String(x.fecha || "") <= hasta);
+  const er = estadoResultados({ ops: enPeriodo, cuentas, proyectos, centros, hasta: hasta.slice(0, 7), materialesPct, entregasEstimadas: estimadas });
+  const estimadoTotal = centavos(er.filas.filter((f) => f.tipo === "linea" && f.entrega_estimada).reduce((s, f) => s + (Number(f.total) || 0), 0));
   const resultados = er.filas
     .filter((f) => ["seccion", "grupo", "resultado"].includes(f.tipo))
     .filter((f) => f.tipo !== "seccion" || !f.aparte || Math.abs(f.total) >= 0.01)
     .map((f) => ({ tipo: f.tipo, id: f.id, nombre: f.nombre, total: f.total, aparte: !!f.aparte, pct: er.filas.find((x) => x.id === `${f.id}_PCT`)?.total ?? null }))
     .filter((f) => f.tipo !== "grupo" || Math.abs(f.total) >= 0.01);
+  // Renglón celeste aparte, debajo de las entregas: cuánto de eso es estimado
+  if (Math.abs(estimadoTotal) >= 0.01) {
+    const i = resultados.findIndex((f) => f.tipo === "grupo" && f.id === "ING_ENT");
+    const fila = { tipo: "estimada", id: "ING_ENT_EST", nombre: "Entregas con valor estimado (OT sin precio en el Plan)", total: estimadoTotal, aparte: false, pct: null };
+    resultados.splice(i >= 0 ? i + 1 : resultados.findIndex((f) => f.id === "ING") + 1, 0, fila);
+  }
   const total = (id) => er.filas.find((f) => f.id === id)?.total || 0;
 
   // 2. Flujo: apertura = todo lo de antes; después, lo del período
@@ -236,6 +246,7 @@ export function reporteFinanciero({
       a_cobrar: centavos(cuentasACobrar.total + valores.a_cobrar.total), a_pagar: centavos(cuentasAPagar.total + valores.a_pagar.total),
     },
     resultados, materiales_estimados: er.materiales_estimados, hay_entregas: er.hay_entregas,
+    entregas_estimadas: { ot: er.entregas_estimadas || 0, total: estimadoTotal },
     flujo, fondos, total_fondos: totalFondos, valores,
     cuentas_a_cobrar: cuentasACobrar, cuentas_a_pagar: cuentasAPagar,
   };
@@ -319,7 +330,7 @@ const miniBarra = (v, max, color) => `<svg viewBox="0 0 100 8" preserveAspectRat
 
 function tablaResultados(r) {
   const filas = r.resultados.map((f) => {
-    const clase = f.tipo === "resultado" ? "res" : f.tipo === "seccion" ? `sec${f.aparte ? " aparte" : ""}` : "grp";
+    const clase = f.tipo === "resultado" ? "res" : f.tipo === "seccion" ? `sec${f.aparte ? " aparte" : ""}` : f.tipo === "estimada" ? "est" : "grp";
     return `<tr class="${clase}"><td>${esc(f.nombre)}</td><td class="n${f.total < 0 ? " rojo" : ""}">${$(f.total)}</td><td class="n pc">${f.tipo === "resultado" ? pct(f.pct) : ""}</td></tr>`;
   }).join("");
   return `<table><thead><tr><th>Concepto</th><th class="n">Importe</th><th class="n">% s/ ingresos</th></tr></thead><tbody>${filas}</tbody></table>`;
@@ -392,7 +403,7 @@ export function htmlReporte(r, { empresa = "" } = {}) {
   table{width:100%;border-collapse:collapse;margin-top:6px}td,th{padding:3px 6px;border-bottom:1px solid #e6e9ec;text-align:left;vertical-align:top}
   th{color:#555;font-weight:600}.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
   .sec td{font-weight:700;background:#f2f5f7}.grp td:first-child,.lin td:first-child{padding-left:16px}.det td{color:#555;font-size:11px}.det td:first-child{padding-left:30px}
-  .res td{font-weight:700;border-top:2px solid #1a1a1a}.aparte td{font-style:italic;font-weight:400;color:#555}.pc{color:#555}
+  .res td{font-weight:700;border-top:2px solid #1a1a1a}.est td{background:#e6f6fa;color:#0b5566}.est td:first-child{padding-left:30px}.aparte td{font-style:italic;font-weight:400;color:#555}.pc{color:#555}
   .rojo{color:#c62828}.verde{color:#15803d}.vencido td{color:#c62828}.vacio,.nota{color:#555;margin:2px 0}.aviso{color:#8a5a00;background:#fdf6e7;border-radius:6px;padding:6px 8px}
   .dos{display:grid;grid-template-columns:1fr 1fr;gap:16px}
   .graf{width:100%;height:auto;display:block;margin:6px 0 2px}
@@ -422,6 +433,7 @@ ${r.hay_entregas ? "" : '<p class="aviso">⚠ No hay entregas en el período.</p
 ${resultados.length > 1 ? svgBarras(resultados) : ""}
 ${tablaResultados(r)}
 ${r.materiales_estimados ? '<p class="nota">El costo de materiales es estimado (un % de las entregas).</p>' : ""}
+${r.entregas_estimadas?.ot ? `<p class="nota">Las entregas incluyen ${$(r.entregas_estimadas.total)} con valor estimado (renglón celeste): ${r.entregas_estimadas.ot} OT terminada${r.entregas_estimadas.ot === 1 ? "" : "s"} sin precio en el Plan, valorizada${r.entregas_estimadas.ot === 1 ? "" : "s"} por sus materiales (costo ÷ 0,3, igual que la cuenta corriente de clientes).</p>` : ""}
 </section>
 
 <section class="s2">
