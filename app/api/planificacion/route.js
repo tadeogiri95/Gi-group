@@ -67,7 +67,7 @@ export async function GET(request) {
         // Supabase corta cada respuesta en 1000 filas sin avisar: se trae todo en
         // tandas (Tadeo, 17/11: M-7877 no salía en el Gantt porque sus días
         // quedaban después de la fila 1000 y el plan llegaba cortado)
-        const { data: planes } = await sbGetAll(`planes_produccion?empresa_id=eq.${e}&estado=eq.confirmado&hasta=gte.${limite}&select=id,tipo,desde,hasta,division_id,dias_extra,confirmado_at&order=desde.asc,id.asc`, { sesion, maxFilas: 5000 });
+        const { data: planes } = await sbGetAll(`planes_produccion?empresa_id=eq.${e}&estado=eq.confirmado&hasta=gte.${limite}&select=id,tipo,desde,hasta,division_id,dias_extra,pendientes,confirmado_at&order=desde.asc,id.asc`, { sesion, maxFilas: 5000 });
         if (!planes.length) return json({ ok: true, planes: [] });
         const { data: items } = await sbGetAll(`plan_produccion_items?empresa_id=eq.${e}&plan_id=in.(${planes.map((p) => p.id).join(",")})&select=plan_id,ot,etapa,fecha,horas,orden&order=fecha.asc,orden.asc,id.asc`, { sesion, maxFilas: MAX_ITEMS });
         return json({ ok: true, planes: planes.map((p) => ({ ...p, items: items.filter((i) => i.plan_id === p.id) })) });
