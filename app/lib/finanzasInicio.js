@@ -12,7 +12,7 @@ export const GRUPOS_FINANZAS = [
   // tema contable. ➕ Cargar va arriba del Inicio. Cuenta por OT queda adentro
   // de Clientes y Cliente y proveedor adentro de Agenda (sus botones de siempre).
   { id: "pagar", titulo: "Pagar y cobrar", opciones: ["fin-pagos", "fin-cheques", "fin-sueldos"] },
-  { id: "saldos", titulo: "Saldos", opciones: ["fin-tesoreria", "fin-clientes", "fin-proveedores", "fin-inversiones", "fin-personas"] },
+  { id: "saldos", titulo: "Saldos", opciones: ["fin-tesoreria", "fin-cuentas", "fin-inversiones", "fin-personas"] },
   { id: "informes", titulo: "Informes", opciones: ["fin-resultados", "fin-patrimonio", "fin-flujo", "fin-reporte", "fin-mayor"] },
   { id: "cierre", titulo: "Cierre y ajustes", opciones: ["fin-devengamiento", "fin-cierre", "fin-libro", "fin-sos", "fin-config"] },
 ];
@@ -22,8 +22,7 @@ export const DETALLE_FINANZAS = {
   "fin-tesoreria": "Cajas y bancos con su saldo y todo lo que se cargó; cargar, corregir o anular",
   "fin-pagos": "Órdenes de pago: armar, aprobar y pagar",
   "fin-cheques": "Cheques y e-cheq propios y de terceros",
-  "fin-proveedores": "Cuánto se le debe a cada uno",
-  "fin-clientes": "Cuánto nos debe cada uno, cobros y la cuenta por OT",
+  "fin-cuentas": "Clientes y proveedores juntos: cuánto nos debe y cuánto le debemos a cada uno",
   "fin-sueldos": "Liquidar y pagar sueldos",
   "fin-personas": "Clientes, proveedores y empleados, cada uno una vez; quién es cliente y proveedor",
   "fin-mayor": "Movimientos y saldo de cada cuenta contable; asientos de registro y de ajuste",

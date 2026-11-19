@@ -158,7 +158,7 @@ export function Cobrar({ datos, cliente, proyectoId = "", cajaInicial = "", onCe
 
 /* ─── Datos de un cliente ────────────────────────────────────────────── */
 
-function DatosCliente({ cliente, onCerrar, onGuardado }) {
+export function DatosCliente({ cliente, onCerrar, onGuardado }) {
   const nuevo = !cliente?.id;
   const [f, setF] = useState({ nombre: cliente?.nombre || "", cuit: cliente?.cuit || "", telefono: cliente?.telefono || "", email: cliente?.email || "", notas: cliente?.notas || "", alias: (cliente?.alias || []).join("\n") });
   const [error, setError] = useState(null);
@@ -246,7 +246,7 @@ export function textoResultadoVentas(r) {
   return partes.length ? `Ventas y entregas: ${partes.join(", ")}` : "Las ventas y entregas de las OT ya estaban al día";
 }
 
-function VentasOt({ config, onCerrar, onHecho }) {
+export function VentasOt({ config, onCerrar, onHecho }) {
   const toast = useToast();
   const [activo, setActivo] = useState(Boolean(config?.activo || !config?.desde));
   const [desde, setDesde] = useState(config?.desde || hoyAr());
@@ -290,7 +290,7 @@ function VentasOt({ config, onCerrar, onHecho }) {
 
 /* ─── Ficha ──────────────────────────────────────────────────────────── */
 
-function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
+export function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
   const toast = useToast();
   const [vista, setVista] = useState("deuda");
   const [modal, setModal] = useState(null);
@@ -413,7 +413,7 @@ function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
 
 /* ─── Saldos iniciales ───────────────────────────────────────────────── */
 
-function SaldosIniciales({ datos, cuentasDeu, onCerrar, onCargados }) {
+export function SaldosIniciales({ datos, cuentasDeu, onCerrar, onCargados }) {
   const toast = useToast();
   const [grilla, setGrilla] = useState(null);
   const [fecha, setFecha] = useState(hoyAr());

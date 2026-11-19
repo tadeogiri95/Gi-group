@@ -51,7 +51,7 @@ async function leerOperacionesDelLibro(file) {
 
 /* ─── Saldos iniciales ───────────────────────────────────────────────── */
 
-function SaldosIniciales({ datos, cuentasProv, onCerrar, onCargados }) {
+export function SaldosIniciales({ datos, cuentasProv, onCerrar, onCargados }) {
   const toast = useToast();
   const [grilla, setGrilla] = useState(null);
   const [fecha, setFecha] = useState(hoyAr());
@@ -193,7 +193,7 @@ function SelectCuenta({ value, onChange, opciones, label }) {
   );
 }
 
-function CuentasDeProveedores({ datos, cuentasProv, aprendidas, onCerrar, onGuardadas }) {
+export function CuentasDeProveedores({ datos, cuentasProv, aprendidas, onCerrar, onGuardadas }) {
   const toast = useToast();
   const guardadas = datos.cuentas_guardadas || {};
   const opciones = useMemo(() => opcionesCuenta(datos, cuentasProv), [datos, cuentasProv]);
@@ -330,7 +330,7 @@ function CompraManual({ clase, saldo, datos, cuentasProv, cuenta, onCerrar, onCa
 
 /* ─── Ficha de un proveedor ──────────────────────────────────────────── */
 
-function Ficha({ saldo, datos, cuentasProv, aprendidas, onCerrar, onCargada }) {
+export function Ficha({ saldo, datos, cuentasProv, aprendidas, onCerrar, onCargada }) {
   const [vista, setVista] = useState("pendientes");
   const [manual, setManual] = useState(null);
   const [ajuste, setAjuste] = useState(false);

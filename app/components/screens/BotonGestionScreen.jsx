@@ -26,10 +26,9 @@ import MaquinariaScreen from "../MaquinariaScreen";
 import PlanificacionScreen from "../PlanificacionScreen";
 import MinutaScreen from "../MinutaScreen";
 import FinanzasConfig from "../FinanzasConfig";
-import FinanzasProveedores from "../FinanzasProveedores";
 import FinanzasCheques from "../FinanzasCheques";
 import FinanzasTesoreria from "../FinanzasTesoreria";
-import FinanzasClientes from "../FinanzasClientes";
+import FinanzasCuentasCorrientes from "../FinanzasCuentasCorrientes";
 import FinanzasSueldos from "../FinanzasSueldos";
 import FinanzasResultados from "../FinanzasResultados";
 import FinanzasPatrimonio from "../FinanzasPatrimonio";
@@ -54,7 +53,7 @@ export function pestanasCelular(boton, opciones, actualId) {
   if (boton !== "finanzas") return opciones;
   if (actualId === "fin-inicio") return [];
   // Las que no tienen renglón propio (19/11) muestran las pestañas de donde se abren
-  const deGrupo = { "fin-cuenta-ot": "fin-clientes", "fin-unificados": "fin-personas" }[actualId] || actualId;
+  const deGrupo = { "fin-cuenta-ot": "fin-cuentas", "fin-unificados": "fin-personas" }[actualId] || actualId;
   const grupo = GRUPOS_FINANZAS.find((g) => g.opciones.includes(deGrupo));
   if (!grupo) return opciones.filter((o) => o.enMenu !== false);
   return opciones.filter((o) => o.id === "fin-inicio" || o.id === actualId || grupo.opciones.includes(o.id));
@@ -65,7 +64,8 @@ const ReportesScreen = dynamic(() => import("../../reportes_screen"), { ssr: fal
 // Nombres viejos o con un pedido extra que abren una pestaña: Movimientos quedó
 // dentro de 💰 Tesorería (13/11) y el Panel de control abre Flota o Maquinaria
 // directo en 🔔 Alertas.
-const ALIAS = { "fin-movimientos": "fin-tesoreria", "flota-alertas": "flota", "maquinaria-alertas": "maquinaria" };
+// Clientes y Proveedores quedaron juntos en 📒 Cuentas corrientes (19/11).
+const ALIAS = { "fin-clientes": "fin-cuentas", "fin-proveedores": "fin-cuentas", "fin-movimientos": "fin-tesoreria", "flota-alertas": "flota", "maquinaria-alertas": "maquinaria" };
 
 export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlanes, seccion = null, onSeccion = null, onIr = null }) {
   const OPCIONES = opcionesBoton(boton, empresa, usuario);
@@ -117,10 +117,9 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {!bloqueado && actual.id === "minuta" && <MinutaScreen empresa={empresa} />}
         {!bloqueado && actual.id === "reportes" && <ReportesScreen grupo="produccion" />}
         {!bloqueado && actual.id === "fin-inicio" && <FinanzasInicio opciones={OPCIONES} onIr={(id) => (onIr ? onIr(id.includes(":") ? id : `${boton}:${id}`) : setOpcion(id))} />}
-        {!bloqueado && actual.id === "fin-proveedores" && <FinanzasProveedores />}
         {!bloqueado && actual.id === "fin-cheques" && <FinanzasCheques />}
         {!bloqueado && actual.id === "fin-tesoreria" && <FinanzasTesoreria onIr={setOpcion} />}
-        {!bloqueado && actual.id === "fin-clientes" && <FinanzasClientes />}
+        {!bloqueado && actual.id === "fin-cuentas" && <FinanzasCuentasCorrientes seccion={seccion} />}
         {!bloqueado && actual.id === "fin-sueldos" && <FinanzasSueldos />}
         {!bloqueado && actual.id === "fin-resultados" && <FinanzasResultados />}
         {!bloqueado && actual.id === "fin-patrimonio" && <FinanzasPatrimonio />}
