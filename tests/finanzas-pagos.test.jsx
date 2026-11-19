@@ -9,6 +9,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/re
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
   validarOrden, generarPago, textoForma, accionesOrden, datosParaCfo, textoWhatsappCfo, htmlOrdenPago, cuentasParaPagar,
+  movimientosParaUnir, cambioAlUnir,
 } from "../app/lib/finanzasPagos.js";
 import { slugReservado } from "../app/lib/slugs.js";
 
@@ -129,7 +130,7 @@ const pedir = async (rol, metodo, body, query = "") => api[metodo](new Request(`
   method: metodo, headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token(rol)}` }, ...(body ? { body: JSON.stringify(body) } : {}),
 }));
 
-function mockApi({ ordenes = [], cheques = [CARTERA], sin175 = false } = {}) {
+function mockApi({ ordenes = [], cheques = [CARTERA], sin175 = false, enBanco = [] } = {}) {
   const escrito = [];
   let opId = 70;
   global.fetch = createFetchMock([
@@ -174,7 +175,14 @@ function mockApi({ ordenes = [], cheques = [CARTERA], sin175 = false } = {}) {
     {
       match: (u) => u.includes("/rest/v1/fin_operaciones"),
       respond: (u, o) => {
+        // Lo que ya está en las cajas y bancos (el extracto)
+        if (!o?.method || o.method === "GET") return { status: 200, body: enBanco };
         const body = o?.body ? JSON.parse(o.body) : null;
+        if (o.method === "PATCH") {
+          escrito.push({ tabla: "fin_operaciones", url: u, metodo: "PATCH", body });
+          const ya = enBanco.find((x) => u.includes(`id=eq.${x.id}&`));
+          return { status: 200, body: [{ ...(ya || { id: Number(u.match(/id=eq\.(\d+)/)?.[1]) }), ...body }] };
+        }
         escrito.push({ tabla: "fin_operaciones", url: u, metodo: o?.method || "GET", body });
         const lista = Array.isArray(body) ? body : [body];
         return { status: 201, body: lista.map((b) => ({ id: opId++, ...b })) };
@@ -323,4 +331,101 @@ test("pantalla — una orden sin mandar al CFO ya se puede pagar (💸 Registrar
   await waitFor(() => assert.equal(enviados.length, 1));
   assert.deepEqual([enviados[0].accion, enviados[0].id], ["pagar", 9]);
   assert.equal(screen.queryByText(/Aprobar|aprobad/), null);
+});
+
+// ─── 19/11: la orden se une con lo que ya trajo el extracto ───
+
+const BANCO = "01.01.01.003.002";
+const SALIDA = (id, extra = {}) => ({ id, fecha: "2026-11-11", tipo: "TRANSFERENCIA", total: 200000, total_ars: 200000, cuenta_debe: "05.09.09.001.001", cuenta_haber: BANCO, proveedor_id: null, entidad: "", referencia: null, descripcion: "TRANSF. EGGER", origen: "banco", ...extra });
+
+test("movimientosParaUnir — uno solo se une solo; varios se preguntan; no otro proveedor, otra orden ni lejos", () => {
+  const pago = { fecha: "2026-11-10", total: 200000, total_ars: 200000, cuenta_haber: BANCO };
+  const uno = movimientosParaUnir([pago], [SALIDA(1)], { proveedorId: 5 });
+  assert.equal(uno.unir.get(0)?.id, 1);
+  assert.equal(uno.dudas.length, 0);
+  const fuera = [
+    SALIDA(2, { proveedor_id: 8 }), SALIDA(3, { referencia: "OP 2" }), SALIDA(4, { fecha: "2026-11-20" }),
+    SALIDA(5, { total: 200000.5, total_ars: 200000.5 }), SALIDA(6, { cuenta_haber: "01.01.01.001.001.01" }), SALIDA(7, { origen: "plazo_fijo" }),
+    SALIDA(8, { anulada_at: "2026-11-12" }), SALIDA(9, { cuenta_haber: "05.01", cuenta_debe: BANCO }),
+  ];
+  const nada = movimientosParaUnir([pago], fuera, { proveedorId: 5 });
+  assert.deepEqual([nada.unir.size, nada.dudas.length], [0, 0]);
+  const varios = movimientosParaUnir([pago], [SALIDA(1), SALIDA(2, { fecha: "2026-11-09" })], { proveedorId: 5 });
+  assert.equal(varios.unir.size, 0);
+  assert.deepEqual(varios.dudas[0].opciones.map((o) => o.id), [1, 2]);
+  assert.equal(movimientosParaUnir([pago], [SALIDA(1), SALIDA(2)], { proveedorId: 5, elegidas: { 0: 2 } }).unir.get(0).id, 2);
+  assert.equal(movimientosParaUnir([pago], [SALIDA(1), SALIDA(2)], { proveedorId: 5, elegidas: { 0: "nueva" } }).unir.size, 0);
+  const dos = movimientosParaUnir([pago, pago], [SALIDA(1)], { proveedorId: 5 });
+  assert.deepEqual([dos.unir.size, dos.unir.has(0)], [1, true], "un movimiento sirve para un solo pago");
+});
+
+test("cambioAlUnir — queda contra Proveedores con el proveedor y la orden; guarda cómo estaba", () => {
+  const { orden } = validarOrden({ proveedor_id: 5, fecha: "2026-11-09", formas: FORMAS }, CTX);
+  const pago = generarPago({ ...ORDEN, ...orden }, CTX, "2026-11-10").operaciones[1];
+  const c = cambioAlUnir(SALIDA(1), pago);
+  assert.deepEqual([c.cambios.cuenta_debe, c.cambios.proveedor_id, c.cambios.referencia, c.cambios.tipo], ["02.01.02.001.001", 5, "OP 4", "PAGO A PROVEEDORES"]);
+  assert.match(c.cambios.descripcion, /Orden de pago N° 4 .* · TRANSF\. EGGER/);
+  assert.deepEqual(c.antes, { tipo: "TRANSFERENCIA", cuenta_debe: "05.09.09.001.001", proveedor_id: null, entidad: "", referencia: null, descripcion: "TRANSF. EGGER" });
+});
+
+test("/api/finanzas/pagos — pagar se une con el extracto; con varios pregunta; anular lo deja como estaba", async () => {
+  const { orden } = validarOrden({ proveedor_id: 5, fecha: "2026-11-09", formas: FORMAS }, CTX);
+  const libre = { ...ORDEN, ...orden, estado: "borrador", token: null };
+  const { escrito } = mockApi({ ordenes: [libre], enBanco: [SALIDA(1)] });
+  const res = await pedir("gerencial", "POST", { accion: "pagar", id: 9, fecha: "2026-11-10" });
+  assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
+  const d = await res.json();
+  assert.equal(d.unidas, 1);
+  const nuevas = escrito.filter((x) => x.tabla === "fin_operaciones" && x.metodo === "POST").flatMap((x) => (Array.isArray(x.body) ? x.body : [x.body]));
+  assert.equal(nuevas.some((o) => o.origen_id === "9:1"), false, "la transferencia no se carga otra vez");
+  assert.equal(nuevas.some((o) => o.origen_id === "9:0"), true, "el efectivo sí");
+  const union = escrito.find((x) => x.tabla === "fin_operaciones" && x.metodo === "PATCH");
+  assert.match(union.url, /id=eq\.1&/);
+  assert.deepEqual([union.body.cuenta_debe, union.body.proveedor_id], ["02.01.02.001.001", 5]);
+  assert.deepEqual(d.generado.unidas.map((u) => [u.id, u.antes.cuenta_debe]), [[1, "05.09.09.001.001"]]);
+
+  const varios = mockApi({ ordenes: [libre], enBanco: [SALIDA(1), SALIDA(2, { fecha: "2026-11-12" })] });
+  const r2 = await pedir("gerencial", "POST", { accion: "pagar", id: 9, fecha: "2026-11-10" });
+  assert.equal(r2.status, 409);
+  const j2 = await r2.json();
+  assert.deepEqual(j2.elegir.map((x) => [x.i, x.opciones.map((o) => o.id)]), [[1, [1, 2]]]);
+  assert.equal(varios.escrito.length, 0, "no se tocó nada");
+  const r3 = await pedir("gerencial", "POST", { accion: "pagar", id: 9, fecha: "2026-11-10", unir: { 1: 2 } });
+  assert.equal(r3.status, 200);
+  assert.ok(varios.escrito.some((x) => x.metodo === "PATCH" && x.tabla === "fin_operaciones" && x.url.includes("id=eq.2&")));
+
+  const pagada = { ...ORDEN, estado: "pagada", generado: { operaciones: [70], cheques_emitidos: [], cheques_entregados: [], unidas: [{ id: 1, antes: { tipo: "TRANSFERENCIA", cuenta_debe: "05.09.09.001.001", proveedor_id: null, entidad: "", referencia: null, descripcion: "TRANSF. EGGER" } }] } };
+  const an = mockApi({ ordenes: [pagada], cheques: [] });
+  assert.equal((await pedir("gerencial", "POST", { accion: "anular", id: 9 })).status, 200);
+  const patches = an.escrito.filter((x) => x.tabla === "fin_operaciones" && x.metodo === "PATCH");
+  assert.ok(patches.some((x) => x.url.includes("id=eq.70&") && x.body.anulada_at), "lo que cargó la orden se anula");
+  const vuelta = patches.find((x) => x.url.includes("id=eq.1&"));
+  assert.equal(vuelta.body.anulada_at, undefined, "el renglón del banco no se anula");
+  assert.deepEqual([vuelta.body.cuenta_debe, vuelta.body.descripcion], ["05.09.09.001.001", "TRANSF. EGGER"]);
+});
+
+test("pantalla — si hay varios movimientos del banco, se elige cuál es el pago", async () => {
+  const datos = {
+    tesoreria: TESORERIA, proveedores: PROVEEDORES, cheques: [], empresa: { nombre: "Gi" }, cfo: { nombre: "Juan", telefono: "" }, links: {},
+    ordenes: [{ ...ORDEN, estado: "borrador", formas: [{ forma: "transferencia", importe: 200000, cuenta: BANCO, cuenta_nombre: "Banco Credicoop CTA CTE" }] }],
+  };
+  const enviados = [];
+  global.fetch = async (url, o = {}) => {
+    if (o.method === "POST") {
+      const b = JSON.parse(o.body);
+      enviados.push(b);
+      if (!b.unir) return new Response(JSON.stringify({ error: "Hay más de un movimiento", elegir: [{ i: 0, importe: 200000, opciones: [{ id: 1, fecha: "2026-11-11", tipo: "TRANSFERENCIA", descripcion: "TRANSF. EGGER" }, { id: 2, fecha: "2026-11-12", tipo: "TRANSFERENCIA", descripcion: "TRANSF. OTRA" }] }] }), { status: 409 });
+      return new Response(JSON.stringify({ ok: true, unidas: 1, orden: { ...ORDEN, estado: "pagada" } }), { status: 200 });
+    }
+    return new Response(JSON.stringify(datos), { status: 200 });
+  };
+  render(<FinanzasPagos />);
+  fireEvent.click(await screen.findByText("EGGER ARGENTINA"));
+  fireEvent.click(await screen.findByRole("button", { name: "💸 Registrar pago" }));
+  const grupo = await screen.findByRole("group", { name: "Qué movimiento del banco es este pago" });
+  assert.match(grupo.textContent, /TRANSF\. OTRA/);
+  fireEvent.click(screen.getByLabelText(/TRANSF\. OTRA/));
+  fireEvent.click(screen.getByRole("button", { name: "💸 Registrar pago" }));
+  await waitFor(() => assert.equal(enviados.length, 2));
+  assert.deepEqual(enviados[1].unir, { 0: "2" });
 });

@@ -36,7 +36,7 @@ const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 async function postPagos(body) {
   const res = await apiFetch("/api/finanzas/pagos", { method: "POST", body: JSON.stringify(body) });
   const d = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(d.error || "No se pudo guardar");
+  if (!res.ok) throw Object.assign(new Error(d.error || "No se pudo guardar"), { datos: d });
   return d;
 }
 
@@ -239,6 +239,9 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
   const [haciendo, setHaciendo] = useState(null);
   const [confirmarAnular, setConfirmarAnular] = useState(false);
   const [error, setError] = useState(null);
+  // 19/11: varios movimientos del banco pueden ser este pago → cuál es
+  const [elegir, setElegir] = useState(null);
+  const [unir, setUnir] = useState({});
   const est = ESTADOS_ORDEN[orden.estado] || { nombre: orden.estado, icono: "" };
   const acciones = accionesOrden(orden.estado);
 
@@ -248,10 +251,19 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
     try {
       const d = await postPagos({ accion, id: orden.id, ...extra });
       if (accion === "mandar" && d.url) mandarWhatsapp(d.orden, d.url, datos);
-      toast.success({ mandar: "Abrimos WhatsApp con el link para el CFO", pagar: "Pago registrado: se generaron las operaciones y los cheques", anular: "Orden anulada", comprobante: extra.url ? "Comprobante guardado" : "Comprobante quitado" }[accion]);
+      const pago = d.unidas
+        ? `Pago registrado. ${d.unidas === 1 ? "Se unió con el movimiento que ya estaba en el banco" : `Se unió con ${d.unidas} movimientos que ya estaban en el banco`}: no quedó repetido`
+        : "Pago registrado: se generaron las operaciones y los cheques";
+      toast.success({ mandar: "Abrimos WhatsApp con el link para el CFO", pagar: pago, anular: "Orden anulada", comprobante: extra.url ? "Comprobante guardado" : "Comprobante quitado" }[accion]);
+      setElegir(null);
       onCambio();
     } catch (e) {
-      setError(e.message);
+      if (accion === "pagar" && Array.isArray(e.datos?.elegir)) {
+        setElegir(e.datos.elegir);
+        setUnir(Object.fromEntries(e.datos.elegir.map((x) => [String(x.i), String(x.opciones[0]?.id ?? "nueva")])));
+      } else {
+        setError(e.message);
+      }
     } finally {
       setHaciendo(null);
     }
@@ -311,9 +323,29 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
         {acciones.includes("pagar") && (
           <div className="flex flex-wrap items-end gap-2 p-2 rounded-lg border border-gypi-border">
             {campo("Fecha del pago", <input type="date" className="g-input" aria-label="Fecha del pago" value={fecha} onChange={(e) => e.target.value && setFecha(e.target.value)} />)}
-            <button type="button" className="g-btn g-btn-primary flex-1" disabled={!!haciendo} onClick={() => hacer("pagar", { fecha })}>
+            <button type="button" className="g-btn g-btn-primary flex-1" disabled={!!haciendo} onClick={() => hacer("pagar", { fecha, ...(elegir ? { unir } : {}) })}>
               {haciendo === "pagar" ? "Registrando…" : "💸 Registrar pago"}
             </button>
+            {elegir && (
+              <div role="group" aria-label="Qué movimiento del banco es este pago" className="basis-full flex flex-col gap-2 p-2 rounded-lg bg-gypi-amber/10 border border-gypi-amber/40 text-[13px]">
+                <p className="m-0">Este pago ya puede estar en el banco (por ejemplo, del extracto). Elegí cuál es, así no queda repetido, y apretá de nuevo 💸 Registrar pago.</p>
+                {elegir.map((x) => (
+                  <fieldset key={x.i} className="m-0 p-0 border-0 flex flex-col gap-1">
+                    <legend className="font-semibold">{textoForma(orden.formas?.[x.i] || {})} · {plata(x.importe, "ARS")}</legend>
+                    {x.opciones.map((o) => (
+                      <label key={o.id} className="flex items-start gap-2">
+                        <input type="radio" name={`unir-${x.i}`} checked={unir[String(x.i)] === String(o.id)} onChange={() => setUnir((u) => ({ ...u, [String(x.i)]: String(o.id) }))} />
+                        <span>{fechaCorta(o.fecha)} · {[o.tipo, o.entidad || o.descripcion].filter(Boolean).join(" · ")}</span>
+                      </label>
+                    ))}
+                    <label className="flex items-start gap-2">
+                      <input type="radio" name={`unir-${x.i}`} checked={unir[String(x.i)] === "nueva"} onChange={() => setUnir((u) => ({ ...u, [String(x.i)]: "nueva" }))} />
+                      <span>Ninguno: es otro pago, cargarlo nuevo</span>
+                    </label>
+                  </fieldset>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
@@ -321,7 +353,7 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
           <div className="flex flex-col gap-2 p-2 rounded-lg border border-gypi-red">
             <p className="m-0 text-[13px]">
               {orden.estado === "pagada"
-                ? "¿Anular la orden pagada? Se anulan sus operaciones, los e-cheq que emitió y los cheques de terceros vuelven a la cartera."
+                ? "¿Anular la orden pagada? Se anulan sus operaciones, los e-cheq que emitió y los cheques de terceros vuelven a la cartera. Lo que se unió con el extracto del banco queda como estaba antes."
                 : "¿Anular la orden? El link del CFO deja de servir."}
             </p>
             <div className="flex gap-2">

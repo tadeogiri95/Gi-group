@@ -19,6 +19,11 @@
 //     (Proveedores contra la caja o el banco); el e-cheq es un cheque propio
 //     nuevo (con su "PAGO A PROVEEDORES"); el cheque de terceros pasa a
 //     entregado (con su operación), como en Finanzas → Cheques.
+//   - 19/11 (Tadeo: la orden de pago quedaba repetida con el extracto): si
+//     el extracto del banco (o una carga anterior) ya tiene la salida de esa
+//     caja o banco por el mismo importe y con fecha cerca, la orden se une a
+//     ese movimiento en vez de cargar otro. Uno solo → se une solo; varios →
+//     se pregunta cuál. Al anular la orden, el movimiento vuelve a como estaba.
 import { BANCO_ECHEQ, cuentaBancoDe, cuentasCheques } from "./finanzasCheques";
 import { plata } from "./finanzasOperaciones";
 
@@ -272,4 +277,72 @@ export function imprimirOrdenPago(datos) {
   ventana.document.close();
   ventana.focus();
   setTimeout(() => ventana.print(), 600);
+}
+
+/* ─── Unir con lo que ya trajo el extracto (19/11) ───────────────────── */
+
+/** Días de diferencia entre la fecha del pago y el movimiento del banco. */
+export const DIAS_UNIR = 5;
+/** De dónde puede venir el movimiento que ya está (no de otra orden, cheque ni plazo fijo). */
+const ORIGENES_UNIBLES = new Set(["banco", "libro", "manual", null, undefined, ""]);
+const diasEntre = (a, b) => Math.abs(Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86400000;
+
+/** Lo que se muestra de un movimiento para elegir (sin datos de más). */
+export function opcionUnir(o) {
+  return { id: o.id, fecha: o.fecha, tipo: o.tipo || "", descripcion: txt(o.descripcion, 160), entidad: o.entidad || "", origen: o.origen || "manual", total: centavos(o.total_ars ?? o.total) };
+}
+
+/**
+ * Para cada pago en efectivo o transferencia de la orden, los movimientos que
+ * ya están: salen de la misma caja o banco, por el mismo importe (al centavo),
+ * con hasta DIAS_UNIR días de diferencia, sin ser de otro proveedor ni de otra
+ * orden de pago. Un movimiento sirve para un solo pago.
+ * @param {object[]} operaciones las de generarPago
+ * @param {object[]} existentes las de la base (de esas cajas y fechas)
+ * @param {{ proveedorId?: number|null, elegidas?: Record<string, number|"nueva"> }} [opts]
+ *   elegidas = lo que eligió el usuario para cada pago con varias opciones
+ * @returns {{ unir: Map<number, object>, dudas: { i: number, importe: number, cuenta: string, opciones: object[] }[] }}
+ */
+export function movimientosParaUnir(operaciones = [], existentes = [], { proveedorId = null, elegidas = {} } = {}) {
+  const usadas = new Set();
+  const unir = new Map();
+  const dudas = [];
+  const vivas = existentes.filter((o) => !o.anulada_at && ORIGENES_UNIBLES.has(o.origen)
+    && !/^OP \d+/.test(String(o.referencia || ""))
+    && (!o.proveedor_id || !proveedorId || Number(o.proveedor_id) === Number(proveedorId)));
+  operaciones.forEach((op, i) => {
+    const importe = centavos(op.total_ars ?? op.total);
+    const opciones = vivas
+      .filter((o) => !usadas.has(o.id) && o.cuenta_haber === op.cuenta_haber && Math.abs(centavos(o.total_ars ?? o.total) - importe) < 0.01 && diasEntre(o.fecha, op.fecha) <= DIAS_UNIR)
+      .sort((a, b) => diasEntre(a.fecha, op.fecha) - diasEntre(b.fecha, op.fecha) || a.id - b.id);
+    if (!opciones.length) return;
+    const clave = String(i);
+    const eleccion = Object.prototype.hasOwnProperty.call(elegidas, clave) ? elegidas[clave] : undefined;
+    if (eleccion === "nueva") return;
+    const elegida = opciones.length === 1 ? opciones[0] : opciones.find((o) => Number(o.id) === Number(eleccion));
+    if (elegida) {
+      usadas.add(elegida.id);
+      unir.set(i, elegida);
+    } else {
+      dudas.push({ i, importe, cuenta: op.cuenta_haber, opciones: opciones.slice(0, 5).map(opcionUnir) });
+    }
+  });
+  return { unir, dudas };
+}
+
+/**
+ * Cómo queda el movimiento del banco al unirlo con el pago: contra
+ * Proveedores, con el proveedor y la referencia de la orden. "antes" guarda
+ * lo que tenía, para dejarlo igual si se anula la orden.
+ */
+export function cambioAlUnir(existente, pago) {
+  const campos = ["tipo", "cuenta_debe", "proveedor_id", "entidad", "referencia", "descripcion"];
+  const antes = Object.fromEntries(campos.map((k) => [k, existente[k] ?? null]));
+  const desc = String(existente.descripcion || "").trim();
+  const cambios = {
+    tipo: pago.tipo, cuenta_debe: pago.cuenta_debe, proveedor_id: pago.proveedor_id, entidad: pago.entidad,
+    referencia: pago.referencia,
+    descripcion: txt(desc ? `${pago.descripcion} · ${desc}` : pago.descripcion, 500),
+  };
+  return { id: existente.id, antes, cambios };
 }
