@@ -49,7 +49,7 @@ function mandarWhatsapp(orden, url, datos) {
 }
 
 /** Abre WhatsApp invitando al CFO a ver el resumen. */
-function mandarWhatsappResumen(resumen, ordenes, url, datos) {
+export function mandarWhatsappResumen(resumen, ordenes, url, datos) {
   const texto = textoWhatsappResumen(resumen, ordenes, url, { empresa: datos.empresa?.nombre || "", cfo: datos.cfo?.nombre || "" });
   const tel = numeroWhatsapp(datos.cfo?.telefono);
   window.open(`https://wa.me/${tel || ""}?text=${encodeURIComponent(texto)}`, "_blank", "noopener");
