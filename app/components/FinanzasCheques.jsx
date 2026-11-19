@@ -21,6 +21,8 @@ import ElegirProveedor from "./FinanzasElegirProveedor";
 import { VentanaAltaPersona } from "./AltaPersona";
 import AvisoRepetidos, { repetidosDe } from "./FinanzasAvisoRepetidos";
 import ListadoEcheq from "./FinanzasEcheqListado";
+import BotonesExportar from "./FinanzasExportar";
+import { informeCheques } from "../lib/finanzasInformesSueltos";
 
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
 const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -447,6 +449,7 @@ export default function FinanzasCheques() {
         <Chip active={vista === "cartera"} onClick={() => setVista("cartera")}>En cartera ({cartera.length})</Chip>
         <Chip active={vista === "calendario"} onClick={() => setVista("calendario")}>Calendario</Chip>
         <Chip active={vista === "historial"} onClick={() => setVista("historial")}>Historial</Chip>
+        <div className="ml-auto"><BotonesExportar nombre="el Flujo de cheques" informe={() => informeCheques({ calendario, cheques, hoy, quien })} /></div>
       </div>
 
       {vista === "calendario" ? (

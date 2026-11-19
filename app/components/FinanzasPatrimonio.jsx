@@ -16,6 +16,8 @@ import { hoyAr, plata } from "../lib/finanzasOperaciones";
 import { fechaCorta } from "../lib/finanzasPagos";
 import { semaforo } from "../lib/finanzasPatrimonio";
 import { Chip, Spinner } from "./ui";
+import BotonesExportar from "./FinanzasExportar";
+import { informePatrimonio } from "../lib/finanzasInformesSueltos";
 
 const VISTAS = [
   { id: "situacion", nombre: "⚖ Situación patrimonial" },
@@ -173,6 +175,7 @@ export default function FinanzasPatrimonio() {
           Sale del libro de Gypi (todas las operaciones confirmadas y para revisar, como el Mayor), en pesos. Si una cuenta da al revés, casi siempre falta su saldo inicial: revisala en 📚 Mayor.
         </p>
         {cargando && <Spinner size={16} />}
+        {vista === "situacion" && <BotonesExportar nombre="la Situación patrimonial" disabled={!datos} informe={() => informePatrimonio(datos?.situacion, datos?.hasta || hasta)} />}
       </div>
       {error && <p role="alert" className="m-0 mb-2 text-[14px] text-gypi-red">⚠ {error}</p>}
       {!datos && !error && <div className="flex justify-center py-10"><Spinner /></div>}
