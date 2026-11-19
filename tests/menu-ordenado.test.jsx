@@ -20,7 +20,7 @@ test("Finanzas: fuera de Finanzas un solo renglón; adentro, todo por tema", () 
   const fuera = gruposMenu(empresa, dueno, 0, "home").find((g) => g.id === "finanzas").items;
   assert.deepEqual(fuera.map((i) => i.label), ["Inicio y todo Finanzas"]);
   const adentro = gruposMenu(empresa, dueno, 0, "finanzas").find((g) => g.id === "finanzas").items;
-  assert.equal(adentro.length, 19, "19: Cuentas a cobrar y pagar en Informes; Cuenta por OT y Cliente y proveedor se abren desde las fichas; Clientes y Proveedores son una sola, Cuentas corrientes (19/11)");
+  assert.equal(adentro.length, 20, "20: Informe de tesorería en Informes; Cuentas a cobrar y pagar en Informes; Cuenta por OT y Cliente y proveedor se abren desde las fichas; Clientes y Proveedores son una sola, Cuentas corrientes (19/11)");
   assert.ok(!adentro.some((i) => ["fin-cuenta-ot", "fin-unificados"].includes(i.opcion)));
   assert.equal(adentro.find((i) => i.opcion === "fin-libro").tema, "Cierre y ajustes");
   assert.equal(adentro.find((i) => i.opcion === "fin-cierre").tema, "Cierre y ajustes");
@@ -41,7 +41,7 @@ test("Finanzas en la computadora: subtítulos por tema", () => {
 test("Finanzas en el celular: sin pestañas en su Inicio; afuera, Inicio y las del mismo tema", () => {
   const ops = opcionesBoton("finanzas", empresa, dueno);
   assert.deepEqual(pestanasCelular("finanzas", ops, "fin-inicio"), []);
-  assert.deepEqual(pestanasCelular("finanzas", ops, "fin-flujo").map((o) => o.label), ["Inicio", "Resultados", "Situación patrimonial", "Flujo de caja", "Cuentas a cobrar y pagar", "Reporte financiero", "Mayor de cuentas"]);
+  assert.deepEqual(pestanasCelular("finanzas", ops, "fin-flujo").map((o) => o.label), ["Inicio", "Resultados", "Situación patrimonial", "Flujo de caja", "Cuentas a cobrar y pagar", "Reporte financiero", "Informe de tesorería", "Mayor de cuentas"]);
   // Las que no están en el menú muestran las pestañas de la pantalla de donde se abren
   assert.equal(pestanasCelular("finanzas", ops, "fin-cuenta-ot").find((o) => o.id === "fin-cuenta-ot")?.label, "Cuenta por OT");
   const prod = opcionesBoton("proyectos", empresa, dueno);

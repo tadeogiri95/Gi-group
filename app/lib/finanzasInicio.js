@@ -13,7 +13,7 @@ export const GRUPOS_FINANZAS = [
   // de Clientes y Cliente y proveedor adentro de Agenda (sus botones de siempre).
   { id: "pagar", titulo: "Pagar y cobrar", opciones: ["fin-pagos", "fin-cheques", "fin-sueldos"] },
   { id: "saldos", titulo: "Saldos", opciones: ["fin-tesoreria", "fin-cuentas", "fin-inversiones", "fin-personas"] },
-  { id: "informes", titulo: "Informes", opciones: ["fin-resultados", "fin-patrimonio", "fin-flujo", "fin-cxp", "fin-reporte", "fin-mayor"] },
+  { id: "informes", titulo: "Informes", opciones: ["fin-resultados", "fin-patrimonio", "fin-flujo", "fin-cxp", "fin-reporte", "fin-informe-tesoreria", "fin-mayor"] },
   { id: "cierre", titulo: "Cierre y ajustes", opciones: ["fin-devengamiento", "fin-cierre", "fin-libro", "fin-sos", "fin-config"] },
 ];
 
@@ -32,6 +32,7 @@ export const DETALLE_FINANZAS = {
   "fin-patrimonio": "Lo que tiene y lo que debe la empresa, la liquidez y de dónde salió la plata",
   "fin-flujo": "Cuánta plata entra y sale, y lo que viene",
   "fin-reporte": "Resumen para el contador o los socios",
+  "fin-informe-tesoreria": "Plata en cajas, bancos e inversiones; calce de cheques con plazos fijos; cheques a cobrar",
   "fin-cierre": "Control: Gypi contra el libro y stock valorizado",
   "fin-libro": "Lo cargado a mano en el libro de Google: incorporarlo a Gypi o ignorarlo",
   "fin-config": "Plan de cuentas, tipos y revisión contable",
