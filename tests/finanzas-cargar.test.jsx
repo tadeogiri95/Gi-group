@@ -65,7 +65,7 @@ test("➕ Cargar — en la ficha del proveedor el pago abre el suyo (con sus fac
   let pago = 0;
   render(<BotonCargar contexto={{ proveedorId: 5 }} onPago={() => { pago++; }} />);
   fireEvent.click(screen.getByRole("button", { name: "➕ Cargar" }));
-  fireEvent.click(screen.getByText("💸 Pago a un proveedor"));
+  fireEvent.click(screen.getByText("💸 Pagos"));
   assert.equal(pago, 1);
   assert.equal(pedidos.length, 0, "no lee nada: lo abre la ficha");
 });

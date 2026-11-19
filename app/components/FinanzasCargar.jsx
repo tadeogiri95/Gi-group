@@ -8,7 +8,8 @@
 // ficha de cada proveedor y de cada cliente, y abre siempre el mismo
 // formulario de cada documento, ya completado con lo que se sabe:
 //   🧾 Factura o gasto → FinanzasCargarGasto (con o sin factura)
-//   💸 Pago a un proveedor → la Orden de pago (FinanzasPagos)
+//   💸 Pagos → varios a la vez, pagados ya o en una orden de pago para el CFO
+//      (FinanzasPagosVarios, 19/11; antes "Pago a un proveedor")
 //   💵 Cobro de un cliente → Cobrar (FinanzasClientes)
 //   ⇄ Entre cajas → Pasar plata entre cajas (FinanzasTransferir)
 //   💱 Dólares → Comprar o vender dólares, con la diferencia de cotización (FinanzasDolares, 14/11)
@@ -21,17 +22,17 @@ import CargarGasto from "./FinanzasCargarGasto";
 import { NuevaOperacion } from "./FinanzasNuevaOperacion";
 import Transferir from "./FinanzasTransferir";
 import Dolares from "./FinanzasDolares";
-import { NuevaOrden, leerDatosPagos } from "./FinanzasPagos";
+import { leerDatosPagos } from "./FinanzasPagos";
+import PagosVarios from "./FinanzasPagosVarios";
 import { Cobrar } from "./FinanzasClientes";
 import { VentanaAltaPersona } from "./AltaPersona";
 import { TIPO_COBRO_DESARROLLISMO } from "../lib/finanzasDesarrollismo";
 import { Modal, SelectBuscable, Spinner } from "./ui";
-import { useToast } from "./ui/Toast";
 
 /** Lo que se puede cargar, en el orden en que se muestra. */
 export const DOCUMENTOS = [
   { id: "gasto", icono: "🧾", nombre: "Factura o gasto", detalle: "Una compra o un gasto, con factura o sin factura. Si ya se pagó, también el pago." },
-  { id: "pago", icono: "💸", nombre: "Pago a un proveedor", detalle: "Orden de pago: efectivo, transferencia, e-cheq o un cheque de la cartera." },
+  { id: "pago", icono: "💸", nombre: "Pagos", detalle: "Uno o varios, con su comprobante. Se pagan ya o van en una orden de pago para que el CFO firme." },
   { id: "cobro", icono: "💵", nombre: "Cobro de un cliente", detalle: "Efectivo, transferencia, dólares o cheque. Suma en su cuenta corriente." },
   { id: "cajas", icono: "⇄", nombre: "Entre cajas y bancos", detalle: "Pasar plata de una caja o banco a otro." },
   { id: "desarrollismo", icono: "🏠", nombre: "Cobro del Desarrollismo", detalle: "Seña o cuota por la venta de una unidad. Va a Anticipo de Clientes, imputada a su obra." },
@@ -82,7 +83,6 @@ function ElegirClienteCobro({ datos, onElegido, onCerrar }) {
  *   onPago: la ficha del proveedor abre su propio pago (con las facturas pendientes para elegir).
  */
 export function VentanaCargar({ contexto = {}, documentos = null, onPago = null, onCerrar, onHecho }) {
-  const toast = useToast();
   const [doc, setDoc] = useState(null);
   const [datos, setDatos] = useState(null);
   const [cliente, setCliente] = useState(contexto.cliente || null);
@@ -123,7 +123,7 @@ export function VentanaCargar({ contexto = {}, documentos = null, onPago = null,
     return <CargarGasto datos={datos} inicial={inicial} onCerrar={onCerrar} onGuardada={hecho} />;
   }
   if (doc === "pago") {
-    return <NuevaOrden datos={datos} proveedorId={contexto.proveedorId || null} onCerrar={onCerrar} onGuardada={() => { toast.success("La orden queda en 💸 Pagos para pagarla"); hecho(); }} />;
+    return <PagosVarios datos={datos} proveedorId={contexto.proveedorId || null} onCerrar={onCerrar} onHecho={hecho} />;
   }
   if (doc === "cobro") {
     if (!cliente) return <ElegirClienteCobro datos={datos} onElegido={setCliente} onCerrar={onCerrar} />;
