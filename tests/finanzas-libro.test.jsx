@@ -5,7 +5,7 @@ import "./helpers/domSetup.js";
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
-import { datosParaLibro, filaOperacion, filaCheque, estadoLibro, scriptLibro, generarClave, CLAVE_LIBRO_FIN } from "../app/lib/finanzasLibro.js";
+import { datosParaLibro, filaOperacion, filaCheque, estadoLibro, scriptLibro, generarClave, requisitosEspejo, CLAVE_LIBRO_FIN } from "../app/lib/finanzasLibro.js";
 import { COLUMNAS_MANUAL, NOTA_MANUAL } from "../app/lib/finanzasLibroManual.js";
 import { CLAVE_LIBRO_FIN as CLAVE_PANTALLA } from "../app/components/FinanzasLibroScript.jsx";
 
@@ -35,7 +35,7 @@ test("renglón de T-OPERACIONES — cuentas por nombre, impuestos juntos, marca 
   assert.equal(f.v, "2026-11-09T10:00:00Z");
   assert.deepEqual(f.valores, {
     fecha: "2026-11-09", usuario: "Tadeo", tipo: "PAGO EFECTIVO", entidad: "EGGER", proyecto: "M-7495", centro_costo: "MUEBLES",
-    neto: 1000, impuestos: 225, moneda: "ARS", debe: "Proveedores", haber: "Caja Principal",
+    neto: 1000, impuestos: 225, moneda: "ARS", tc: "", debe: "Proveedores", haber: "Caja Principal",
     descripcion: "Orden de pago N° 4 · Ref. OP 4", referencia: "GY-F-5", estado: "CONFIRMADO",
   });
 });
@@ -370,4 +370,143 @@ test("/api/finanzas/libro — el script cuenta cómo salió y el Dueño confirma
   await estado(clave, { accion: "estado", errores: [], avisos: [], repetidos: [], borrados: [rep] });
   assert.deepEqual(valor.borrar, []);
   assert.equal(valor.estado.borrados.length, 1);
+});
+
+// ─── 19/11: el libro como copia completa de Gypi ───
+
+test("copia completa — también va lo del libro; el cliente de la lista y el tipo de cambio", () => {
+  const ops = [OP, { ...OP, id: 7, origen: "saldo_inicial" }, { ...OP, id: 8, origen: "libro" }];
+  assert.deepEqual(datosParaLibro({ operaciones: ops }).operaciones.map((o) => o.id), [5], "sin copia completa, como antes");
+  const d = datosParaLibro({ operaciones: ops, espejoCompleto: "2026-11-19T12:00:00Z" });
+  assert.deepEqual(d.operaciones.map((o) => o.id), [5, 7, 8]);
+  assert.deepEqual(d.espejo_completo, { version: "2026-11-19T12:00:00Z" });
+  const cobro = filaOperacion({ ...OP, proveedor_id: null, cliente_id: 4, entidad: "felipe", moneda: "USD", tipo_cambio: 1450 }, { clientes: new Map([[4, "Felipe Omar Guzmán"]]) });
+  assert.equal(cobro.valores.entidad, "Felipe Omar Guzmán", "el cliente elegido, no el nombre escrito");
+  assert.equal(cobro.valores.tc, 1450);
+  assert.equal(filaOperacion({ ...OP, proveedor_id: null, entidad: "Juan" }).valores.entidad, "Juan");
+});
+
+test("copia completa — se pide con el script andando, el histórico pasado y sin renglones a mano pendientes", () => {
+  assert.match(requisitosEspejo({ cfg: null, hayHistorico: true }).motivo, /conectá el libro/);
+  assert.match(requisitosEspejo({ cfg: { hash: "h" }, hayHistorico: true }).motivo, /todavía no corrió/);
+  assert.match(requisitosEspejo({ cfg: { hash: "h", ultima_lectura: "x" }, hayHistorico: false }).motivo, /Histórico del libro/);
+  assert.match(requisitosEspejo({ cfg: { hash: "h", ultima_lectura: "x", manuales: { total: 3 } }, hayHistorico: true }).motivo, /3 renglones cargados a mano/);
+  assert.deepEqual(requisitosEspejo({ cfg: { hash: "h", ultima_lectura: "x", manuales: { total: 0 } }, hayHistorico: true }), { ok: true });
+});
+
+function correrScriptConProps(hojas, respuesta, props) {
+  const pedidos = [];
+  const libro = {
+    getSheetByName: (n) => hojas[n] || null,
+    getSpreadsheetTimeZone: () => "America/Argentina/Buenos_Aires",
+  };
+  const globales = {
+    SpreadsheetApp: {
+      getActiveSpreadsheet: () => libro,
+      flush: () => {},
+      CopyPasteType: { PASTE_FORMAT: "PASTE_FORMAT", PASTE_DATA_VALIDATION: "PASTE_DATA_VALIDATION", PASTE_FORMULA: "PASTE_FORMULA" },
+      DataValidationCriteria: { VALUE_IN_LIST: "VALUE_IN_LIST", VALUE_IN_RANGE: "VALUE_IN_RANGE" },
+    },
+    LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },
+    UrlFetchApp: { fetch: (url, o) => { pedidos.push({ url, o }); return { getResponseCode: () => 200, getContentText: () => JSON.stringify(respuesta) }; } },
+    ScriptApp: {},
+    PropertiesService: { getDocumentProperties: () => ({ getProperty: (k) => props.get(k) ?? null, setProperty: (k, v) => props.set(k, v) }) },
+    Utilities: { formatDate: () => "20261119_0900" },
+  };
+  // La copia de respaldo: una hoja más con los mismos datos
+  for (const h of Object.values(hojas)) {
+    h.copyTo = () => {
+      const bk = new Hoja("copia", h.v.map((f) => [...f]));
+      bk.setName = (n) => { bk.nombre = n; hojas[n] = bk; return bk; };
+      bk.getDataRange = () => ({ copyTo: () => {} });
+      return bk;
+    };
+  }
+  const codigo = scriptLibro({ url: "https://gypi.test/api/finanzas/libro", clave: "gyp_clave" });
+  new Function(...Object.keys(globales), `${codigo}\nreturn pasarLibroGypi;`)(...Object.values(globales))();
+  return pedidos;
+}
+
+test("script — copia completa: respaldo, todo lo de Gypi en orden de fecha con las fórmulas, una sola vez", () => {
+  const { ops, cheques } = libroDePrueba();
+  const hojas = { "T-OPERACIONES": ops, "R-CHEQUES": cheques };
+  const props = new Map();
+  const operaciones = [
+    { ...OP, id: 5, fecha: "2026-11-09" },
+    { ...OP, id: 8, fecha: "2025-09-02", origen: "libro", tipo: "COMPRA MP", updated_at: "v8" },
+    { ...OP, id: 9, fecha: "2026-01-15", origen: "saldo_inicial", moneda: "USD", tipo_cambio: 1200, updated_at: "v9" },
+  ];
+  const respuesta = datosParaLibro({ operaciones, cuentas: CUENTAS, espejoCompleto: "2026-11-19T12:00:00Z" });
+  const est = estadoEnviado(correrScriptConProps(hojas, respuesta, props));
+  assert.deepEqual(est.errores, []);
+  assert.ok(hojas["T-OPERACIONES_bk_espejo_20261119_0900"], "quedó la copia de respaldo");
+  assert.equal(hojas["T-OPERACIONES_bk_espejo_20261119_0900"].v[1][18], "HORAS", "con lo de antes");
+  const datos = ops.v.slice(1).filter((f) => f[18] !== "");
+  assert.deepEqual(datos.map((f) => f[18]), ["GY-F-8", "GY-F-9", "GY-F-5"], "solo lo de Gypi, por fecha (el manual HORAS ya está en Gypi como GY-F-8)");
+  assert.deepEqual(datos.map((f) => f[0]), [1, 2, 3], "numeración desde 1");
+  assert.ok(datos.every((_, i) => ops.f[i + 1][11]), "cada renglón tiene la fórmula del Total del libro");
+  assert.equal(ops.v[0][TITULOS_OPS.length], "tipo_cambio", "se agregó la columna del tipo de cambio");
+  assert.equal(props.get("gypi_espejo_version"), "2026-11-19T12:00:00Z");
+  assert.match(est.avisos.join(" "), /copia completa de Gypi \(3 renglones\)/);
+
+  // Las vueltas siguientes no lo vuelven a reescribir
+  const foto = JSON.stringify(ops.v);
+  correrScriptConProps(hojas, respuesta, props);
+  assert.equal(JSON.stringify(ops.v), foto);
+});
+
+test("/api/finanzas/libro — pasar a copia completa: el Dueño, con los requisitos; la clave nueva lo conserva", async () => {
+  const { hash } = generarClave(E);
+  let valor = { hash, ultima_lectura: "2026-11-19T10:00:00Z", manuales: { total: 2 } };
+  let delLibro = [{ fecha: "2025-09-01" }];
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    {
+      match: (u) => u.includes("/rest/v1/config_sistema"),
+      respond: (u, o) => {
+        if (o?.method === "PATCH") { valor = JSON.parse(o.body).valor; return { status: 200, body: [] }; }
+        return { status: 200, body: [{ clave: CLAVE_LIBRO_FIN, valor }] };
+      },
+    },
+    { match: (u) => u.includes("/rest/v1/fin_operaciones"), respond: (u) => ({ status: 200, body: u.includes("origen=eq.libro") ? delLibro : [] }) },
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ nombre: "Gi", plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
+    { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
+  ]);
+  const tok = async (rol) => (await signAccessToken({ empleadoId: EMP, empresaId: E, legajo: 7, rol })).token;
+  const post = async (rol, cuerpo) => api.POST(new Request("http://localhost/api/finanzas/libro", { method: "POST", headers: { Authorization: `Bearer ${await tok(rol)}` }, body: JSON.stringify(cuerpo) }));
+  assert.equal((await post("administrativo", { accion: "espejo_completo" })).status, 403);
+  let res = await post("gerencial", { accion: "espejo_completo" });
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /2 renglones cargados a mano/);
+  valor = { ...valor, manuales: { total: 0 } };
+  delLibro = [];
+  res = await post("gerencial", { accion: "espejo_completo" });
+  assert.equal(res.status, 409, "sin histórico pasado no");
+  delLibro = [{ fecha: "2025-09-01" }];
+  res = await post("gerencial", { accion: "espejo_completo" });
+  assert.equal(res.status, 200);
+  assert.ok(valor.espejo_completo_at);
+  const at = valor.espejo_completo_at;
+  res = await post("gerencial", {});
+  assert.equal(res.status, 200);
+  assert.equal(valor.espejo_completo_at, at, "con una clave nueva sigue siendo copia completa");
+});
+
+test("/api/finanzas/historico — con el libro como copia completa ya no se vuelve a pasar", async () => {
+  const hist = await import("../app/api/finanzas/historico/route.js");
+  const escrito = [];
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (u) => u.includes("/rest/v1/config_sistema"), respond: () => ({ status: 200, body: [{ valor: { hash: "h", espejo_completo_at: "2026-11-19T12:00:00Z" } }] }) },
+    { match: (u) => u.includes("/rest/v1/fin_operaciones"), respond: (u, o) => { if (o?.method && o.method !== "GET") escrito.push(u); return { status: 200, body: [] }; } },
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ nombre: "Gi", plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
+    { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
+  ]);
+  const tok = (await signAccessToken({ empleadoId: EMP, empresaId: E, legajo: 7, rol: "gerencial" })).token;
+  for (const cuerpo of [{ accion: "cargar", operaciones: [{}] }, { accion: "anular", ids: [3] }]) {
+    const res = await hist.POST(new Request("http://localhost/api/finanzas/historico", { method: "POST", headers: { Authorization: `Bearer ${tok}` }, body: JSON.stringify(cuerpo) }));
+    assert.equal(res.status, 409, cuerpo.accion);
+    assert.match((await res.json()).error, /copia completa de Gypi/);
+  }
+  assert.equal(escrito.length, 0);
 });

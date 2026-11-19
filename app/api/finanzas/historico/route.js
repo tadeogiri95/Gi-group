@@ -11,18 +11,30 @@
 //   POST { accion: "cargar", operaciones } → carga hasta 400 por vez, ya
 //       validadas una por una (solo origen libro o saldo_inicial).
 //
+// Desde que el libro es copia completa de Gypi (19/11, espejo_completo_at en
+// config_sistema "finanzas_libro"), anular y cargar quedan cerrados: el
+// histórico pisaría lo corregido en Gypi.
+//
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige).
 import { NextResponse } from "next/server";
-import { sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
+import { sbGet, sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { LOTE_HISTORICO, ORIGEN_LIBRO, limpiarOperacionHistorico } from "../../../lib/finanzasHistorico";
 import { leerBaseHistorico } from "../../../lib/finanzasHistoricoBase";
 import { ORIGEN_SALDO_INICIAL } from "../../../lib/finanzasProveedores";
+import { CLAVE_LIBRO_FIN } from "../../../lib/finanzasLibro";
 
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data || []);
 const ORIGENES = `origen=in.(${ORIGEN_LIBRO},${ORIGEN_SALDO_INICIAL})`;
+const AVISO_ESPEJO = "El libro ya es una copia completa de Gypi: el histórico no se vuelve a pasar. Corregí las operaciones en Gypi y el libro se actualiza solo.";
+
+/** ¿El libro ya es copia completa de Gypi? */
+async function esEspejoCompleto(e) {
+  const [cfg] = (await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_LIBRO_FIN}&select=valor&limit=1`, { silent: true, fallback: [] })) || [];
+  return !!cfg?.valor?.espejo_completo_at;
+}
 
 export async function GET(request) {
   const { sesion, response } = await sesionDueno(request);
@@ -44,6 +56,9 @@ export async function POST(request) {
   const e = sesion.empresa_id;
   const ahora = new Date().toISOString();
   try {
+    if ((d?.accion === "anular" || d?.accion === "cargar") && await esEspejoCompleto(e)) {
+      return NextResponse.json({ error: AVISO_ESPEJO, espejo_completo: true }, { status: 409 });
+    }
     if (d?.accion === "anular") {
       const ids = [...new Set((Array.isArray(d.ids) ? d.ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
       if (!ids.length) return NextResponse.json({ ok: true, anuladas: 0 });

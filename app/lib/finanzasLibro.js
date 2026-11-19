@@ -16,6 +16,19 @@
 //     actualiza el estado y "ENTREGADO A" (se buscan por el número de renglón).
 // Las fórmulas del libro (Total, mes, cuentas finales, flujo) se copian del
 // renglón de arriba: el script nunca escribe encima de una fórmula.
+//
+// Libro como copia completa de Gypi (19/11, pedido de Tadeo: "Gypi es el único
+// lugar donde se carga"). Cuando el Dueño lo pide (Configuración → Pasar Gypi
+// al libro), espejo_completo_at queda en config_sistema y:
+//   - también se mandan lo que vino del libro y los saldos iniciales, para que
+//     al corregirlos en Gypi el libro se entere;
+//   - el script reescribe T-OPERACIONES entera una sola vez: antes deja una
+//     copia de respaldo (hoja que termina en "_bk_espejo_"), agrega todo lo de
+//     Gypi en orden de fecha con las fórmulas del libro y borra los renglones
+//     de antes;
+//   - el Histórico del libro ya no se vuelve a pasar (pisaría lo de Gypi).
+// Siempre: la entidad de un cobro es el cliente elegido (no solo el nombre
+// escrito) y las operaciones en dólares llevan su tipo de cambio.
 export { generarClave, empresaDeClave, claveValida } from "./planillaMrp";
 import { COLUMNAS_MANUAL, NOTA_MANUAL } from "./finanzasLibroManual";
 
@@ -47,7 +60,7 @@ export const estadoLibro = (estado) => ESTADO_LIBRO[estado] || String(estado || 
  * El renglón de T-OPERACIONES de una operación de Gypi.
  * @returns {{ id: number, v: string, valores: object }}
  */
-export function filaOperacion(op, { cuentas = new Map(), proveedores = new Map(), proyectos = new Map() } = {}) {
+export function filaOperacion(op, { cuentas = new Map(), proveedores = new Map(), proyectos = new Map(), clientes = new Map() } = {}) {
   const descripcion = [op.descripcion, op.referencia ? `Ref. ${op.referencia}` : null].filter(Boolean).join(" · ");
   return {
     id: op.id,
@@ -56,12 +69,14 @@ export function filaOperacion(op, { cuentas = new Map(), proveedores = new Map()
       fecha: op.fecha,
       usuario: txt(op.cargada_por_nombre, 120) || "Gypi",
       tipo: op.tipo,
-      entidad: txt(proveedores.get(Number(op.proveedor_id)) || op.entidad, 120),
+      // El proveedor o el cliente de la lista; si no, el nombre escrito
+      entidad: txt(proveedores.get(Number(op.proveedor_id)) || clientes.get(Number(op.cliente_id)) || op.entidad, 120),
       proyecto: op.proyecto_id ? txt(proyectos.get(Number(op.proyecto_id)), 60) : "",
       centro_costo: txt(op.centro_costo, 60),
       neto: n2(op.neto),
       impuestos: n2((Number(op.iva) || 0) + (Number(op.otros_impuestos) || 0)),
       moneda: op.moneda || "ARS",
+      tc: op.moneda === "USD" && Number(op.tipo_cambio) > 0 ? Number(op.tipo_cambio) : "",
       // Por nombre: el libro las convierte a código con dim_plan_cuentas
       debe: cuentas.get(op.cuenta_debe) || op.cuenta_debe,
       haber: cuentas.get(op.cuenta_haber) || op.cuenta_haber,
@@ -99,18 +114,22 @@ export function filaCheque(ch, { empresa = "", proveedores = new Map() } = {}) {
  * Lo que el script baja al libro.
  * @returns {{ operaciones: object[], cheques: object[], cheques_libro: { ref: string, estado: string, entregado_a: string }[] }}
  */
-export function datosParaLibro({ operaciones = [], cheques = [], cuentas = [], proveedores = [], proyectos = [], empresa = "", tiposNuevos = null, cambiosCuentas = null } = {}) {
+export function datosParaLibro({ operaciones = [], cheques = [], cuentas = [], proveedores = [], proyectos = [], clientes = [], empresa = "", tiposNuevos = null, cambiosCuentas = null, espejoCompleto = null } = {}) {
   const ctx = {
     cuentas: new Map(cuentas.map((c) => [c.codigo, c.nombre])),
     proveedores: new Map(proveedores.map((p) => [Number(p.id), p.nombre])),
     proyectos: new Map(proyectos.map((p) => [Number(p.id), p.ot])),
+    clientes: new Map(clientes.map((c) => [Number(c.id), c.nombre])),
     empresa,
   };
   return {
     operaciones: operaciones
-      // Lo que vino del libro (saldos y renglones pasados a Gypi) no vuelve
-      .filter((op) => !op.anulada_at && op.origen !== "saldo_inicial" && op.origen !== "libro")
+      // Lo que vino del libro (saldos y renglones pasados a Gypi) no vuelve,
+      // salvo con el libro como copia completa de Gypi (19/11)
+      .filter((op) => !op.anulada_at && (espejoCompleto || (op.origen !== "saldo_inicial" && op.origen !== "libro")))
       .map((op) => filaOperacion(op, ctx)),
+    // La reescritura de T-OPERACIONES entera (una vez por versión)
+    ...(espejoCompleto ? { espejo_completo: { version: String(espejoCompleto) } } : {}),
     // Los anulados cargados en Gypi no van (si ya estaban, el script los borra)
     cheques: cheques.filter((ch) => ch.origen !== "libro" && ch.estado !== "anulado").map((ch) => filaCheque(ch, ctx)),
     cheques_libro: cheques
@@ -122,6 +141,23 @@ export function datosParaLibro({ operaciones = [], cheques = [], cuentas = [], p
     // Los cambios de cuentas aprobados el 11/11 (el script los aplica una vez por versión)
     ...(cambiosCuentas ? { cambios_cuentas: cambiosCuentas } : {}),
   };
+}
+
+/**
+ * ¿Se puede pasar el libro a copia completa de Gypi? Hace falta que el
+ * script ya corra, que el Histórico del libro esté pasado (si no, al
+ * reescribir T-OPERACIONES se perderían renglones que Gypi no tiene) y que no
+ * queden renglones cargados a mano en el libro sin incorporar ni ignorar.
+ * @param {{ cfg: object|null, hayHistorico: boolean }} d
+ * @returns {{ ok: boolean, motivo?: string }}
+ */
+export function requisitosEspejo({ cfg, hayHistorico }) {
+  if (!cfg?.hash) return { ok: false, motivo: "Primero conectá el libro: generá el código y pegalo en Apps Script." };
+  if (!cfg.ultima_lectura) return { ok: false, motivo: "El script del libro todavía no corrió. Esperá la primera vuelta (hasta 15 minutos)." };
+  if (!hayHistorico) return { ok: false, motivo: "Primero pasá el Histórico del libro a Gypi (Configuración → 📚 Histórico del libro): si no, al reescribir el libro se perderían renglones que Gypi no tiene." };
+  const pendientes = Number(cfg.manuales?.total) || 0;
+  if (pendientes > 0) return { ok: false, motivo: `Hay ${pendientes} ${pendientes === 1 ? "renglón cargado" : "renglones cargados"} a mano en el libro que Gypi no tiene. Incorporalos o ignoralos antes (Contabilidad → Libro de Google).` };
+  return { ok: true };
 }
 
 const lista = (v, max) => (Array.isArray(v) ? v.slice(0, max) : []);
@@ -185,7 +221,7 @@ var GYPI_LIBRO_CLAVE = ${JSON.stringify(clave)};
 var GYPI_COLS_OPS = [
   ["fecha_operación", "fecha"], ["usuario", "usuario"], ["cod_tipo_op", "tipo"], ["id_entidad", "entidad"],
   ["id_proyecto", "proyecto"], ["centro_costo", "centro_costo"], ["importe_neto", "neto"],
-  ["impuestos, retenciones y/o percepciones", "impuestos"], ["moneda", "moneda"],
+  ["impuestos, retenciones y/o percepciones", "impuestos"], ["moneda", "moneda"], ["tipo_cambio", "tc"],
   ["cuenta_debe_override", "debe"], ["cuenta_haber_override", "haber"], ["descripcion", "descripcion"],
   ["referencia_externa", "referencia"], ["estado", "estado"]
 ];
@@ -220,6 +256,13 @@ function pasarLibroGypi() {
     if (r.cambios_cuentas) gypiLibroCuentas_(libro, r.cambios_cuentas);
     var ops = libro.getSheetByName("T-OPERACIONES");
     if (ops) {
+      // Libro como copia completa de Gypi (19/11): una sola vez por versión
+      if (r.espejo_completo) {
+        gypiLibroIntentar_(estado, "Copia completa de Gypi", function () {
+          gypiLibroColumna_(ops, "tipo_cambio");
+          gypiLibroReescribirTodo_(libro, ops, r.operaciones || [], r.espejo_completo.version, estado);
+        });
+      }
       gypiLibroIntentar_(estado, "T-OPERACIONES", function () {
         gypiLibroBorrarRepetidos_(ops, GYPI_COLS_OPS, "referencia_externa", "GY-F-", "fecha_operación", r.borrar_repetidos || [], estado);
         gypiLibroEspejo_(ops, GYPI_COLS_OPS, "referencia_externa", "GY-F-", r.operaciones || [], "fecha_operación", estado);
@@ -387,6 +430,13 @@ function gypiLibroEspejo_(hoja, cols, tituloMarca, prefijo, items, tituloFecha, 
   //    del último renglón: nunca se copia un renglón con sus datos (antes, si
   //    algo fallaba en el medio, quedaba el último renglón repetido).
   var nuevos = items.filter(function (it) { return !ya[prefijo + it.id]; });
+  gypiLibroAgregar_(hoja, tramos, cMarca, cFecha, nuevos, estado, null);
+}
+
+// Agrega renglones al final: primero los datos y después las fórmulas del
+// último renglón (solo en las columnas que no escribe Gypi). numeroDesde:
+// desde qué número sigue la primera columna (null: después del más alto).
+function gypiLibroAgregar_(hoja, tramos, cMarca, cFecha, nuevos, estado, numeroDesde) {
   if (!nuevos.length) return;
   var fin = Math.max(gypiLibroUltima_(hoja, cFecha), gypiLibroUltima_(hoja, cMarca));
   var desde = fin + 1;
@@ -405,7 +455,7 @@ function gypiLibroEspejo_(hoja, cols, tituloMarca, prefijo, items, tituloFecha, 
     // Numeración de la primera columna (C o |): sigue la del libro
     if (numerar) {
       var nums = hoja.getRange(2, 1, fin - 1, 1).getValues().map(function (x) { return Number(x[0]) || 0; });
-      var max = Math.max.apply(null, nums.concat([0]));
+      var max = numeroDesde === null ? Math.max.apply(null, nums.concat([0])) : numeroDesde;
       hoja.getRange(desde, 1, n, 1).setValues(nuevos.map(function (_, k) { return [max + k + 1]; }));
     }
     gypiLibroEscribir_(hoja, desde, tramos, nuevos);
@@ -433,6 +483,38 @@ function gypiLibroEspejo_(hoja, cols, tituloMarca, prefijo, items, tituloFecha, 
     } catch (e2) { /* lo que no se pudo limpiar lo muestra la lista de repetidos */ }
     throw e;
   }
+}
+
+// Si falta la columna (por título), se agrega al final con su título
+function gypiLibroColumna_(hoja, titulo) {
+  var col = gypiLibroTitulos_(hoja);
+  if (col[gypiLibroNorm_(titulo)]) return;
+  hoja.getRange(1, hoja.getLastColumn() + 1).setValue(titulo);
+}
+
+// Libro como copia completa de Gypi (19/11): una sola vez por versión, se deja
+// la copia de respaldo, se agrega todo lo de Gypi (en orden de fecha, con las
+// fórmulas del libro) debajo de lo que había y después se borra lo de antes.
+function gypiLibroReescribirTodo_(libro, hoja, items, version, estado) {
+  var props = PropertiesService.getDocumentProperties();
+  if (props.getProperty("gypi_espejo_version") === String(version)) return;
+  var col = gypiLibroTitulos_(hoja);
+  var cMarca = col[gypiLibroNorm_("referencia_externa")];
+  var cFecha = col[gypiLibroNorm_("fecha_operación")];
+  if (!cMarca || !cFecha) throw new Error("T-OPERACIONES no tiene las columnas referencia_externa y fecha_operación");
+  var sello = Utilities.formatDate(new Date(), libro.getSpreadsheetTimeZone(), "yyyyMMdd_HHmm");
+  gypiLibroRespaldo_(libro, "T-OPERACIONES", sello, "_bk_espejo_");
+  // Con la copia hecha no se vuelve a intentar sola (si algo falla, queda la copia)
+  props.setProperty("gypi_espejo_version", String(version));
+  var antes = Math.max(gypiLibroUltima_(hoja, cFecha), gypiLibroUltima_(hoja, cMarca));
+  var ordenados = items.slice().sort(function (a, b) {
+    var fa = String(a.valores.fecha), fb = String(b.valores.fecha);
+    return fa < fb ? -1 : fa > fb ? 1 : a.id - b.id;
+  });
+  gypiLibroAgregar_(hoja, gypiLibroTramos_(GYPI_COLS_OPS, col), cMarca, cFecha, ordenados, estado, 0);
+  if (antes >= 2) hoja.deleteRows(2, antes - 1);
+  SpreadsheetApp.flush();
+  estado.avisos.push("T-OPERACIONES quedó como copia completa de Gypi (" + ordenados.length + " renglones). La de antes quedó en la hoja T-OPERACIONES_bk_espejo_" + sello + ".");
 }
 
 // Lo que identifica a un renglón: las columnas que escribe Gypi (sin la marca)
