@@ -12,6 +12,9 @@
 //   POST { accion: "compra", clase: "sin_factura"|"nota_credito", fecha,
 //       proveedor_id, importe, iva?, numero?, cuenta, descripcion? } → una
 //       compra sin factura o una nota de crédito del proveedor.
+//   POST { accion: "ajuste_saldo", clave, saldo_nuevo, fecha, motivo } → deja la
+//       deuda con el proveedor en ese importe contra "Ajuste de resultados de
+//       ejercicios anteriores" (punto 15 del 19/11; finanzasAjusteSaldo.js).
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige).
 import { NextResponse } from "next/server";
@@ -20,6 +23,7 @@ import { sbGet, sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
+import { ajustarSaldo } from "../../../lib/finanzasAjusteSaldoServidor";
 import { FECHA, IVA_CREDITO } from "../../../lib/finanzasOperaciones";
 import {
   CLAVE_CUENTAS_PROV, CUENTA_AJUSTE_CAPITAL, ORIGEN_SALDO_INICIAL, cuentasProveedores, leerCuentasProveedores, operacionCompraManual, operacionSaldoInicial,
@@ -117,6 +121,7 @@ export async function POST(request) {
   try {
     if (d?.accion === "cuentas") return await guardarCuentas(sesion, d);
     if (d?.accion === "compra") return await cargarCompra(sesion, d);
+    if (d?.accion === "ajuste_saldo") return await ajustarSaldo(sesion, d, "proveedor");
   } catch (err) {
     return errorFinanzas(err, `proveedores ${d.accion}`);
   }

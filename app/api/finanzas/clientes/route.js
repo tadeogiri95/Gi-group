@@ -15,6 +15,9 @@
 //   POST { accion: "saldos_iniciales", fecha, filas: [{ cliente_id?, nombre, saldo }] }
 //       → el saldo de cada cliente a la fecha de corte contra Ajuste De Capital
 //       (los que no están en la lista se crean). Reemplaza el anterior.
+//   POST { accion: "ajuste_saldo", clave, saldo_nuevo, fecha, motivo } → deja el
+//       saldo del cliente en ese importe contra "Ajuste de resultados de
+//       ejercicios anteriores" (punto 15 del 19/11; finanzasAjusteSaldo.js).
 //   POST { accion: "config_ventas", activo, desde } → prende o apaga la venta y
 //       la entrega automática de las OT (F4b, app/lib/finanzasVentas.js) y la
 //       corre una vez.
@@ -36,6 +39,7 @@ import { operacionAlta } from "../../../lib/finanzasCheques";
 import {
   ORIGEN_COBRO, armarCobro, clientesNuevosDeOt, cuentasDeudores, emparejarCliente, operacionSaldoInicialCliente, validarCliente,
 } from "../../../lib/finanzasClientes";
+import { ajustarSaldo } from "../../../lib/finanzasAjusteSaldoServidor";
 import { CLAVE_VENTAS_OT, configVentas, cuentasVentas, sincronizarVentasOt } from "../../../lib/finanzasVentas";
 
 const MAX_SALDOS = 2000;
@@ -265,6 +269,7 @@ export async function POST(request) {
     if (d.accion === "saldos_iniciales") return await saldosIniciales(sesion, d);
     if (d.accion === "config_ventas") return await configurarVentas(sesion, d);
     if (d.accion === "revisar_ventas") return await revisarVentas(sesion);
+    if (d.accion === "ajuste_saldo") return await ajustarSaldo(sesion, d, "cliente");
     return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
   } catch (err) {
     if (falta177(err)) return NextResponse.json({ error: FALTA_177, falta_migracion: true }, { status: 409 });
