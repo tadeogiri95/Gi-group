@@ -17,6 +17,7 @@ import Comprobantes from "./FinanzasComprobantes";
 import { asientoDe, cajasDelLado, cuentasDelTipo, hoyAr, numero, plata, validarOperacion, separaIva } from "../lib/finanzasOperaciones";
 import { cuentaParaElegir, cuentasIniciales } from "../lib/finanzasCuentaElegir";
 import { centrosParaElegir, cuentasCobroDesarrollismo, esCobroDesarrollismo, obraNueva, pideObra } from "../lib/finanzasDesarrollismo";
+import { pendienteDe } from "../lib/finanzasPagoJunto";
 import { Chip, Modal, SelectBuscable } from "./ui";
 import { useToast } from "./ui/Toast";
 
@@ -124,6 +125,8 @@ export function NuevaOperacion({ datos, cajaInicial = "", inicial = null, titulo
   // 13/11: el servidor encontró otro igual en esa caja (finanzasRepetidos.js)
   const [repetidos, setRepetidos] = useState(null);
   const set = (k) => (e) => { setRepetidos(null); setF((x) => ({ ...x, [k]: e.target.value })); };
+  // 19/11 (punto 14): devengar y pagar (o cobrar) en el mismo cuadro
+  const [pago, setPago] = useState({ ahora: false, cuenta_caja: "", fecha: "" });
 
   const tipo = datos.tipos.find((t) => t.codigo === f.tipo);
   // Las obras del Desarrollismo que se dan de alta acá (todavía no vuelven en la lista)
@@ -159,6 +162,11 @@ export function NuevaOperacion({ datos, cajaInicial = "", inicial = null, titulo
   const reves = total < 0 && !iva && !otros;
   const vista = { ...f, neto: reves ? -neto : neto, iva, otros_impuestos: otros, total: reves ? -total : total, tipo_cambio: numero(f.tipo_cambio) || null, ...(reves ? { cuenta_debe: f.cuenta_haber, cuenta_haber: f.cuenta_debe } : {}) };
 
+  const pendiente = pendienteDe(vista, datos);
+  const verboPago = pendiente?.lado === "cobrar" ? "cobré" : "pagué";
+  const cajasPago = (datos.tesoreria || []).filter((t) => t.activa !== false && (t.moneda || "ARS") === (f.moneda || "ARS"));
+  const conPago = !!pendiente && pago.ahora;
+
   const guardar = async (confirmarRepetido = false) => {
     const operacion = {
       ...f, ...(conIva ? {} : { iva: "", otros_impuestos: "" }), proveedor_id: otroNombre ? "" : f.proveedor_id, entidad: f.proveedor_id && !otroNombre ? "" : f.entidad,
@@ -167,16 +175,17 @@ export function NuevaOperacion({ datos, cajaInicial = "", inicial = null, titulo
     };
     const { errores: e } = validarOperacion(operacion, { ...datos, centros });
     if (obra && !f.centro_costo) e.push("Elegí la obra del Desarrollismo (centro de costo).");
+    if (conPago && !pago.cuenta_caja) e.push(`Elegí con qué caja o banco lo ${verboPago}.`);
     setErrores(e);
     if (e.length) return;
     setGuardando(true);
     try {
-      const res = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "crear", operacion, confirmar_repetido: confirmarRepetido }) });
+      const res = await apiFetch("/api/finanzas/operaciones", { method: "POST", body: JSON.stringify({ accion: "crear", operacion, confirmar_repetido: confirmarRepetido, ...(conPago ? { pago: { cuenta_caja: pago.cuenta_caja, fecha: pago.fecha || f.fecha } } : {}) }) });
       const d = await res.json().catch(() => ({}));
       const rep = repetidosDe(res.status, d);
       if (rep) { setRepetidos(rep); return; }
       if (!res.ok) { setErrores(d.errores || [d.error || "No se pudo guardar"]); return; }
-      toast.success("✅ Operación guardada");
+      toast.success(d.pago ? `✅ Guardada, con el ${pendiente?.lado === "cobrar" ? "cobro" : "pago"}` : "✅ Operación guardada");
       if (d.aviso) toast.error(d.aviso);
       onGuardada();
     } catch (err) {
@@ -350,6 +359,37 @@ export function NuevaOperacion({ datos, cajaInicial = "", inicial = null, titulo
               <Comprobantes lista={f.comprobantes} onCambio={(lista) => setF((x) => ({ ...x, comprobantes: lista }))} />
               {campo("Referencia (factura, recibo, número de transferencia)", <input className="g-input w-full" value={f.referencia} onChange={set("referencia")} />)}
 
+              {pendiente && (
+                <section aria-label={`Lo ${verboPago} ahora`} className="rounded-lg border border-gypi-border bg-gypi-surface p-3 flex flex-col gap-2">
+                  <label className="flex items-start gap-2 text-[13px] lg:text-[14px] text-gypi-text cursor-pointer">
+                    <input type="checkbox" className="mt-0.5" checked={pago.ahora} onChange={(e) => setPago((x) => ({ ...x, ahora: e.target.checked }))} />
+                    <span>
+                      <b>Lo {verboPago} ahora</b>{" "}
+                      <span className="text-gypi-dim">
+                        {pendiente.lado === "cobrar"
+                          ? `Queda ${nombreCuenta(pendiente.cuenta, datos.cuentas)} a cobrar: tildalo y se carga también el cobro.`
+                          : `Queda la deuda en ${nombreCuenta(pendiente.cuenta, datos.cuentas)}: tildalo y se carga también el pago.`}
+                      </span>
+                    </span>
+                  </label>
+                  {pago.ahora && (
+                    <div className="grid grid-cols-1 sm:grid-cols-[1fr_170px] gap-3">
+                      {campo(pendiente.lado === "cobrar" ? "Caja o banco donde entró" : "Caja o banco con que se pagó", (
+                        <SelectBuscable className="g-input w-full" listaAncha value={pago.cuenta_caja} onChange={(e) => setPago((x) => ({ ...x, cuenta_caja: e.target.value }))}>
+                          <option value="">Elegí…</option>
+                          {cajasPago.map((c) => <option key={c.cuenta} value={c.cuenta}>{c.nombre}{c.moneda === "USD" ? " (USD)" : ""}</option>)}
+                        </SelectBuscable>
+                      ))}
+                      {campo(pendiente.lado === "cobrar" ? "Fecha del cobro" : "Fecha del pago", <input type="date" className="g-input w-full" value={pago.fecha || f.fecha} onChange={(e) => setPago((x) => ({ ...x, fecha: e.target.value }))} />)}
+                    </div>
+                  )}
+                  {pago.ahora && pago.cuenta_caja && total > 0 && (
+                    <p className="m-0 text-[12px] lg:text-[13px] text-gypi-dim">
+                      Y el {pendiente.lado === "cobrar" ? "cobro" : "pago"}: Debe <b className="text-gypi-text">{nombreCuenta(pendiente.lado === "cobrar" ? pago.cuenta_caja : pendiente.cuenta, datos.cuentas)}</b> · Haber <b className="text-gypi-text">{nombreCuenta(pendiente.lado === "cobrar" ? pendiente.cuenta : pago.cuenta_caja, datos.cuentas)}</b> por {plata(total, f.moneda)}.
+                    </p>
+                  )}
+                </section>
+              )}
               {total > 0 && f.cuenta_debe && f.cuenta_haber && (
                 <section className="rounded-lg border border-gypi-border bg-gypi-surface p-3">
                   <h3 className="m-0 mb-1 text-[13px] lg:text-[14px] font-bold text-gypi-text">Así queda el asiento</h3>
