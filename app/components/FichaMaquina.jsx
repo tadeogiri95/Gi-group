@@ -19,6 +19,7 @@ import RegistrarTarea from "./RegistrarTarea";
 import AsignarMantenimiento from "./AsignarMantenimiento";
 import { CAMPOS_MAQUINA, aCargoDe, conResponsables } from "../lib/mantenimiento";
 import { ListaFallas, HistorialFallas } from "./FallasMaquina";
+import GastosImputados from "./GastosImputados";
 import AvisarFalla from "./AvisarFalla";
 import { linkMaquina } from "../lib/fallasMaquinaria";
 import { imprimirEtiquetasArticulos } from "../lib/stock";
@@ -485,6 +486,7 @@ export default function FichaMaquina({ maquina, tareas = [], registros = [], fal
         </ul>
       )}
 
+      <GastosImputados tipo="maquina" id={maquina.id} usuario={usuario} />
       <h3 className="m-0 mb-1.5 text-[16px] font-bold">Historial</h3>
       <HistorialFallas fallas={fallas} />
       {!registros.length ? (
