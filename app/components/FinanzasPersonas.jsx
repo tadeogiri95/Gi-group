@@ -185,7 +185,7 @@ function Repetidos({ pares, onCerrar, onHecho }) {
     setOcupado(`${p.a.clave}|${p.b.clave}`);
     try {
       await mandar({ accion: "unir", a: a.clave, b: b.clave });
-      toast.success(`"${b.nombre}" quedó como otro nombre de "${a.nombre}"`);
+      toast.success(a.nombre === b.nombre ? `Quedó un solo "${a.nombre}", con todo lo de los dos` : `"${b.nombre}" quedó como otro nombre de "${a.nombre}", con todo lo suyo`);
       onHecho();
     } catch (e) {
       toast.error(e.message);
@@ -197,7 +197,7 @@ function Repetidos({ pares, onCerrar, onHecho }) {
   return (
     <Modal open onClose={onCerrar} title="Posibles repetidos" maxWidth={640}>
       <div className="flex flex-col gap-2 text-[14px] text-gypi-text">
-        <p className="m-0 text-[13px] text-gypi-dim">Nombres parecidos (todas las palabras de uno están en el otro). Si son la misma persona, uní: queda uno solo y el otro nombre se guarda para reconocerlo.</p>
+        <p className="m-0 text-[13px] text-gypi-dim">Nombres iguales o parecidos (todas las palabras de uno están en el otro). Si son la misma persona, uní: queda uno solo, con todos los movimientos de los dos (compras, pagos, cobros, cheques y OT), y el otro nombre se guarda para reconocerlo.</p>
         {!lista.length && <p className="m-0">No quedan posibles repetidos.</p>}
         <ul className="list-none m-0 p-0 flex flex-col gap-1.5">
           {lista.map((p) => {
@@ -205,8 +205,8 @@ function Repetidos({ pares, onCerrar, onHecho }) {
             return (
               <li key={k} className="rounded-lg border border-gypi-border bg-gypi-surface px-3 py-2 flex flex-wrap items-center gap-2">
                 <span className="flex-1 min-w-[200px]">
-                  <b>{p.a.nombre}</b> <span className="text-gypi-dim">({rolPersona(p.a)})</span>
-                  <span className="block"><b>{p.b.nombre}</b> <span className="text-gypi-dim">({rolPersona(p.b)})</span></span>
+                  <b>{p.a.nombre}</b> <span className="text-gypi-dim">({rolPersona(p.a)}{p.a.cuit ? ` · CUIT ${p.a.cuit}` : ""})</span>
+                  <span className="block"><b>{p.b.nombre}</b> <span className="text-gypi-dim">({rolPersona(p.b)}{p.b.cuit ? ` · CUIT ${p.b.cuit}` : ""})</span></span>
                 </span>
                 <button type="button" className="g-btn g-btn-primary" disabled={ocupado === k} onClick={() => unir(p)}>Son la misma: unir</button>
                 <button type="button" className="g-btn g-btn-secondary" onClick={() => setDescartados((s) => new Set([...s, k]))}>No</button>

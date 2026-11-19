@@ -24,6 +24,7 @@
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige).
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+import { unirClientesEnBase } from "../../../lib/unirServidor";
 import { sbGet, sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
@@ -33,7 +34,7 @@ import { FECHA } from "../../../lib/finanzasOperaciones";
 import { CUENTA_AJUSTE_CAPITAL, ORIGEN_SALDO_INICIAL } from "../../../lib/finanzasProveedores";
 import { operacionAlta } from "../../../lib/finanzasCheques";
 import {
-  ORIGEN_COBRO, armarCobro, clientesNuevosDeOt, cuentasDeudores, emparejarCliente, operacionSaldoInicialCliente, unirClientes, validarCliente,
+  ORIGEN_COBRO, armarCobro, clientesNuevosDeOt, cuentasDeudores, emparejarCliente, operacionSaldoInicialCliente, validarCliente,
 } from "../../../lib/finanzasClientes";
 import { CLAVE_VENTAS_OT, configVentas, cuentasVentas, sincronizarVentasOt } from "../../../lib/finanzasVentas";
 
@@ -120,12 +121,9 @@ async function unir(sesion, d) {
   const a = clientes.find((c) => Number(c.id) === Number(d.a));
   const b = clientes.find((c) => Number(c.id) === Number(d.b));
   if (!a || !b || a.id === b.id || a.activo === false || b.activo === false) return NextResponse.json({ error: "Elegí dos clientes distintos" }, { status: 400 });
-  const { a: ca, b: cb } = unirClientes(a, b);
-  const ahora = new Date().toISOString();
-  await sbPatch(`fin_clientes?id=eq.${a.id}&empresa_id=eq.${e}`, { ...ca, updated_at: ahora }, { sesion });
-  await sbPatch(`fin_clientes?id=eq.${b.id}&empresa_id=eq.${e}`, { ...cb, updated_at: ahora }, { sesion });
-  await sbPatch(`fin_operaciones?empresa_id=eq.${e}&cliente_id=eq.${b.id}`, { cliente_id: a.id, updated_at: ahora }, { sesion });
+  await unirClientesEnBase(sesion, a, b);
   broadcastRefresh(e, "fin_operaciones");
+  broadcastRefresh(e, "finanzas");
   return NextResponse.json({ ok: true });
 }
 

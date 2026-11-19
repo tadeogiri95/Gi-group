@@ -209,9 +209,11 @@ export function paresDeAgenda(personas = []) {
 }
 
 /**
- * Los que parecen la misma persona pero no tienen exactamente las mismas
- * palabras: todas las palabras de uno están en el otro ("BUGLIOTTI" y
- * "BUGLIOTTI JUAN"). Solo nombres con alguna palabra de 4 letras o más.
+ * Los que parecen la misma persona: todas las palabras de uno están en el otro
+ * ("BUGLIOTTI" y "BUGLIOTTI JUAN"). Solo nombres con alguna palabra de 4
+ * letras o más. 19/11: también los que tienen exactamente las mismas palabras
+ * (dos clientes o dos proveedores "FELIPE OMAR GUZMAN"), que la Agenda no
+ * puede juntar sola porque son dos fichas distintas.
  */
 export function posiblesRepetidos(agenda = [], max = 200) {
   const porPalabra = new Map();
@@ -226,7 +228,7 @@ export function posiblesRepetidos(agenda = [], max = 200) {
     const candidatos = (porPalabra.get(larga) || []).filter((j) => {
       if (j === i) return false;
       const b = palabras[j];
-      return b.size > a.size && [...a].every((p) => b.has(p));
+      return b.size >= a.size && [...a].every((p) => b.has(p));
     });
     // Un nombre de pila suelto ("CESAR", "FLORENCIA") está en muchos: no es un repetido
     if (a.size === 1 && candidatos.length > 2) continue;
