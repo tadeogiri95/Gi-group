@@ -17,6 +17,8 @@ import { hoyAr } from "../lib/finanzasOperaciones";
 import { nombreMes } from "../lib/finanzasResultados";
 import { textoPctEstimado } from "../lib/finanzasOtClientes";
 import ConfigMateriales from "./FinanzasPctMateriales";
+import BotonesExportar from "./FinanzasExportar";
+import { informeResultados } from "../lib/finanzasInformesSueltos";
 import { Chip, Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
 
@@ -197,6 +199,7 @@ export default function FinanzasResultados() {
         <p className="m-0 text-[13px] text-gypi-dim flex-1 min-w-[200px]">Devengado, 12 meses, en pesos y sin IVA, ordenado según NIIF (gastos por función). Ingresos = entregas de las OT (precio del Plan, el mes en que se finaliza la OT; las que no tienen precio van aparte, en celeste, con valor estimado): se compara lo producido contra los costos. Tocá una sección para abrirla o cerrarla.</p>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setConfig(true)}>⚙ Materiales ({datos.config?.materiales_real ? "costo real" : pct(datos.config?.materiales_pct)})</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setReparto(true)}>⚙ Compartidos</button>
+        <BotonesExportar nombre="el Estado de Resultados" informe={() => informeResultados(datos)} />
         {cargando && <Spinner size={16} />}
       </div>
 
