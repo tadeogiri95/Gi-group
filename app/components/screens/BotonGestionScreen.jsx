@@ -53,9 +53,11 @@ import { GRUPOS_FINANZAS } from "../../lib/finanzasInicio";
 export function pestanasCelular(boton, opciones, actualId) {
   if (boton !== "finanzas") return opciones;
   if (actualId === "fin-inicio") return [];
-  const grupo = GRUPOS_FINANZAS.find((g) => g.opciones.includes(actualId));
-  if (!grupo) return opciones;
-  return opciones.filter((o) => o.id === "fin-inicio" || grupo.opciones.includes(o.id));
+  // Las que no tienen renglón propio (19/11) muestran las pestañas de donde se abren
+  const deGrupo = { "fin-cuenta-ot": "fin-clientes", "fin-unificados": "fin-personas" }[actualId] || actualId;
+  const grupo = GRUPOS_FINANZAS.find((g) => g.opciones.includes(deGrupo));
+  if (!grupo) return opciones.filter((o) => o.enMenu !== false);
+  return opciones.filter((o) => o.id === "fin-inicio" || o.id === actualId || grupo.opciones.includes(o.id));
 }
 
 const ReportesScreen = dynamic(() => import("../../reportes_screen"), { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div> });
