@@ -34,15 +34,17 @@ const SITUACION = {
 /** Qué se carga de cada plazo, en palabras. */
 function queSeCarga(f) {
   if (f.estado === "dolares") return "En dólares: cargalo a mano";
-  if (!f.ops.length) return "Ya está en Gypi";
+  const banco = f.cambios?.length ? " Lo que ya trajo el extracto del banco pasa a la cuenta que corresponde." : "";
+  if (!f.ops.length) return f.cambios?.length ? `Ya está en el extracto del banco.${banco}` : "Ya está en Gypi";
   const partes = f.ops.map((o) => {
-    const paso = String(o.origen_id).slice(-1);
+    const paso = String(o.origen_id).split(":").pop();
     if (paso === "c") return "la constitución";
     if (paso === "r") return "el vencimiento";
+    if (paso === "ij") return `el interés que vino con el capital en el banco (${plata(o.total)})`;
     return `el interés (${plata(o.total)})`;
   });
   const lista = partes.length > 1 ? `${partes.slice(0, -1).join(", ")} y ${partes[partes.length - 1]}` : partes[0];
-  return `${f.ya.length ? `Ya estaba: ${f.ya.join(" y ")}. ` : ""}Se carga ${lista}`;
+  return `${f.ya.length ? `Ya estaba: ${f.ya.join(" y ")}. ` : ""}Se carga ${lista}.${banco}`;
 }
 
 function Importar({ datos, onCerrar, onCargado }) {
@@ -231,7 +233,7 @@ function Vencidos({ pendientes, onCerrar, onHecho }) {
     setError(null);
     try {
       const d = await postPf({ accion: "vencidos", ...(confirmar ? { confirmar_repetido: true } : {}) });
-      toast.success(`✅ ${d.plazos} ${d.plazos === 1 ? "plazo fijo volvió" : "plazos fijos volvieron"} al banco, con el interés aparte`);
+      toast.success(`✅ ${d.plazos} ${d.plazos === 1 ? "plazo fijo volvió" : "plazos fijos volvieron"} al banco, con el interés aparte${d.corregidas ? ` (${d.corregidas} ${d.corregidas === 1 ? "renglón del extracto pasó" : "renglones del extracto pasaron"} a su cuenta)` : ""}`);
       onHecho();
     } catch (e) {
       setRepetido(Boolean(e.datos?.repetido));
@@ -239,7 +241,7 @@ function Vencidos({ pendientes, onCerrar, onHecho }) {
       setOcupado(false);
     }
   }
-  const interes = pendientes.reduce((s, p) => s + (p.falta.i ? p.interes : 0), 0);
+  const interes = pendientes.reduce((s, p) => s + (p.falta.i ? p.interes : 0) + (p.falta.interes_junto || 0), 0);
   return (
     <Modal open onClose={ocupado ? () => {} : onCerrar} title="Plazos fijos vencidos" maxWidth={560}>
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
@@ -250,6 +252,12 @@ function Vencidos({ pendientes, onCerrar, onHecho }) {
               <span className="font-mono">N° {p.certificado}</span>
               <span>venció el {fechaPf(p.vencimiento)}</span>
               <span className="flex-1 text-right font-mono">{p.falta.r ? plata(p.depositado) : ""}{p.falta.i ? ` + interés ${plata(p.interes)}` : ""}</span>
+              {p.falta.ajustes?.length > 0 && (
+                <span className="basis-full text-[12px] text-gypi-dim">Ya está en el extracto del banco: ese renglón pasa a la cuenta que corresponde, no se carga otra vez.</span>
+              )}
+              {p.falta.interes_junto > 0 && (
+                <span className="basis-full text-[12px] text-gypi-dim">El banco devolvió capital e interés juntos: se registra aparte el interés ganado, <b className="font-mono">{plata(p.falta.interes_junto)}</b>.</span>
+              )}
             </li>
           ))}
         </ul>
@@ -278,7 +286,9 @@ function Repetidos({ repetidos, onCerrar, onHecho }) {
     setError(null);
     try {
       const d = await postPf({ accion: "anular_repetidos" });
-      toast.success(`✅ ${d.anuladas === 1 ? "Se anuló 1 repetida" : `Se anularon ${d.anuladas} repetidas`}`);
+      const extra = [d.corregidas ? `${d.corregidas} ${d.corregidas === 1 ? "renglón del extracto pasó" : "renglones del extracto pasaron"} a su cuenta` : "",
+        d.intereses ? `${d.intereses} ${d.intereses === 1 ? "interés registrado" : "intereses registrados"} aparte` : ""].filter(Boolean).join(", ");
+      toast.success(`✅ ${d.anuladas === 1 ? "Se anuló 1 repetida" : `Se anularon ${d.anuladas} repetidas`}${extra ? ` (${extra})` : ""}`);
       onHecho();
     } catch (e) {
       setError(e.message);
@@ -290,8 +300,9 @@ function Repetidos({ repetidos, onCerrar, onHecho }) {
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
         <p className="m-0 text-[13px] text-gypi-dim">
           Estas operaciones las cargó Gypi y también están en el libro o en el extracto del banco, con el mismo importe.
-          Se anula la de Gypi (queda tachada y el libro borra su renglón) y queda la otra. Si el banco devolvió capital e interés
-          en un solo renglón, se anulan el vencimiento y el interés de Gypi y queda ese renglón.
+          Se anula la de Gypi (queda tachada y el libro borra su renglón) y queda la otra. Si el renglón del extracto quedó contra
+          otra cuenta, pasa a la del plazo fijo o a Intereses Ganados. Si el banco devolvió capital e interés en un solo renglón
+          (aunque haya retenido parte del interés), queda ese renglón y el interés que de verdad entró se registra aparte.
         </p>
         <ul className="list-none m-0 p-0 flex flex-col gap-2" aria-label="Repetidas">
           {repetidos.map((r) => (
