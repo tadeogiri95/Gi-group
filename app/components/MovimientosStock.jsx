@@ -14,6 +14,7 @@ import { textoOt } from "../lib/nombreOt";
 import BotonNuevaPersona from "./AltaPersona";
 import { proveedorDeLista } from "../lib/elegirDeLista";
 import RemitosFoto from "./RemitosFoto";
+import MovimientoCorregir, { HistorialMovimiento, historialMovimiento } from "./MovimientoCorregir";
 
 const CUANTOS = 100;
 const VACIO = { tipo: "ingreso", texto: "", articulo: null, cantidad: "", ot: "", proveedor: "", comprobante: "", precio: "", notas: "", fecha: "", renglones: [], otTodos: "" };
@@ -78,6 +79,9 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
   const [error, setError] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [conRemito, setConRemito] = useState(false);
+  // 19/11 (punto 12): el movimiento que se está corrigiendo y el que muestra su historial
+  const [corrigiendo, setCorrigiendo] = useState(null);
+  const [verHistorial, setVerHistorial] = useState(null);
 
   const cargar = useCallback(async () => {
     try {
@@ -327,15 +331,31 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
       ) : (
         <ul aria-label="Movimientos" className="list-none m-0 p-0 flex flex-col gap-1.5">
           {movs.map((m) => (
-            <li key={m.id} className={`flex items-center gap-2 p-2 rounded-[10px] border border-gypi-border bg-gypi-surface ${m.anulado ? "opacity-60" : ""}`}>
-              <div className="flex-1 min-w-0">
-                <div className={`text-[14px] font-semibold ${m.anulado ? "line-through" : ""}`}>{textoMovimiento(m, porOt)}</div>
-                <div className="text-[12px] text-gypi-dim truncate">{m.nombre || m.sku} · {m.empleado_nombre || (m.legajo ? `Legajo ${m.legajo}` : "—")} · {cuandoFue(m)}{m.anulado ? " · Anulado" : ""}</div>
+            <li key={m.id} className={`p-2 rounded-[10px] border border-gypi-border bg-gypi-surface ${m.anulado ? "opacity-60" : ""}`}>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className={`text-[14px] font-semibold ${m.anulado ? "line-through" : ""}`}>{textoMovimiento(m, porOt)}</div>
+                  <div className="text-[12px] text-gypi-dim truncate">{m.nombre || m.sku} · {m.empleado_nombre || (m.legajo ? `Legajo ${m.legajo}` : "—")} · {cuandoFue(m)}{m.anulado ? " · Anulado" : ""}</div>
+                </div>
+                {historialMovimiento(m).some((h) => h.accion === "corregida") && (
+                  <button onClick={() => setVerHistorial((v) => (v === m.id ? null : m.id))} aria-expanded={verHistorial === m.id}
+                    aria-label={`Historial de ${textoMovimiento(m, porOt)}`}
+                    className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-dim cursor-pointer">🕓</button>
+                )}
+                {puedeAnular(m, { rol: usuario?.rol, empleadoId: usuario?.id }) && corrigiendo !== m.id && (
+                  <>
+                    <button onClick={() => { setCorrigiendo(m.id); setError(null); }} aria-label={`Corregir ${textoMovimiento(m, porOt)} de ${m.nombre || m.sku}`}
+                      className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">✏ Corregir</button>
+                    <button onClick={() => anular(m)} aria-label={`Anular ${textoMovimiento(m, porOt)} de ${m.nombre || m.sku}`}
+                      className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer">Anular</button>
+                  </>
+                )}
               </div>
-              {puedeAnular(m, { rol: usuario?.rol, empleadoId: usuario?.id }) && (
-                <button onClick={() => anular(m)} aria-label={`Anular ${textoMovimiento(m, porOt)} de ${m.nombre || m.sku}`}
-                  className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer">Anular</button>
+              {corrigiendo === m.id && (
+                <MovimientoCorregir m={m} onCancelar={() => setCorrigiendo(null)}
+                  onCorregido={async (d) => { setCorrigiendo(null); if (d.aviso) setError(d.aviso); await cargar(); }} />
               )}
+              {verHistorial === m.id && <div className="mt-2"><HistorialMovimiento m={m} /></div>}
             </li>
           ))}
         </ul>

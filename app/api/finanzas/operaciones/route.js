@@ -28,9 +28,12 @@
 //       Un gasto se anula junto con su pago.
 //   POST { accion: "anular_varias", ids } → lo mismo, varias juntas (los plazos
 //       fijos repetidos, 12/11).
-//   POST { accion: "corregir", id, cambios } → anula la operación ("corregida")
-//       y carga una nueva con la fecha, el importe, las cuentas, la descripción
-//       o la referencia cambiadas (12/11).
+//   POST { accion: "corregir", id, cambios } → corrige en su lugar la fecha, el
+//       importe, las cuentas, la descripción o la referencia, y anota en el
+//       historial qué cambió, quién y cuándo (19/11, migración 199). Sin la
+//       199, como antes (12/11): la anula ("corregida") y carga una nueva.
+//       Con el libro como copia completa de Gypi, también lo que vino del
+//       libro y los saldos iniciales.
 //   POST { accion: "comprobantes", id, comprobantes } → cambia la lista de
 //       comprobantes (PDF o fotos) de un movimiento (13/11, parte 4; migración
 //       187). "crear" y "gasto" también aceptan comprobantes al cargar.
@@ -63,12 +66,20 @@ import { listasFinanzas } from "../../../lib/finanzasListas";
 import { GRUPO_DOLARES, ORIGEN_DOLARES } from "../../../lib/finanzasDolares";
 import { columnasComprobantes, falta187, validarComprobantes } from "../../../lib/finanzasAdjuntos";
 import { MARCA_CORREGIDA, MAX_ANULAR_JUNTAS, SE_ANULAN, SE_CONFIRMAN, operacionCorregida, puedeCorregir } from "../../../lib/finanzasCorregir";
+import { AVISO_FALTA_199, conEntrada, entradaCorreccion, falta199 } from "../../../lib/historialCambios";
+import { CLAVE_LIBRO_FIN } from "../../../lib/finanzasLibro";
 
 // El gasto y la compra o venta de dólares se anulan con su grupo (abajo), nunca sueltos
 const ANULABLES = `origen=in.(${[...SE_ANULAN].filter((o) => o !== ORIGEN_GASTO && o !== ORIGEN_DOLARES).join(",")})`;
 
 const ORIGENES_COMPRA = ["factura_oc", "factura_oc_otra", "factura_suelta"];
-const COLUMNAS = "id,fecha,tipo,proveedor_id,cliente_id,entidad,proyecto_id,centro_costo,neto,iva,otros_impuestos,total,moneda,tipo_cambio,total_ars,cuenta_debe,cuenta_haber,descripcion,referencia,origen,origen_id,estado,cargada_por_nombre,anulada_at,anulada_por_nombre,created_at";
+const COLUMNAS = "id,fecha,tipo,proveedor_id,cliente_id,entidad,proyecto_id,centro_costo,neto,iva,otros_impuestos,total,moneda,tipo_cambio,total_ars,cuenta_debe,cuenta_haber,descripcion,referencia,origen,origen_id,estado,cargada_por_nombre,anulada_at,anulada_por_nombre,created_at,updated_at";
+
+/** ¿El libro ya es copia completa de Gypi (PR 11)? Entonces lo del libro también se corrige acá. */
+async function espejoCompleto(sesion) {
+  const [cfg] = (await sbGet(`config_sistema?empresa_id=eq.${sesion.empresa_id}&clave=eq.${CLAVE_LIBRO_FIN}&select=valor&limit=1`, { sesion, silent: true, fallback: [] })) || [];
+  return !!cfg?.valor?.espejo_completo_at;
+}
 
 const listas = listasFinanzas;
 
@@ -239,16 +250,22 @@ export async function GET(request) {
   if (desde > hasta) return NextResponse.json({ error: "La fecha desde es posterior a la fecha hasta" }, { status: 400 });
   try {
     const e = sesion.empresa_id;
-    const [ops, datos] = await Promise.all([
-      // Con los comprobantes (176 y 187); sin las migraciones, sin ellos
-      sbGetAll(`fin_operaciones?empresa_id=eq.${e}&fecha=gte.${desde}&fecha=lte.${hasta}&select=${COLUMNAS},comprobante_url,comprobantes&order=fecha.desc,id.desc`, { sesion, maxFilas: MAX_OPERACIONES })
-        .catch((err) => {
-          if (!/comprobante/.test(String(err?.message))) throw err;
-          return sbGetAll(`fin_operaciones?empresa_id=eq.${e}&fecha=gte.${desde}&fecha=lte.${hasta}&select=${COLUMNAS}&order=fecha.desc,id.desc`, { sesion, maxFilas: MAX_OPERACIONES });
-        }),
-      listas(sesion),
-    ]);
-    return NextResponse.json({ desde, hasta, operaciones: ops.data, truncado: ops.truncado, ...datos });
+    // Con los comprobantes (176 y 187) y el historial (199); sin las migraciones, sin ellos
+    const leerOps = async () => {
+      let extra = ["comprobante_url", "comprobantes", "historial"];
+      for (;;) {
+        try {
+          return await sbGetAll(`fin_operaciones?empresa_id=eq.${e}&fecha=gte.${desde}&fecha=lte.${hasta}&select=${[COLUMNAS, ...extra].join(",")}&order=fecha.desc,id.desc`, { sesion, maxFilas: MAX_OPERACIONES });
+        } catch (err) {
+          const sin = falta199(err) && extra.includes("historial") ? ["historial"]
+            : /comprobante/.test(String(err?.message)) && extra.some((x) => x.startsWith("comprobante")) ? ["comprobante_url", "comprobantes"] : null;
+          if (!sin) throw err;
+          extra = extra.filter((x) => !sin.includes(x));
+        }
+      }
+    };
+    const [ops, datos, espejo] = await Promise.all([leerOps(), listas(sesion), espejoCompleto(sesion)]);
+    return NextResponse.json({ desde, hasta, operaciones: ops.data, truncado: ops.truncado, espejo_completo: espejo, ...datos });
   } catch (err) {
     return errorFinanzas(err, "operaciones GET");
   }
@@ -379,9 +396,10 @@ export async function POST(request) {
       if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta la operación" }, { status: 400 });
       const [op] = (await sbGet(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null&select=*&limit=1`, { sesion })) || [];
       if (!op) return NextResponse.json({ error: "No encontré esa operación o ya está anulada" }, { status: 404 });
-      if (!puedeCorregir(op)) return NextResponse.json({ error: "Esta operación sale de otra pantalla: se corrige desde ahí" }, { status: 400 });
+      const espejo = await espejoCompleto(sesion);
+      if (!puedeCorregir(op, { espejo })) return NextResponse.json({ error: "Esta operación sale de otra pantalla: se corrige desde ahí" }, { status: 400 });
       const cuentas = (await sbGetAll(`fin_cuentas?empresa_id=eq.${e}&select=codigo`, { sesion, maxFilas: 5000 })).data || [];
-      const { nueva, errores } = operacionCorregida(op, d.cambios || {}, { cuentas });
+      const { campos, detalle, nueva, errores } = operacionCorregida(op, d.cambios || {}, { cuentas, espejo });
       if (errores.length) return NextResponse.json({ error: errores.join(" "), errores }, { status: 400 });
       // Si cambia la fecha o el importe, que no quede igual a otra (la que se corrige no cuenta)
       if (d.confirmar_repetido !== true) {
@@ -390,7 +408,17 @@ export async function POST(request) {
       }
       const ahora = new Date().toISOString();
       const quien = await nombreEmpleado(sesion);
-      // Primero se anula la vieja (si otro la anuló recién, no se carga la nueva)
+      // 19/11 (199): en su lugar, con lo que cambió en el historial. Solo si nadie
+      // la tocó desde que se leyó (si no, el historial perdería un cambio)
+      if ("historial" in op) {
+        const historial = conEntrada(op.historial, entradaCorreccion({ por: quien || "Dueño", at: ahora, cambios: detalle }));
+        const mismaVersion = op.updated_at ? `&updated_at=eq.${encodeURIComponent(op.updated_at)}` : "";
+        const filas = await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null${mismaVersion}`, { ...campos, historial, updated_at: ahora }, { sesion });
+        if (!filas?.length) return NextResponse.json({ error: "Alguien la cambió o la anuló recién: cerrala y volvé a abrirla." }, { status: 409 });
+        broadcastRefresh(e, "fin_operaciones");
+        return NextResponse.json({ ok: true, operacion: filas[0], en_su_lugar: true });
+      }
+      // Sin la 199: como antes, primero se anula la vieja (si otro la anuló recién, no se carga la nueva)
       const anulada = await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null`, {
         anulada_at: ahora, anulada_por_nombre: `${quien || "Dueño"} ${MARCA_CORREGIDA}`.slice(0, 120), updated_at: ahora,
       }, { sesion });
@@ -398,7 +426,7 @@ export async function POST(request) {
       try {
         const [fila] = await sbPost("fin_operaciones", { ...nueva, empresa_id: e, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora }, { sesion });
         broadcastRefresh(e, "fin_operaciones");
-        return NextResponse.json({ ok: true, operacion: fila, anulada: id });
+        return NextResponse.json({ ok: true, operacion: fila, anulada: id, aviso: AVISO_FALTA_199 });
       } catch (err) {
         // Si la nueva no se pudo guardar, la vieja vuelve a estar viva
         await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}`, { anulada_at: null, anulada_por_nombre: null, updated_at: new Date().toISOString() }, { sesion, silent: true }).catch(() => null);

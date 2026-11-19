@@ -3,8 +3,9 @@
 // Tadeo del 12/11; reglas en app/lib/finanzasCorregir.js). Se usa en el
 // detalle de Movimientos y en la ficha de cada caja o banco.
 //
-// La operación vieja queda anulada ("corregida") y se carga una nueva con lo
-// cambiado: fecha, importe, cuentas, descripción y referencia.
+// Desde el 19/11 (migración 199) se corrige en su lugar: fecha, importe,
+// cuentas, descripción y referencia, y queda en el historial qué cambió,
+// quién y cuándo. Sin la 199, la vieja queda anulada y se carga una nueva.
 import { useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { SelectBuscable } from "./ui";
@@ -56,7 +57,8 @@ export default function CorregirOperacion({ op, cuentas = [], onCancelar, onCorr
       const rep = repetidosDe(res.status, d);
       if (rep) { setRepetidos(rep); return; }
       if (!res.ok) throw new Error(d.error || "No se pudo corregir");
-      toast.success("✅ Corregida: la anterior queda anulada");
+      toast.success(d.en_su_lugar ? "✅ Corregida: el cambio queda en el historial" : "✅ Corregida: la anterior queda anulada");
+      if (d.aviso) toast.info(d.aviso);
       onCorregida(d.operacion);
     } catch (e) {
       toast.error(e.message);
@@ -67,7 +69,7 @@ export default function CorregirOperacion({ op, cuentas = [], onCancelar, onCorr
 
   return (
     <section aria-label="Corregir la operación" className="rounded-lg border border-gypi-border bg-gypi-surface p-3 flex flex-col gap-2">
-      <p className="m-0 text-[13px] text-gypi-dim">La operación de ahora queda anulada (se ve tachada, como corregida) y se carga una nueva con lo que cambies.</p>
+      <p className="m-0 text-[13px] text-gypi-dim">Se corrige esta misma operación. Lo que cambies queda en el 🕓 Historial, con quién y cuándo.</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {campo("Fecha", <input type="date" className="g-input w-full" value={f.fecha} onChange={cambiar("fecha")} />)}
         {campo(`Importe${op.moneda === "USD" ? " en dólares" : ""}`, <input inputMode="decimal" className="g-input w-full font-mono" value={f.total} onChange={cambiar("total")} />)}

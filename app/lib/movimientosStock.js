@@ -102,3 +102,49 @@ export function fechaCorta(dia) {
   const [a, m, d] = String(dia || "").split("-");
   return a && m && d ? `${d}/${m}/${a}` : "";
 }
+
+/* ─── Corregir un movimiento (19/11, punto 12; migración 199) ─────────── */
+
+/** Lo que se corrige de un movimiento, con su nombre para el historial. */
+export const CAMPOS_MOVIMIENTO = { fecha: "Fecha", cantidad: "Cantidad", ot: "OT", notas: "Notas", precio_unitario: "Precio unitario" };
+
+/**
+ * Lo que queda del movimiento con los cambios: la fecha (como al cargar, no
+ * futura ni de hace más de un año), la cantidad (mayor a cero, salvo un
+ * ajuste), la OT, las notas y, en un ingreso, el precio. Lo que no viene
+ * queda igual.
+ * @returns {{ campos?: object, detalle?: { campo: string, antes: any, despues: any }[], errores: string[] }}
+ */
+export function movimientoCorregido(mov, cambios = {}, ahora = new Date()) {
+  const errores = [];
+  if (!mov || mov.anulado) return { errores: ["Ese movimiento ya está anulado."] };
+  const campos = {};
+  if (cambios.fecha !== undefined) {
+    const dia = fechaDelMovimiento(cambios.fecha, ahora);
+    if (dia.error) errores.push(dia.error);
+    else campos.fecha = dia.fecha;
+  }
+  if (cambios.cantidad !== undefined) {
+    const n = Number(cambios.cantidad);
+    if (!Number.isFinite(n) || n === 0 || Math.abs(n) >= 1e10) errores.push("La cantidad no es válida");
+    else if (mov.tipo !== "ajuste" && n < 0) errores.push("La cantidad tiene que ser mayor a cero");
+    else campos.cantidad = Math.round(n * 1000) / 1000;
+  }
+  if (cambios.ot !== undefined) campos.ot = cambios.ot ? String(cambios.ot).trim().slice(0, 40) || null : null;
+  if (cambios.notas !== undefined) campos.notas = cambios.notas ? String(cambios.notas).replace(/\s+/g, " ").trim().slice(0, 300) || null : null;
+  if (cambios.precio_unitario !== undefined) {
+    if (mov.tipo !== "ingreso") errores.push("El precio solo va en un ingreso");
+    else if (cambios.precio_unitario !== null && !(Number(cambios.precio_unitario) >= 0)) errores.push("El precio no es válido");
+    else campos.precio_unitario = cambios.precio_unitario === null ? null : Math.round(Number(cambios.precio_unitario) * 100) / 100;
+  }
+  if (errores.length) return { errores };
+  const antes = { ...mov, fecha: diaDelMovimiento(mov) };
+  const detalle = Object.keys(CAMPOS_MOVIMIENTO)
+    .filter((c) => c in campos)
+    .filter((c) => (c === "cantidad" || c === "precio_unitario")
+      ? (antes[c] == null ? campos[c] != null : campos[c] == null || Math.abs(Number(antes[c]) - Number(campos[c])) >= 0.0005)
+      : String(antes[c] ?? "") !== String(campos[c] ?? ""))
+    .map((c) => ({ campo: c, antes: c === "cantidad" || c === "precio_unitario" ? (antes[c] == null ? null : Number(antes[c])) : antes[c] ?? null, despues: campos[c] ?? null }));
+  if (!detalle.length) return { errores: ["No cambiaste nada."] };
+  return { campos, detalle, errores };
+}

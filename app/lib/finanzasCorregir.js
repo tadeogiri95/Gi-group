@@ -1,16 +1,19 @@
 // app/lib/finanzasCorregir.js — Corregir o anular un movimiento de cajas y
 // bancos (pedido de Tadeo del 12/11). Sin migración.
 //
-// Corregir no pisa la operación: la deja anulada ("corregida por …") y carga
-// una nueva con lo cambiado. Así queda a la vista qué había antes, y el libro
-// borra el renglón viejo y escribe el nuevo.
+// Desde el 19/11 (punto 12, migración 199) se corrige en su lugar: la
+// operación es la misma (no cambia de número, sigue unida a su extracto, su
+// orden o su plazo fijo) y en su historial queda qué cambió, quién y cuándo.
+// El libro reescribe el renglón solo (cambia la versión). Sin la 199, como
+// antes: la deja anulada ("corregida por …") y carga una nueva.
 //
 // Se corrige o se anula lo que no depende de otra pantalla: lo cargado a mano,
 // los plazos fijos, el extracto del banco, Mi caja, el
 // FCI y los títulos. Lo que sale de una factura, un cheque, una orden de pago,
 // un cobro, una venta o un sueldo se cambia desde donde salió. Lo copiado del
-// libro se corrige en el libro: al volver a pasar el histórico, Gypi lo
-// actualiza solo (si se corrigiera acá, el libro quedaría con los dos).
+// libro se corrige en el libro mientras el libro sea el que manda: al volver
+// a pasar el histórico, Gypi lo actualiza solo. Cuando el libro ya es copia
+// completa de Gypi (espejo_completo_at, PR 11), también se corrige acá.
 
 export const SE_CORRIGEN = new Set(["manual", "plazo_fijo", "banco", "mi_caja", "fci", "titulos"]);
 /**
@@ -35,12 +38,27 @@ const centavos = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const txt = (v, max) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
 const dias = (a, b) => Math.round((Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86400000);
 
-export const puedeCorregir = (op) => !!op && !op.anulada_at && SE_CORRIGEN.has(op.origen || "manual");
+/** Con el libro como copia completa de Gypi, también lo que vino del libro. */
+export const SE_CORRIGEN_ESPEJO = new Set(["libro", "saldo_inicial"]);
+/** Los campos que se corrigen, con su nombre para el historial. */
+export const CAMPOS_CORREGIBLES = {
+  fecha: "Fecha", total: "Importe", tipo_cambio: "Tipo de cambio", cuenta_debe: "Debe", cuenta_haber: "Haber",
+  descripcion: "Descripción", referencia: "Referencia",
+};
+
+/**
+ * ¿Se corrige acá? espejo = el libro ya es copia completa de Gypi.
+ * @param {object} op
+ * @param {{ espejo?: boolean }} [opts]
+ */
+export const puedeCorregir = (op, { espejo = false } = {}) => !!op && !op.anulada_at
+  && (SE_CORRIGEN.has(op.origen || "manual") || (espejo && SE_CORRIGEN_ESPEJO.has(op.origen)));
 export const puedeAnular = (op) => !!op && !op.anulada_at && SE_ANULAN.has(op.origen || "manual");
 
 /** De dónde se cambia lo que no se corrige acá. */
-export function dondeSeCambia(op) {
+export function dondeSeCambia(op, { espejo = false } = {}) {
   const o = op?.origen;
+  if (espejo && SE_CORRIGEN_ESPEJO.has(o)) return "acá (✏ Corregir)";
   if (o === "cheque") return "Finanzas → Cheques";
   if (o === "orden_pago" || o === "pago") return "Finanzas → Pagos (anulando la orden)";
   if (["factura_oc", "factura_oc_otra", "factura_suelta"].includes(o)) return "Compras (corrigiendo o anulando la factura)";
@@ -55,14 +73,18 @@ export function dondeSeCambia(op) {
 }
 
 /**
- * La operación corregida (nueva) a partir de la original y lo que cambió.
+ * La operación corregida a partir de la original y lo que cambió.
  * Cambia fecha, importe, cuentas, descripción y referencia; el resto queda.
  * Con IVA, el importe nuevo se reparte en la misma proporción.
- * @returns {{ nueva?: object, errores: string[] }}
+ *   campos  = lo que se pisa en la misma operación (corregir en el lugar, 199)
+ *   detalle = qué cambió, para el historial: [{ campo, antes, despues }]
+ *   nueva   = la operación nueva, para corregir como antes (sin la 199)
+ * @param {{ cuentas?: object[], espejo?: boolean }} [opts]
+ * @returns {{ campos?: object, detalle?: object[], nueva?: object, errores: string[] }}
  */
-export function operacionCorregida(op, cambios = {}, { cuentas = [] } = {}) {
+export function operacionCorregida(op, cambios = {}, { cuentas = [], espejo = false } = {}) {
   const errores = [];
-  if (!puedeCorregir(op)) return { errores: ["Esta operación no se corrige acá."] };
+  if (!puedeCorregir(op, { espejo })) return { errores: ["Esta operación no se corrige acá."] };
   const fecha = cambios.fecha === undefined ? op.fecha : txt(cambios.fecha, 10);
   if (!FECHA.test(fecha) || Number.isNaN(Date.parse(`${fecha}T12:00:00Z`))) errores.push("La fecha no es válida.");
   const totalViejo = centavos(op.total);
@@ -106,7 +128,17 @@ export function operacionCorregida(op, cambios = {}, { cuentas = [] } = {}) {
     // siendo de Mi caja, así el responsable la sigue viendo)
     origen: op.origen === "mi_caja" ? "mi_caja" : "manual", origen_id: null, estado: "confirmada",
   };
-  return { nueva, errores };
+  // En el lugar: solo lo que se corrige; el origen, el número y lo demás quedan
+  const campos = {
+    fecha, neto, iva, otros_impuestos: otros, total, tipo_cambio: nueva.tipo_cambio, total_ars: nueva.total_ars,
+    cuenta_debe: debe, cuenta_haber: haber, descripcion: nueva.descripcion, referencia: nueva.referencia,
+  };
+  const antes = { ...op, total: totalViejo, descripcion: op.descripcion || null, referencia: op.referencia || null, tipo_cambio: op.moneda === "USD" ? Number(op.tipo_cambio) : null };
+  const detalle = Object.keys(CAMPOS_CORREGIBLES)
+    .filter((c) => c !== "tipo_cambio" || op.moneda === "USD")
+    .filter((c) => String(antes[c] ?? "") !== String(campos[c] ?? ""))
+    .map((c) => ({ campo: c, antes: antes[c] ?? null, despues: campos[c] ?? null }));
+  return { campos, detalle, nueva, errores };
 }
 
 /**
