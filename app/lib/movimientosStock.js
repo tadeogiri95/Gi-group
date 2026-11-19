@@ -62,3 +62,43 @@ export function textoMovimiento(m, porOt = null) {
     m?.ot ? textoOt(otCompleta(m.ot, porOt)) : null,
   ].filter(Boolean).join(" · ");
 }
+
+// ── Fecha del movimiento (19/11, migración 197) ─────────────────────────────
+// Cada ingreso o consumo tiene la fecha del día en que pasó, que la oficina
+// puede elegir al cargarlo (antes solo quedaba cuándo se cargó, created_at).
+
+/** Hasta cuántos días para atrás se puede poner la fecha de un movimiento. */
+export const DIAS_ATRAS_MOVIMIENTO = 366;
+
+/** Fecha de hoy en Argentina (YYYY-MM-DD). */
+export function hoyMovimiento(ahora = new Date()) {
+  return new Date(ahora.getTime() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * La fecha que se guarda: la elegida o, si no viene, hoy. No puede ser
+ * futura ni de hace más de un año.
+ * @returns {{ fecha: string } | { error: string }}
+ */
+export function fechaDelMovimiento(fecha, ahora = new Date()) {
+  const hoy = hoyMovimiento(ahora);
+  if (!fecha) return { fecha: hoy };
+  const t = Date.parse(`${fecha}T12:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || !Number.isFinite(t) || new Date(t).toISOString().slice(0, 10) !== fecha) return { error: "La fecha no es válida" };
+  if (fecha > hoy) return { error: "La fecha no puede ser después de hoy" };
+  const minimo = hoyMovimiento(new Date(ahora.getTime() - DIAS_ATRAS_MOVIMIENTO * 86400000));
+  if (fecha < minimo) return { error: "La fecha es de hace más de un año" };
+  return { fecha };
+}
+
+/** El día del movimiento: su fecha o, sin la migración 197, el día en que se cargó. */
+export function diaDelMovimiento(m) {
+  if (m?.fecha) return String(m.fecha).slice(0, 10);
+  return m?.created_at ? hoyMovimiento(new Date(m.created_at)) : null;
+}
+
+/** "19/11/2026" desde "2026-11-19". */
+export function fechaCorta(dia) {
+  const [a, m, d] = String(dia || "").split("-");
+  return a && m && d ? `${d}/${m}/${a}` : "";
+}

@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { sugerirArticulos } from "../lib/stock";
 import ArticuloNuevo from "./ArticuloNuevo";
-import { TIPOS_MOVIMIENTO, leerCantidadMovimiento, puedeAnular, textoMovimiento } from "../lib/movimientosStock";
+import { TIPOS_MOVIMIENTO, leerCantidadMovimiento, puedeAnular, textoMovimiento, hoyMovimiento, fechaCorta, DIAS_ATRAS_MOVIMIENTO } from "../lib/movimientosStock";
 import { useOts } from "../hooks/useOts";
 import { textoOt } from "../lib/nombreOt";
 import BotonNuevaPersona from "./AltaPersona";
@@ -16,7 +16,7 @@ import { proveedorDeLista } from "../lib/elegirDeLista";
 import RemitosFoto from "./RemitosFoto";
 
 const CUANTOS = 100;
-const VACIO = { tipo: "ingreso", texto: "", articulo: null, cantidad: "", ot: "", proveedor: "", comprobante: "", precio: "", notas: "", renglones: [], otTodos: "" };
+const VACIO = { tipo: "ingreso", texto: "", articulo: null, cantidad: "", ot: "", proveedor: "", comprobante: "", precio: "", notas: "", fecha: "", renglones: [], otTodos: "" };
 
 /** Retiros y devoluciones (11/11, parte 5): varios artículos juntos, cada uno con su OT. */
 export const esVarios = (tipo) => tipo === "consumo" || tipo === "devolucion";
@@ -58,6 +58,13 @@ export function BotonesCargar({ puedeIngresar = true, onElegir }) {
 
 function fechaHora(iso) {
   return iso ? new Date(iso).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "";
+}
+
+/** Cuándo fue el movimiento (19/11, 197): si se cargó otro día, las dos fechas. */
+export function cuandoFue(m) {
+  const cargado = m?.created_at ? hoyMovimiento(new Date(m.created_at)) : null;
+  if (m?.fecha && m.fecha !== cargado) return `${fechaCorta(m.fecha)} · cargado ${fechaHora(m.created_at)}`;
+  return fechaHora(m?.created_at);
 }
 
 export default function MovimientosStock({ usuario, articulos = [], onArticuloNuevo, tipoInicial = null }) {
@@ -113,7 +120,7 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
     setEnviando(true);
     setError(null);
     try {
-      const res = await apiFetch("/api/stock/movimientos", { method: "POST", body: JSON.stringify({ accion: "registrar_varios", tipo: form.tipo, renglones, notas: form.notas || null }) });
+      const res = await apiFetch("/api/stock/movimientos", { method: "POST", body: JSON.stringify({ accion: "registrar_varios", tipo: form.tipo, renglones, notas: form.notas || null, fecha: form.fecha || null }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo guardar");
       setForm(null);
@@ -143,6 +150,7 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
           comprobante: form.tipo === "ingreso" ? form.comprobante : null,
           precio_unitario: form.tipo === "ingreso" ? precio : null,
           notas: form.notas || null,
+          fecha: form.fecha || null,
           ...(forzar ? { forzar: true } : {}),
         }),
       });
@@ -295,6 +303,11 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
               </div>
             </>
           )}
+          {/* 19/11 (197): el día en que pasó, si se carga después */}
+          <label className="g-label" htmlFor="mov-fecha">Fecha</label>
+          <input id="mov-fecha" type="date" className="g-input w-full mb-1" value={form.fecha || hoyMovimiento()} onChange={cambiar("fecha")}
+            max={hoyMovimiento()} min={hoyMovimiento(new Date(Date.now() - DIAS_ATRAS_MOVIMIENTO * 86400000))} />
+          <div className="text-[12px] text-gypi-dim mb-2">El día en que entró o se usó el material. Cambiala si lo cargás después.</div>
           <label className="g-label" htmlFor="mov-notas">Notas (opcional)</label>
           <input id="mov-notas" className="g-input w-full mb-3" value={form.notas} onChange={cambiar("notas")} maxLength={300} />
 
@@ -317,7 +330,7 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
             <li key={m.id} className={`flex items-center gap-2 p-2 rounded-[10px] border border-gypi-border bg-gypi-surface ${m.anulado ? "opacity-60" : ""}`}>
               <div className="flex-1 min-w-0">
                 <div className={`text-[14px] font-semibold ${m.anulado ? "line-through" : ""}`}>{textoMovimiento(m, porOt)}</div>
-                <div className="text-[12px] text-gypi-dim truncate">{m.nombre || m.sku} · {m.empleado_nombre || (m.legajo ? `Legajo ${m.legajo}` : "—")} · {fechaHora(m.created_at)}{m.anulado ? " · Anulado" : ""}</div>
+                <div className="text-[12px] text-gypi-dim truncate">{m.nombre || m.sku} · {m.empleado_nombre || (m.legajo ? `Legajo ${m.legajo}` : "—")} · {cuandoFue(m)}{m.anulado ? " · Anulado" : ""}</div>
               </div>
               {puedeAnular(m, { rol: usuario?.rol, empleadoId: usuario?.id }) && (
                 <button onClick={() => anular(m)} aria-label={`Anular ${textoMovimiento(m, porOt)} de ${m.nombre || m.sku}`}

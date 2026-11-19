@@ -91,10 +91,15 @@ export async function GET(request) {
     const desdeTxt = params.get("desde") || "0";
     const desde = /^\d{1,15}$/.test(desdeTxt) ? Number(desdeTxt) : 0;
     const [empresa] = (await sbGet(`empresa?id=eq.${e}&select=timezone&limit=1`, { silent: true, fallback: [] })) || [];
-    const filas = (await sbGet(
+    // 19/11 (197): con la fecha en que pasó; sin la migración, como antes
+    const leerMovs = (conFecha) => sbGet(
       `movimientos_stock?empresa_id=eq.${e}&id=gt.${desde}&order=id.asc&limit=${LOTE + 1}` +
-      "&select=id,tipo,sku,nombre,cantidad,ot,proveedor,comprobante,precio_unitario,empleado_nombre,legajo,anulado,created_at"
-    )) || [];
+      `&select=id,tipo,sku,nombre,cantidad,ot,proveedor,comprobante,precio_unitario,empleado_nombre,legajo,anulado,created_at${conFecha ? ",fecha" : ""}`
+    );
+    const filas = (await leerMovs(true).catch((err) => {
+      if (!/fecha/.test(String(err?.message))) throw err;
+      return leerMovs(false);
+    })) || [];
     const hayMas = filas.length > LOTE;
     const lote = filas.slice(0, LOTE);
     const hace = new Date(Date.now() - DIAS_ANULADOS * 86400e3).toISOString();
