@@ -59,7 +59,7 @@ export const puedeAnular = (op) => !!op && !op.anulada_at && SE_ANULAN.has(op.or
 export function dondeSeCambia(op, { espejo = false } = {}) {
   const o = op?.origen;
   if (espejo && SE_CORRIGEN_ESPEJO.has(o)) return "acá (✏ Corregir)";
-  if (o === "cheque") return "Finanzas → Cheques";
+  if (o === "cheque") return "Finanzas → Cheques (abrí el cheque y tocá ↩ Deshacer)";
   if (o === "orden_pago" || o === "pago") return "Finanzas → Pagos (anulando la orden)";
   if (["factura_oc", "factura_oc_otra", "factura_suelta"].includes(o)) return "Compras (corrigiendo o anulando la factura)";
   if (o === "cobro" || o === "compensacion") return "Finanzas → Clientes";

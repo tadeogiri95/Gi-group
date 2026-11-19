@@ -30,9 +30,13 @@ function candidatos({ cheques = [], ordenes = [], plazos = [], cuenta }) {
     if (ch.clase === "propio" && ch.estado === "pendiente" && (!ch.cuenta_banco || ch.cuenta_banco === cuenta)) {
       out.push({
         clase: "cheque", id: Number(ch.id), importe: -centavos(ch.importe), fecha: ch.fecha_pago, margen: [-DIAS_CHEQUE, DIAS_CHEQUE],
-        texto: `Débito del cheque${ch.numero ? ` N° ${ch.numero}` : ""} a ${ch.beneficiario || "un proveedor"} (vence ${fechaDma(ch.fecha_pago)})`,
+        // 19/11: se dice claro que es un cheque PROPIO (lo firmó la empresa y
+        // el banco lo descuenta de la cuenta), para no confundirlo con un
+        // cheque de terceros entregado a un proveedor
+        texto: `Débito de un cheque propio${ch.numero ? ` N° ${ch.numero}` : ""} (firmado por la empresa) que le diste a ${ch.beneficiario || "un proveedor"}, que vence el ${fechaDma(ch.fecha_pago)}. El banco lo descuenta de tu cuenta`,
         accion: { url: "/api/finanzas/cheques", body: { accion: "cambiar", id: Number(ch.id), a: "debitado", cuenta_banco: cuenta } },
-        boton: "Marcar el cheque debitado",
+        boton: "Sí, es ese cheque propio: marcarlo debitado",
+        aviso: "Ojo: los cheques de terceros que le diste a un proveedor no salen en el extracto. Esos se marcan \"Entregado a un proveedor\" en 🏦 Cheques o se pagan con una orden de pago. Si este débito no es ese cheque propio, no toques el botón y cargalo como nuevo.",
       });
     }
     if (ch.clase === "tercero" && ch.estado === "en_cartera") {
@@ -76,7 +80,7 @@ function candidatos({ cheques = [], ordenes = [], plazos = [], cuenta }) {
  * completa (el más cercano en fecha; cada pendiente sirve para un solo
  * renglón, salvo un plazo fijo, que se registra entero).
  * @param {{ fecha: string, importe: number, op?: object|null }[]} filas
- * @returns {Map<number, { clase: string, id: number|string, texto: string, accion: { url: string, body: object }, boton: string }>}
+ * @returns {Map<number, { clase: string, id: number|string, texto: string, accion: { url: string, body: object }, boton: string, aviso?: string }>}
  */
 export function pendientesDelExtracto(filas = [], ctx = {}) {
   const lista = candidatos(ctx);
@@ -98,8 +102,8 @@ export function pendientesDelExtracto(filas = [], ctx = {}) {
     const clave = `${c.clase}:${c.id}`;
     if (out.has(fi) || (c.clase !== "plazo" && usados.has(clave))) continue;
     usados.add(clave);
-    const { clase, id, texto, accion, boton } = c;
-    out.set(fi, { clase, id, texto, boton, accion: { url: accion.url, body: { ...accion.body, fecha: filas[fi].fecha } } });
+    const { clase, id, texto, accion, boton, aviso } = c;
+    out.set(fi, { clase, id, texto, boton, ...(aviso ? { aviso } : {}), accion: { url: accion.url, body: { ...accion.body, fecha: filas[fi].fecha } } });
   }
   return out;
 }

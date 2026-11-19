@@ -265,3 +265,10 @@ test("pantalla — sube el listado, muestra qué cambia y aplica lo elegido", as
   assert.deepEqual([posts[0].accion, posts[0].cuenta_banco, posts[0].cuit_empresa, posts[0].elegidos.includes("ID1")], ["aplicar", BANCO, MI_CUIT, false]);
   await waitFor(() => assert.ok(aplicado));
 });
+
+// 19/11: un e-cheq sin cuenta del emisor no se toma como propio
+test("plan — sin cuenta del emisor va como de terceros", () => {
+  const c = { id_banco: "X1", numero: "650", fecha_pago: "2026-10-16", monto: 335619, cuenta_emisor: "", estado_banco: "ACTIVO" };
+  const { filas } = planListado([c], [], { cuentaPropia: "" });
+  assert.deepEqual([filas[0].clase, filas[0].estado], ["tercero", "en_cartera"]);
+});

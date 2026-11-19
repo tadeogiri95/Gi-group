@@ -194,6 +194,94 @@ export function cambioDeEstado(ch, accion, datos, { cuentas = [], tesoreria = []
   };
 }
 
+/* ─── Deshacer el último cambio (19/11, pedido de Tadeo) ────────────────
+ * Un cheque marcado por error (debitado, depositado, entregado, rechazado o
+ * anulado) vuelve a como estaba antes. El movimiento que había generado Gypi
+ * queda anulado (no se borra). Si el cheque se había unido a un movimiento
+ * que ya estaba en el banco (del extracto o a mano), ese movimiento queda
+ * como estaba: solo se suelta del cheque.
+ * Lo que salió de una orden de pago se deshace anulando la orden. */
+
+export const SE_DESHACEN = ["debitado", "depositado", "entregado", "rechazado", "anulado"];
+const ANTERIOR = { debitado: "pendiente", depositado: "en_cartera", entregado: "en_cartera" };
+
+/**
+ * @param {object} ch el cheque
+ * @param {{ ops?: object[], ordenes?: object[] }} ctx ops = las operaciones del
+ *   cheque (origen "cheque", origen_id "<id>:…"), vivas y anuladas; ordenes =
+ *   las órdenes de pago vivas con lo que generaron
+ * @returns {{ error?: string, a?: string, cambios?: object, anular?: number[], revivir?: number[], texto?: string }}
+ */
+export function deshacerCambio(ch, { ops = [], ordenes = [] } = {}) {
+  if (!ch || !SE_DESHACEN.includes(ch.estado)) return { error: "Este cheque no tiene un cambio para deshacer" };
+  const id = Number(ch.id);
+  const propias = ops.filter((o) => o.origen === ORIGEN_CHEQUE && String(o.origen_id || "").startsWith(`${id}:`));
+  const viva = (accion) => propias.find((o) => o.origen_id === `${id}:${accion}` && !o.anulada_at) || null;
+  const deOrden = (lista) => ordenes.find((o) => o.estado !== "anulada" && (o.generado?.[lista] || []).map(Number).includes(id)) || null;
+
+  if (ch.estado === "anulado") {
+    if (ch.origen === "pago") return { error: "Este e-cheq salió de una orden de pago que se anuló: armá la orden de nuevo." };
+    const a = ch.clase === "propio" ? "pendiente" : "en_cartera";
+    const alta = propias.find((o) => o.origen_id === `${id}:alta`) || null;
+    return {
+      a, cambios: { estado: a, estado_fecha: null },
+      anular: [], revivir: alta?.anulada_at ? [Number(alta.id)] : [],
+      texto: `Vuelve a ${ESTADOS_CHEQUE[a].nombre.toLowerCase()} y su movimiento de alta vuelve a contar.`,
+    };
+  }
+  if (ch.estado === "entregado") {
+    const orden = deOrden("cheques_entregados");
+    if (orden) return { error: `Este cheque se entregó con la orden de pago N° ${orden.numero}: para deshacerlo, anulá la orden en Finanzas → Pagos (el cheque vuelve a la cartera).` };
+  }
+
+  let a = ANTERIOR[ch.estado];
+  let cambios;
+  if (ch.estado === "rechazado") {
+    // Vuelve a donde estaba antes del rechazo: depositado, entregado o en cartera
+    const previa = viva("depositado") || viva("entregado");
+    a = previa ? previa.origen_id.split(":")[1] : ch.clase === "propio" ? "pendiente" : "en_cartera";
+    cambios = { estado: a, estado_fecha: previa?.fecha || null, op_cierre_id: previa ? Number(previa.id) : null };
+  } else {
+    cambios = { estado: a, estado_fecha: null, op_cierre_id: null };
+    if (ch.estado === "depositado") cambios.cuenta_banco = null;
+    if (ch.estado === "entregado") Object.assign(cambios, { proveedor_id: null, entregado_a: null });
+  }
+  const mia = viva(ch.estado);
+  const unidaAlBanco = ch.op_cierre_id && (!mia || Number(mia.id) !== Number(ch.op_cierre_id));
+  const texto = [
+    `Vuelve a ${ESTADOS_CHEQUE[a].nombre.toLowerCase()}.`,
+    mia ? `El movimiento de ${plataCorta(mia.total)} del ${fechaCorta(mia.fecha)} que cargó Gypi queda anulado.` : "",
+    unidaAlBanco ? "El movimiento del banco al que estaba unido no se toca: sigue cargado como estaba (si no era de este cheque, corregilo desde Cajas y bancos)." : "",
+  ].filter(Boolean).join(" ");
+  return { a, cambios, anular: mia ? [Number(mia.id)] : [], revivir: [], texto };
+}
+
+/**
+ * 19/11: un cheque cargado como propio que en realidad es de terceros (por
+ * ejemplo un e-cheq recibido que el listado del banco tomó como emitido).
+ * Solo uno por debitar: pasa a "en cartera" y el alta como propio (si la
+ * tiene) queda anulada, porque estaba mal. Uno ya debitado se deshace primero.
+ * @returns {{ error?: string, cambios?: object, anular?: number[] }}
+ */
+export function pasarATerceros(ch, { ops = [] } = {}) {
+  if (!ch || ch.clase !== "propio") return { error: "Este cheque ya es de terceros" };
+  if (ch.estado === "debitado") return { error: "Primero tocá ↩ Deshacer \"Debitado\" y después pasalo a de terceros" };
+  if (ch.estado !== "pendiente") return { error: "Solo un cheque por debitar se puede pasar a de terceros" };
+  if (ch.origen === "pago") return { error: "Este e-cheq salió de una orden de pago: anulá la orden en Finanzas → Pagos." };
+  const id = Number(ch.id);
+  const alta = ops.find((o) => o.origen === ORIGEN_CHEQUE && o.origen_id === `${id}:alta` && !o.anulada_at);
+  return {
+    cambios: {
+      clase: "tercero", estado: "en_cartera", estado_fecha: null, op_cierre_id: null, op_alta_id: null, cuenta_banco: null,
+      proveedor_id: null, beneficiario: null, recibido_de: ch.recibido_de || ch.librador || ch.beneficiario || null,
+    },
+    anular: alta ? [Number(alta.id)] : [],
+  };
+}
+
+const fechaCorta = (f) => (f ? `${String(f).slice(8, 10)}/${String(f).slice(5, 7)}` : "");
+const plataCorta = (n) => `$ ${Number(n || 0).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 const TIPO_DEL_LIBRO = [
   [/E-?CHEQ.*COM/i, "echeq_comun"],
   [/E-?CHEQ/i, "echeq_diferido"],

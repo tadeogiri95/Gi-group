@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
-  cuentasCheques, cuentaBancoDe, validarCheque, operacionAlta, cambioDeEstado, chequesDelLibro, calendarioCheques, chequesParaAvisar, textoAviso,
+  cuentasCheques, cuentaBancoDe, validarCheque, operacionAlta, cambioDeEstado, chequesDelLibro, calendarioCheques, chequesParaAvisar, textoAviso, deshacerCambio, pasarATerceros,
 } from "../app/lib/finanzasCheques.js";
 
 before(() => {
@@ -384,4 +384,103 @@ test("/api/finanzas/cheques — muestra los cheques con el débito dos veces y a
   const anulada = escrito.find((x) => x.tabla === "fin_operaciones");
   assert.match(decodeURIComponent(anulada.url), /id=eq\.100&.*origen=eq\.cheque&anulada_at=is\.null/);
   assert.match(anulada.body.anulada_por_nombre, /repetida con el extracto/);
+});
+
+// ─── 19/11: deshacer el último cambio de un cheque marcado por error ───
+
+test("deshacer — debitado vuelve a por debitar y anula el débito que cargó Gypi", () => {
+  const ch = { ...PROPIO, estado: "debitado", op_cierre_id: 90 };
+  const ops = [{ id: 80, origen: "cheque", origen_id: "10:alta" }, { id: 90, origen: "cheque", origen_id: "10:debitado", fecha: "2026-11-18", total: 1600000 }];
+  const r = deshacerCambio(ch, { ops });
+  assert.equal(r.a, "pendiente");
+  assert.deepEqual(r.cambios, { estado: "pendiente", estado_fecha: null, op_cierre_id: null });
+  assert.deepEqual(r.anular, [90]);
+  assert.match(r.texto, /Vuelve a por debitar.*queda anulado/);
+});
+
+test("deshacer — unido a un movimiento del banco: lo suelta sin anularlo", () => {
+  const ch = { ...PROPIO, estado: "debitado", op_cierre_id: 500 };
+  const r = deshacerCambio(ch, { ops: [{ id: 90, origen: "cheque", origen_id: "10:debitado", anulada_at: "2026-11-16" }] });
+  assert.deepEqual(r.anular, []);
+  assert.equal(r.cambios.op_cierre_id, null);
+  assert.match(r.texto, /no se toca/);
+});
+
+test("deshacer — entregado y depositado vuelven a la cartera; el de una orden de pago se deshace anulando la orden", () => {
+  const ent = { ...TERCERO, estado: "entregado", proveedor_id: 5, entregado_a: "X", op_cierre_id: 91 };
+  const ops = [{ id: 91, origen: "cheque", origen_id: "11:entregado" }];
+  const r = deshacerCambio(ent, { ops });
+  assert.deepEqual([r.a, r.cambios.proveedor_id, r.cambios.entregado_a, r.anular[0]], ["en_cartera", null, null, 91]);
+  const orden = { id: 3, numero: 12, estado: "pagada", generado: { cheques_entregados: [11] } };
+  assert.match(deshacerCambio(ent, { ops, ordenes: [orden] }).error, /orden de pago N° 12/);
+  const dep = deshacerCambio({ ...TERCERO, estado: "depositado", cuenta_banco: "x", op_cierre_id: 92 }, { ops: [{ id: 92, origen: "cheque", origen_id: "11:depositado" }] });
+  assert.deepEqual([dep.a, dep.cambios.cuenta_banco, dep.anular[0]], ["en_cartera", null, 92]);
+});
+
+test("deshacer — rechazado vuelve a depositado con su movimiento; anulado revive el alta", () => {
+  const ops = [{ id: 92, origen: "cheque", origen_id: "11:depositado", fecha: "2026-11-21" }, { id: 93, origen: "cheque", origen_id: "11:rechazado" }];
+  const r = deshacerCambio({ ...TERCERO, estado: "rechazado", op_cierre_id: 93 }, { ops });
+  assert.deepEqual([r.a, r.cambios.op_cierre_id, r.cambios.estado_fecha, r.anular[0]], ["depositado", 92, "2026-11-21", 93]);
+  const an = deshacerCambio({ ...TERCERO, estado: "anulado" }, { ops: [{ id: 70, origen: "cheque", origen_id: "11:alta", anulada_at: "x" }] });
+  assert.deepEqual([an.a, an.revivir], ["en_cartera", [70]]);
+  assert.match(deshacerCambio({ ...PROPIO, estado: "anulado", origen: "pago" }).error, /orden de pago/);
+  assert.match(deshacerCambio(PROPIO).error, /no tiene un cambio/);
+});
+
+test("/api/finanzas/cheques — deshacer: probar no toca nada; después el cheque vuelve y el débito queda anulado", async () => {
+  const ch = { ...PROPIO, estado: "debitado", op_cierre_id: 90, notas: null };
+  const ops = [{ id: 90, origen: "cheque", origen_id: "10:debitado", fecha: "2026-11-18", total: 1600000 }];
+  let { escrito } = mockApi({ cheques: [ch], enBanco: ops });
+  let res = await pedir("gerencial", "POST", { accion: "deshacer", id: 10, probar: true });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).a, "pendiente");
+  assert.equal(escrito.length, 0);
+  ({ escrito } = mockApi({ cheques: [ch], enBanco: ops }));
+  res = await pedir("gerencial", "POST", { accion: "deshacer", id: 10 });
+  assert.equal(res.status, 200);
+  const [cambio, anulada] = escrito;
+  assert.match(cambio.url, /estado=eq\.debitado/);
+  assert.deepEqual([cambio.body.estado, cambio.body.op_cierre_id], ["pendiente", null]);
+  assert.match(cambio.body.notas, /Debitado deshecho por Tadeo/);
+  assert.match(anulada.url, /fin_operaciones\?id=eq\.90&.*anulada_at=is\.null/);
+  assert.match(anulada.body.anulada_por_nombre, /cheque deshecho/);
+});
+
+test("Cheques — un cheque debitado se puede deshacer, con aviso de lo que pasa", async () => {
+  const datos = { ...CTX, cheques: [{ ...PROPIO, estado: "debitado" }, TERCERO] };
+  const enviados = [];
+  global.fetch = async (url, o = {}) => {
+    if (o.method === "POST") {
+      const b = JSON.parse(o.body);
+      enviados.push(b);
+      return new Response(JSON.stringify(b.probar ? { ok: true, a: "pendiente", texto: "Vuelve a por debitar. El movimiento queda anulado." } : { ok: true }), { status: 200 });
+    }
+    return new Response(JSON.stringify(datos), { status: 200 });
+  };
+  render(<FinanzasCheques />);
+  await waitFor(() => assert.ok(screen.getByText(/Por debitar/)));
+  fireEvent.click(screen.getByText("Historial"));
+  fireEvent.click(await screen.findByText("ANTONIO F PEPERMANS SA"));
+  fireEvent.click(await screen.findByRole("button", { name: /Deshacer "Debitado"/ }));
+  assert.ok(await screen.findByText(/Vuelve a por debitar/));
+  fireEvent.click(screen.getByRole("button", { name: "Sí, deshacer" }));
+  await waitFor(() => assert.equal(enviados.length, 2));
+  assert.deepEqual([enviados[0].accion, enviados[0].probar, enviados[1].accion, enviados[1].probar], ["deshacer", true, "deshacer", undefined]);
+});
+
+test("a terceros — un propio por debitar que no era propio pasa a la cartera y su alta se anula", () => {
+  const r = pasarATerceros({ ...PROPIO, librador: "Cuenta 123" }, { ops: [{ id: 80, origen: "cheque", origen_id: "10:alta" }] });
+  assert.deepEqual([r.cambios.clase, r.cambios.estado, r.cambios.cuenta_banco, r.cambios.recibido_de, r.anular], ["tercero", "en_cartera", null, "Cuenta 123", [80]]);
+  assert.match(pasarATerceros({ ...PROPIO, estado: "debitado" }).error, /Deshacer/);
+  assert.match(pasarATerceros(TERCERO).error, /ya es de terceros/);
+  assert.match(pasarATerceros({ ...PROPIO, origen: "pago" }).error, /orden de pago/);
+});
+
+test("/api/finanzas/cheques — a_terceros cambia el cheque solo si sigue propio y por debitar", async () => {
+  const { escrito } = mockApi({ cheques: [{ ...PROPIO, origen: "listado" }], enBanco: [] });
+  const res = await pedir("gerencial", "POST", { accion: "a_terceros", id: 10 });
+  assert.equal(res.status, 200);
+  assert.match(escrito[0].url, /clase=eq\.propio&estado=eq\.pendiente/);
+  assert.deepEqual([escrito[0].body.clase, escrito[0].body.estado], ["tercero", "en_cartera"]);
+  assert.match(escrito[0].body.notas, /Pasado de propio a de terceros por Tadeo/);
 });

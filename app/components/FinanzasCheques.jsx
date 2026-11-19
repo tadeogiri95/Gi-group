@@ -12,7 +12,7 @@ import { apiFetch } from "../lib/supabase";
 import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import { emparejarProveedor } from "../lib/finanzasProveedores";
 import {
-  ACCIONES, BANCO_ECHEQ, ESTADOS_CHEQUE, NOMBRE_ACCION, TIPOS_CHEQUE, calendarioCheques, chequesDelLibro, cuentaBancoDe,
+  ACCIONES, SE_DESHACEN, BANCO_ECHEQ, ESTADOS_CHEQUE, NOMBRE_ACCION, TIPOS_CHEQUE, calendarioCheques, chequesDelLibro, cuentaBancoDe,
 } from "../lib/finanzasCheques";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -175,6 +175,47 @@ function Detalle({ ch, datos, onCerrar, onCambiado }) {
     }
   }
 
+  // 19/11: deshacer el último cambio (un cheque marcado por error)
+  const [deshacer, setDeshacer] = useState(null);
+  async function probarDeshacer() {
+    setError(null);
+    setGuardando(true);
+    try {
+      const r = await postCheques({ accion: "deshacer", id: ch.id, probar: true });
+      setDeshacer(r);
+    } catch (e) {
+      setError(e.message);
+    }
+    setGuardando(false);
+  }
+  async function confirmarDeshacer() {
+    setError(null);
+    setGuardando(true);
+    try {
+      await postCheques({ accion: "deshacer", id: ch.id });
+      toast.success(`↩ Listo: el cheque volvió a ${ESTADOS_CHEQUE[deshacer.a]?.nombre.toLowerCase() || "como estaba"}`);
+      onCambiado();
+    } catch (e) {
+      setError(e.message);
+      setGuardando(false);
+    }
+  }
+
+  // 19/11: un "propio" que en realidad es de terceros (un e-cheq recibido)
+  const [aTerceros, setATerceros] = useState(false);
+  async function confirmarTerceros() {
+    setError(null);
+    setGuardando(true);
+    try {
+      await postCheques({ accion: "a_terceros", id: ch.id });
+      toast.success("Listo: el cheque está en la cartera de terceros. Ahora podés marcarlo entregado a un proveedor.");
+      onCambiado();
+    } catch (e) {
+      setError(e.message);
+      setGuardando(false);
+    }
+  }
+
   // 13/11: el débito o el depósito ya está en el banco (de un extracto o a mano)
   const [repetidos, setRepetidos] = useState(null);
   async function confirmar(extra = {}) {
@@ -222,6 +263,41 @@ function Detalle({ ch, datos, onCerrar, onCambiado }) {
               <button key={a} type="button" className={`g-btn ${a === "anular" || a === "rechazado" ? "g-btn-secondary" : "g-btn-primary"} flex-1`} onClick={() => setAccion(a)}>{NOMBRE_ACCION[a]}</button>
             ))}
           </div>
+        )}
+        {!accion && SE_DESHACEN.includes(ch.estado) && (
+          deshacer ? (
+            <div className="flex flex-col gap-2 mt-2 p-3 rounded-[10px] border border-gypi-border">
+              <p className="m-0 text-[14px] font-semibold">↩ Deshacer: {ESTADOS_CHEQUE[ch.estado]?.nombre}</p>
+              <p className="m-0 text-[13px]">{deshacer.texto}</p>
+              <p className="m-0 text-[12px] text-gypi-dim">Queda anotado en el cheque quién lo deshizo. Después podés marcarlo como corresponde.</p>
+              {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+              <div className="flex gap-2">
+                <button type="button" className="g-btn g-btn-secondary flex-1" onClick={() => { setDeshacer(null); setError(null); }}>Volver</button>
+                <button type="button" className="g-btn g-btn-primary flex-1" disabled={guardando} onClick={confirmarDeshacer}>{guardando ? "Guardando…" : "Sí, deshacer"}</button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1 mt-2">
+              <button type="button" className="g-btn g-btn-secondary" disabled={guardando} onClick={probarDeshacer}>↩ Deshacer &quot;{ESTADOS_CHEQUE[ch.estado]?.nombre}&quot;</button>
+              <p className="m-0 text-[12px] text-gypi-dim">Si lo marcaste por error, vuelve a como estaba antes y su movimiento se anula.</p>
+              {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+            </div>
+          )
+        )}
+        {!accion && ch.clase === "propio" && ch.estado === "pendiente" && ch.origen !== "pago" && (
+          aTerceros ? (
+            <div className="flex flex-col gap-2 mt-2 p-3 rounded-[10px] border border-gypi-border">
+              <p className="m-0 text-[14px] font-semibold">¿Es un cheque de terceros?</p>
+              <p className="m-0 text-[13px]">Si este cheque no lo firmó la empresa (te lo dio un cliente), pasa a <b>En cartera</b>. Después lo marcás <b>Entregado a un proveedor</b> o <b>Depositado</b>.</p>
+              {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+              <div className="flex gap-2">
+                <button type="button" className="g-btn g-btn-secondary flex-1" onClick={() => { setATerceros(false); setError(null); }}>Volver</button>
+                <button type="button" className="g-btn g-btn-primary flex-1" disabled={guardando} onClick={confirmarTerceros}>{guardando ? "Guardando…" : "Sí, es de terceros"}</button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="g-btn g-btn-secondary mt-1" onClick={() => setATerceros(true)}>No es mío: es un cheque de terceros</button>
+          )
         )}
         {accion && (
           <div className="flex flex-col gap-2 mt-2 p-3 rounded-[10px] border border-gypi-border">

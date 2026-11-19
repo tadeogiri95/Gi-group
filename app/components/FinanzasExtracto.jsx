@@ -525,6 +525,7 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
                       {f.pendiente && (
                         <span className="block mt-1 p-1.5 rounded bg-gypi-green/10 text-[12px] text-gypi-text">
                           🔗 Completa algo pendiente: {f.pendiente.texto}. No hace falta cargarlo nuevo.
+                          {f.pendiente.aviso && <span className="block mt-1 text-gypi-dim">{f.pendiente.aviso}</span>}
                           <span className="flex flex-wrap gap-1.5 mt-1">
                             <button type="button" className="g-btn g-btn-primary !py-0.5 !px-2 text-[12px]" disabled={completando === f.i} onClick={() => completar(f)}>
                               {completando === f.i ? "Registrando…" : f.pendiente.boton}
