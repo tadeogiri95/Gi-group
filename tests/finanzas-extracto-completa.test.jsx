@@ -101,7 +101,7 @@ const auth = async (rol) => ({ Authorization: `Bearer ${await token(rol)}` });
 const post = async (rol, body) => api.POST(new Request("http://localhost/api/finanzas/banco", { method: "POST", headers: { "Content-Type": "application/json", ...(await auth(rol)) }, body: JSON.stringify(body) }));
 const get = async (rol, q) => api.GET(new Request(`http://localhost/api/finanzas/banco${q}`, { headers: await auth(rol) }));
 
-function mockApi({ sinTabla = false, vivas = [] } = {}) {
+function mockApi({ sinTabla = false, vivas = [], opIds = [5, 6, 7] } = {}) {
   const escrito = [];
   global.fetch = createFetchMock([
     ...authPassHandlers(),
@@ -113,7 +113,7 @@ function mockApi({ sinTabla = false, vivas = [] } = {}) {
       respond: (u, o) => {
         if (sinTabla) return { status: 404, body: { code: "PGRST205", message: "Could not find the table 'public.fin_cargas_banco' in the schema cache" } };
         if (o?.method === "PATCH") { escrito.push({ tabla: "fin_cargas_banco", url: decodeURIComponent(u), body: JSON.parse(o.body) }); return { status: 200, body: [{}] }; }
-        return { status: 200, body: [{ id: 4, cuenta: BANCO, archivo: "oct.csv", cargadas: 3, movimientos: 9, op_ids: [5, 6, 7] }] };
+        return { status: 200, body: [{ id: 4, cuenta: BANCO, archivo: "oct.csv", cargadas: 3, movimientos: 9, op_ids: opIds }] };
       },
     },
     {
@@ -147,7 +147,7 @@ test("/api/finanzas/banco — deshacer: anula solo las del extracto de esa carga
   let escrito = mockApi({ vivas: [5] });
   const r = await post("gerencial", { accion: "deshacer", id: 4, ops: [6, 7, 99] });
   assert.equal(r.status, 200);
-  assert.deepEqual(await r.json(), { ok: true, anuladas: 2, vivas: 1, deshecha: false });
+  assert.deepEqual(await r.json(), { ok: true, anuladas: 2, devueltas: 0, vivas: 1, deshecha: false });
   const anula = escrito.find((x) => x.tabla === "fin_operaciones");
   assert.match(anula.url, /origen=eq\.banco&anulada_at=is\.null&id=in\.\(6,7\)/);
   assert.equal(anula.body.anulada_por_nombre, "Tadeo");
@@ -158,6 +158,18 @@ test("/api/finanzas/banco — deshacer: anula solo las del extracto de esa carga
   assert.match(escrito.find((x) => x.tabla === "fin_operaciones").url, /id=in\.\(5,6,7\)/);
   assert.ok(escrito.find((x) => x.tabla === "fin_cargas_banco").body.deshecha_at);
   assert.equal((await post("gerencial", { accion: "deshacer", id: 4, ops: [99] })).status, 400);
+});
+
+test("/api/finanzas/banco — deshacer (20/11): la carga entera devuelve lo que anuló como dice el banco", async () => {
+  const escrito = mockApi({ vivas: [], opIds: [5, -41, -43] });
+  const d = await (await post("gerencial", { accion: "deshacer", id: 4 })).json();
+  assert.deepEqual([d.anuladas, d.devueltas, d.deshecha], [1, 2, true]);
+  const devuelve = escrito.find((x) => x.tabla === "fin_operaciones" && x.body.anulada_at === null);
+  assert.match(devuelve.url, /origen=eq\.banco&id=in\.\(41,43\)/);
+  // Deshacer solo algunas no devuelve nada
+  const parcial = mockApi({ vivas: [5], opIds: [5, 6, -41] });
+  assert.equal((await (await post("gerencial", { accion: "deshacer", id: 4, ops: [6] })).json()).devueltas, 0);
+  assert.equal(parcial.some((x) => x.body?.anulada_at === null), false);
 });
 
 // ─── Pantalla ───

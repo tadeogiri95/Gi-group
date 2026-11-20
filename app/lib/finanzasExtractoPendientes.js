@@ -86,7 +86,7 @@ export function pendientesDelExtracto(filas = [], ctx = {}) {
   const lista = candidatos(ctx);
   const parejas = [];
   for (const [fi, f] of filas.entries()) {
-    if (f.op) continue;
+    if (f.op || f.reemplaza) continue;
     for (const [ci, c] of lista.entries()) {
       if (!c.fecha || !igual(c.importe, f.importe)) continue;
       const d = dias(f.fecha, c.fecha);
@@ -130,6 +130,15 @@ export function idsParaDeshacer(carga, elegidos = null) {
   const deCarga = new Set((Array.isArray(carga?.op_ids) ? carga.op_ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0));
   if (!Array.isArray(elegidos)) return [...deCarga];
   return [...new Set(elegidos.map(Number))].filter((n) => deCarga.has(n));
+}
+
+/**
+ * 20/11: lo que una carga anuló porque el banco lo corrigió o ya no lo
+ * mostraba (va en op_ids con signo menos). Deshacer la carga entera lo devuelve.
+ * @returns {number[]}
+ */
+export function idsAnuladosPorCarga(carga) {
+  return [...new Set((Array.isArray(carga?.op_ids) ? carga.op_ids : []).map(Number).filter((n) => Number.isInteger(n) && n < 0).map((n) => -n))];
 }
 
 /** "Ago 2026 · 34 cargados de 120 · Tadeo" para la lista de cargas. */

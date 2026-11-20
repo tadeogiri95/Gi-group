@@ -230,14 +230,14 @@ export function sospechaDeRenglon(f, operaciones = [], cuenta) {
  * @param {object[]} movimientos del extracto
  * @param {object[]} operaciones de Gypi (vivas)
  * @param {string} cuenta código de la cuenta del banco
- * @returns {{ filas: object[], sin_banco: object[] }} cada fila = movimiento + { marca, op?: operación de Gypi, ya: true si vino de un extracto anterior, sospecha?: sospechaDeRenglon }
+ * @returns {{ filas: object[], sin_banco: object[] }} cada fila = movimiento + { marca, op?: operación de Gypi, ya: true si vino de un extracto anterior, reemplaza?: la de un extracto anterior que este renglón corrige, sospecha?: sospechaDeRenglon }. En sin_banco, del_banco: true si vino de un extracto anterior y el banco ya no la muestra (sobra).
  */
 export function emparejarExtracto(movimientos = [], operaciones = [], cuenta) {
   const marcas = marcasExtracto(movimientos, cuenta);
   const deCuenta = operaciones.filter((o) => !o.anulada_at && (o.cuenta_debe === cuenta || o.cuenta_haber === cuenta));
   const usadas = new Set();
   const porMarca = new Map(deCuenta.filter((o) => o.origen === ORIGEN_BANCO && o.origen_id).map((o) => [o.origen_id, o]));
-  const filas = movimientos.map((m, i) => ({ ...m, marca: marcas[i], op: null, ya: false, sospecha: null }));
+  const filas = movimientos.map((m, i) => ({ ...m, marca: marcas[i], op: null, ya: false, reemplaza: null, sospecha: null }));
   // Primero lo que ya se cargó desde un extracto
   for (const f of filas) {
     const o = porMarca.get(f.marca);
@@ -265,17 +265,28 @@ export function emparejarExtracto(movimientos = [], operaciones = [], cuenta) {
     f.op = o;
     usadas.add(o.id);
   }
-  // 13/11: lo que queda sin pareja pero se parece a algo que ya está (otra del
-  // mismo importe en la cuenta, aunque ya tenga su renglón, o un renglón igual
-  // de este mismo extracto) es sospechoso: no se tilda solo y se carga solo
-  // con "es otro distinto"
-  const vistos = new Map();
+  // 20/11: manda el banco. Lo cargado de un extracto anterior el mismo día y
+  // con el mismo texto pero otro importe es el mismo renglón que el banco fue
+  // cambiando (el impuesto a los débitos y créditos y el IVA se van sumando
+  // en el día): el renglón nuevo lo reemplaza, uno por uno y en orden (si el
+  // banco muestra dos, quedan dos).
   for (const f of filas) {
     if (f.op) continue;
-    f.sospecha = sospechaDeRenglon(f, deCuenta, cuenta);
-    const k = `${f.fecha}:${Math.round(f.importe * 100)}`;
-    if (!f.sospecha && vistos.has(k)) f.sospecha = { nivel: "amarillo", motivo: "extracto", parecida: null };
-    vistos.set(k, true);
+    const clave = claveTexto(f.descripcion);
+    const viejo = deCuenta.find((o) => !usadas.has(o.id) && o.origen === ORIGEN_BANCO && o.fecha === f.fecha
+      && Math.sign(movimientoEnCuenta(o, cuenta)) === Math.sign(f.importe) && claveTexto(o.descripcion) === clave);
+    if (viejo) { f.reemplaza = viejo; usadas.add(viejo.id); }
+  }
+  // Lo que queda sin pareja y se parece a algo de Gypi que no tiene su renglón
+  // (mismo importe, hasta 3 días) es sospechoso: no se tilda solo y se carga
+  // solo con "es otro distinto". 20/11: renglones iguales del mismo extracto
+  // (comisiones de $600 el mismo día) no: el banco los cobró todos.
+  const fechasExt = movimientos.map((m) => m.fecha).sort();
+  const sobraDelBanco = (o) => o.origen === ORIGEN_BANCO && o.fecha >= fechasExt[0] && o.fecha <= fechasExt[fechasExt.length - 1];
+  const libres = deCuenta.filter((o) => !usadas.has(o.id) && !sobraDelBanco(o));
+  for (const f of filas) {
+    if (f.op || f.reemplaza) continue;
+    f.sospecha = sospechaDeRenglon(f, libres, cuenta);
   }
   // Lo de Gypi del mismo período que no apareció en el banco
   const fechas = movimientos.map((m) => m.fecha).sort();
@@ -283,6 +294,7 @@ export function emparejarExtracto(movimientos = [], operaciones = [], cuenta) {
   const hasta = fechas[fechas.length - 1];
   const sinBanco = desde
     ? deCuenta.filter((o) => !usadas.has(o.id) && o.fecha >= desde && o.fecha <= hasta && o.origen !== "saldo_inicial")
+      .map((o) => (o.origen === ORIGEN_BANCO ? { ...o, del_banco: true } : o))
     : [];
   return { filas, sin_banco: sinBanco };
 }
@@ -414,10 +426,10 @@ export function parecidosEnGypi(filas = [], sinBanco = [], cuenta) {
   const usadas = new Set();
   const salida = new Map();
   for (const [i, f] of filas.entries()) {
-    if (f.op) continue;
+    if (f.op || f.reemplaza) continue;
     let mejor = null;
     for (const o of sinBanco) {
-      if (usadas.has(o.id)) continue;
+      if (usadas.has(o.id) || o.del_banco) continue;
       const m = movimientoEnCuenta(o, cuenta);
       if (!m || Math.sign(m) !== Math.sign(f.importe)) continue;
       const dif = Math.abs(Math.abs(m) - Math.abs(f.importe));

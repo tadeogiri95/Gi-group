@@ -286,6 +286,8 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
   const [error, setError] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [verYa, setVerYa] = useState(false);
+  // 20/11: lo de un extracto anterior que el banco ya no muestra se anula al cargar (manda el banco)
+  const [ajustar, setAjustar] = useState(true);
   // El archivo subido: después de corregir o anular algo se vuelve a leer, así se ve cómo quedó
   const [archivo, setArchivo] = useState(null);
   const [detalle, setDetalle] = useState(null);
@@ -381,7 +383,10 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
   const ya = filas.filter((f) => f.op);
   const elegidas = pendientes.filter((f) => f.elegida);
   const incompletas = elegidas.filter((f) => !f.tipo || !nombreCuenta.has(codigoDe(f.contra)));
-  const resumen = res ? resumenDeCarga(elegidas, { saldoGypi: res.saldo_gypi?.saldo || 0, saldoBanco: res.control?.final ?? null }) : null;
+  const sobran = ajustar ? (res?.sin_banco || []).filter((o) => o.del_banco) : [];
+  const anular = [...elegidas.filter((f) => f.reemplaza).map((f) => f.reemplaza), ...sobran];
+  const saldoSinAnuladas = (res?.saldo_gypi?.saldo || 0) - anular.reduce((t, o) => t + movimientoEnCuenta(o, caja.cuenta), 0);
+  const resumen = res ? resumenDeCarga(elegidas, { saldoGypi: saldoSinAnuladas, saldoBanco: res.control?.final ?? null }) : null;
 
   // 🔗 Completar lo pendiente (el cheque, la orden o el plazo fijo) con su propia pantalla
   async function completar(f) {
@@ -427,10 +432,13 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
         filas: elegidas.map((f) => ({
           fecha: f.fecha, descripcion: f.descripcion, comprobante: f.comprobante, importe: f.importe, marca: f.marca,
           tipo: f.tipo, contra: codigoDe(f.contra), entidad: f.entidad || null, proveedor_id: f.proveedor_id, cliente_id: f.cliente_id,
-          forzar: Boolean(f.sospecha),
+          forzar: Boolean(f.sospecha), reemplaza: f.reemplaza?.id || null,
         })),
+        // 20/11: lo que ya tiene su renglón no cuenta como repetido; lo que sobra según el banco se anula
+        emparejadas: ya.map((f) => f.op.id),
+        anular: sobran.map((o) => o.id),
       });
-      toast.success(`Se cargaron ${d.cargadas} movimientos${d.repetidas ? ` (${d.repetidas} ya estaban)` : ""}`);
+      toast.success(`Se cargaron ${d.cargadas} movimientos${d.repetidas ? ` (${d.repetidas} ya estaban)` : ""}${d.anuladas ? ` y se anularon ${d.anuladas} que el banco corrigió o ya no muestra` : ""}`);
       if (d.aviso) toast.error(d.aviso);
       onCargado();
     } catch (e) {
@@ -522,6 +530,11 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
                     <td className="py-1 min-w-[220px]">
                       <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(f.fecha)}</span> {f.descripcion}
                       {f.sospecha && <AvisoSospecha f={f} caja={caja} onVer={setDetalle} />}
+                      {f.reemplaza && (
+                        <span className="block mt-1 p-1.5 rounded bg-gypi-surface border border-gypi-border text-[12px] text-gypi-text">
+                          🔄 Corrige lo de un extracto anterior: en Gypi dice {plata(movimientoEnCuenta(f.reemplaza, caja.cuenta), "ARS")} y {dice} ahora dice {plata(f.importe, "ARS")}. Al cargar queda el del banco y se anula el viejo.
+                        </span>
+                      )}
                       {f.pendiente && (
                         <span className="block mt-1 p-1.5 rounded bg-gypi-green/10 text-[12px] text-gypi-text">
                           🔗 Completa algo pendiente: {f.pendiente.texto}. No hace falta cargarlo nuevo.
@@ -585,12 +598,30 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
           </div>
         )}
 
-        {res?.sin_banco?.length > 0 && (
+        {res?.sin_banco?.some((o) => o.del_banco) && (
+          <div className="p-3 rounded-lg border border-gypi-border bg-gypi-surface text-[13px]">
+            <label className="flex items-start gap-2 font-semibold">
+              <input type="checkbox" checked={ajustar} onChange={(e) => setAjustar(e.target.checked)} aria-label="Ajustar Gypi al banco" />
+              <span>Ajustar Gypi al banco: anular {res.sin_banco.filter((o) => o.del_banco).length} de un extracto anterior que {dice} ya no muestra</span>
+            </label>
+            <p className="m-0 mt-0.5 text-gypi-dim">Se cargaron de un extracto anterior (por ejemplo el impuesto del día subido a la mañana) y en este extracto no están. Manda el banco: al cargar se anulan. Si deshacés la carga, vuelven.</p>
+            <ul className="list-none m-0 mt-1 p-0 flex flex-col gap-0.5" aria-label={`Ya no están en ${dice}`}>
+              {res.sin_banco.filter((o) => o.del_banco).slice(0, 100).map((o) => (
+                <li key={o.id} className="flex flex-wrap items-start gap-x-2 gap-y-1">
+                  <span className="flex-1 min-w-[200px]"><span className="font-mono">{fechaCorta(o.fecha)}</span> <b className="font-mono">{plata(movimientoEnCuenta(o, caja.cuenta), "ARS")}</b> {o.tipo}{o.descripcion ? ` · ${o.descripcion}` : ""}</span>
+                  <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[12px]" onClick={() => setDetalle(o)}>Ver</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {res?.sin_banco?.some((o) => !o.del_banco) && (
           <div className="p-3 rounded-lg border border-gypi-amber/40 bg-gypi-amber/10 text-[13px]">
-            <b className="text-gypi-amber-ink">En Gypi pero no en {dice} ({res.sin_banco.length}):</b>
+            <b className="text-gypi-amber-ink">En Gypi pero no en {dice} ({res.sin_banco.filter((o) => !o.del_banco).length}):</b>
             <p className="m-0 mt-0.5 text-gypi-dim">{planilla ? "Si la planilla está completa," : "El extracto suele estar bien:"} si alguna de estas está mal o sobra, corregila o anulala acá.</p>
             <ul className="list-none m-0 mt-1 p-0 flex flex-col gap-0.5" aria-label={`No están en ${dice}`}>
-              {res.sin_banco.slice(0, 100).map((o) => (
+              {res.sin_banco.filter((o) => !o.del_banco).slice(0, 100).map((o) => (
                 <li key={o.id} className="flex flex-wrap items-start gap-x-2 gap-y-1">
                   <span className="flex-1 min-w-[200px]">
                     <span className="font-mono">{fechaCorta(o.fecha)}</span> <b className="font-mono">{plata(movimientoEnCuenta(o, caja.cuenta), "ARS")}</b> {o.tipo}{o.entidad ? ` · ${o.entidad}` : ""}{o.descripcion ? ` · ${o.descripcion}` : ""} · {origenCorto(o)}
@@ -603,9 +634,9 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
           </div>
         )}
 
-        {res && resumen && resumen.n > 0 && (
+        {res && resumen && (resumen.n > 0 || anular.length > 0) && (
           <section aria-label="Resumen de la carga" className="rounded-lg border border-gypi-border bg-gypi-surface p-2 text-[13px] text-gypi-text">
-            <p className="m-0">Vas a cargar <b>{resumen.n}</b> movimientos: entran <b className="font-mono text-gypi-green">{plata(resumen.entra, "ARS")}</b> y salen <b className="font-mono text-gypi-red">{plata(resumen.sale, "ARS")}</b>.</p>
+            <p className="m-0">Vas a cargar <b>{resumen.n}</b> movimientos: entran <b className="font-mono text-gypi-green">{plata(resumen.entra, "ARS")}</b> y salen <b className="font-mono text-gypi-red">{plata(resumen.sale, "ARS")}</b>{anular.length > 0 && <>, y se anulan <b>{anular.length}</b> de un extracto anterior que {dice} corrigió o ya no muestra</>}.</p>
             <p className="m-0">Al {fechaCorta(res.hasta)}, Gypi queda en <b className="font-mono">{plata(resumen.queda, "ARS")}</b>
               {resumen.diferencia == null ? "." : resumen.cierra
                 ? <span className="text-gypi-green"> ✓ igual que {dice}.</span>
@@ -619,8 +650,8 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
           {res && <button type="button" className="g-btn g-btn-secondary" onClick={() => { setRes(null); setFilas([]); }}>Subir otro</button>}
           <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cerrar</button>
           {res && (
-            <button type="button" className="g-btn g-btn-primary" disabled={guardando || !elegidas.length || incompletas.length > 0} onClick={cargar}>
-              {guardando ? "Cargando…" : incompletas.length ? `Faltan ${incompletas.length} sin tipo o cuenta` : `Cargar ${elegidas.length} movimientos`}
+            <button type="button" className="g-btn g-btn-primary" disabled={guardando || (!elegidas.length && !anular.length) || incompletas.length > 0} onClick={cargar}>
+              {guardando ? "Cargando…" : incompletas.length ? `Faltan ${incompletas.length} sin tipo o cuenta` : elegidas.length ? `Cargar ${elegidas.length} movimientos` : `Ajustar Gypi al banco (anular ${anular.length})`}
             </button>
           )}
         </div>

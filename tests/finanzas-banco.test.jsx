@@ -165,25 +165,57 @@ test("emparejar — mismo importe y fecha cercana, una operación por renglón; 
   assert.deepEqual(sin_banco.map((o) => o.id), [4]);
 });
 
-test("emparejar (13/11) — lo de otro extracto con otra marca se reconoce por importe y fecha; lo igual sin pareja es sospechoso", () => {
+test("emparejar (13/11) — lo de otro extracto con otra marca se reconoce por importe y fecha; 20/11: lo repetido en el banco no es sospechoso", () => {
   const otroFormato = [
-    { id: 8, fecha: "2026-09-01", tipo: "PAGO GASTOS BANCARIOS", cuenta_debe: COM, cuenta_haber: BANCO, total_ars: 600, origen: "banco", origen_id: "otra:marca:1" },
-    { id: 9, fecha: "2026-08-27", tipo: "PAGO GASTOS BANCARIOS", cuenta_debe: COM, cuenta_haber: BANCO, total_ars: 600, origen: "banco", origen_id: "otra:marca:2" },
+    { id: 8, fecha: "2026-09-01", tipo: "PAGO GASTOS BANCARIOS", cuenta_debe: COM, cuenta_haber: BANCO, total_ars: 600, origen: "banco", origen_id: "otra:marca:1", descripcion: "Comision" },
+    { id: 9, fecha: "2026-08-27", tipo: "PAGO GASTOS BANCARIOS", cuenta_debe: COM, cuenta_haber: BANCO, total_ars: 600, origen: "banco", origen_id: "otra:marca:2", descripcion: "Comision" },
   ];
   const { filas } = emparejarExtracto(MOVS, otroFormato, BANCO);
   assert.deepEqual(filas.map((f) => f.op?.id ?? null), [null, 8, null, null], "la del extracto anterior a 5 días no se usa: solo hasta 3");
-  assert.deepEqual(filas[2].sospecha && [filas[2].sospecha.nivel, filas[2].sospecha.parecida.id], ["rojo", 8], "la segunda comisión igual el mismo día");
+  assert.equal(filas[2].sospecha, null, "la segunda comisión de $600 del mismo día es otra: el banco cobró las dos");
   assert.equal(filas[0].sospecha, null);
-  // Dos renglones iguales del mismo extracto sin nada en Gypi: el segundo queda en amarillo
+  // Dos renglones iguales del mismo extracto sin nada en Gypi: los dos se cargan
   const { filas: solos } = emparejarExtracto(MOVS, [], BANCO);
-  assert.deepEqual(solos.map((f) => f.sospecha?.motivo ?? null), [null, null, "extracto", null]);
-  // La pareja más cercana gana aunque el renglón venga después
+  assert.deepEqual(solos.map((f) => f.sospecha), [null, null, null, null]);
+  // La pareja más cercana gana aunque el renglón venga después; el otro no es sospechoso: esa ya tiene su renglón
   const { filas: cerca } = emparejarExtracto(
     [{ fecha: "2026-09-05", descripcion: "A", importe: -100 }, { fecha: "2026-09-02", descripcion: "B", importe: -100 }],
     [{ id: 1, fecha: "2026-09-02", cuenta_debe: COM, cuenta_haber: BANCO, total_ars: 100, origen: "manual" }], BANCO,
   );
   assert.deepEqual(cerca.map((f) => f.op?.id ?? null), [null, 1]);
-  assert.equal(cerca[0].sospecha.nivel, "amarillo");
+  assert.equal(cerca[0].sospecha, null);
+});
+
+test("emparejar (20/11) — manda el banco: el impuesto del día que cambió reemplaza al de la mañana, renglón por renglón", () => {
+  const IDCB = "Impuesto Ley 25.413 Ali Gral s/Debitos";
+  const IVA = "IVA - Alicuota Inscripto";
+  const maniana = [
+    { fecha: "2026-11-19", descripcion: IDCB, importe: -1200 },
+    { fecha: "2026-11-19", descripcion: IVA, importe: -252 },
+    { fecha: "2026-11-19", descripcion: "Comision", importe: -600 },
+  ];
+  const m = marcasExtracto(maniana, BANCO);
+  const ops = maniana.map((x, i) => ({ id: 20 + i, fecha: x.fecha, tipo: "PAGO IMPUESTO", cuenta_debe: IMP, cuenta_haber: BANCO, total_ars: -x.importe, origen: "banco", origen_id: m[i], descripcion: x.descripcion, entidad: null }));
+  // A la tarde: el impuesto y el IVA crecieron, aparece otra comisión de $600 y otro impuesto aparte
+  const tarde = [
+    { fecha: "2026-11-19", descripcion: IDCB, importe: -3400 },
+    { fecha: "2026-11-19", descripcion: IVA, importe: -378 },
+    { fecha: "2026-11-19", descripcion: "Comision", importe: -600 },
+    { fecha: "2026-11-19", descripcion: "Comision", importe: -600 },
+    { fecha: "2026-11-19", descripcion: IDCB, importe: -50 },
+  ];
+  const { filas, sin_banco } = emparejarExtracto(tarde, ops, BANCO);
+  assert.deepEqual(filas.map((f) => [f.op?.id ?? null, f.reemplaza?.id ?? null, f.sospecha]), [
+    [null, 20, null], [null, 21, null], [22, null, null], [null, null, null], [null, null, null],
+  ], "el impuesto y el IVA reemplazan a los de la mañana; la comisión de la mañana ya está; la nueva y el segundo impuesto entran");
+  assert.deepEqual(sin_banco, [], "no queda nada viejo colgado");
+  // Si el banco ya no muestra algo de un extracto anterior, sobra
+  const { filas: f2, sin_banco: sobra } = emparejarExtracto([tarde[2]], ops, BANCO);
+  assert.equal(f2[0].op.id, 22);
+  assert.deepEqual(sobra.map((o) => [o.id, o.del_banco]), [[20, true], [21, true]]);
+  // Lo cargado a mano que no está en el banco no se marca para anular
+  const { sin_banco: aMano } = emparejarExtracto([tarde[2]], [...ops.slice(2), { id: 30, fecha: "2026-11-19", cuenta_debe: COM, cuenta_haber: BANCO, total_ars: 77, origen: "manual" }], BANCO);
+  assert.deepEqual(aMano.map((o) => [o.id, o.del_banco ?? false]), [[30, false]]);
 });
 
 test("la operación de un renglón — el banco al debe si entra y al haber si sale", () => {
@@ -210,7 +242,7 @@ const pedir = async (rol, body) => api.POST(new Request("http://localhost/api/fi
   body: body instanceof FormData ? body : JSON.stringify(body),
 }));
 
-function mockApi({ reglas = null, opsCuenta = [], yaMarcas = [] } = {}) {
+function mockApi({ reglas = null, opsCuenta = [], yaMarcas = [], paraAnular = [] } = {}) {
   const escrito = [];
   global.fetch = createFetchMock([
     ...authPassHandlers(),
@@ -240,7 +272,12 @@ function mockApi({ reglas = null, opsCuenta = [], yaMarcas = [] } = {}) {
       match: (u) => u.includes("/rest/v1/fin_operaciones"),
       respond: (u, o) => {
         if (o?.method === "POST") { escrito.push({ tabla: "fin_operaciones", body: JSON.parse(o.body) }); return { status: 201, body: [] }; }
+        if (o?.method === "PATCH") {
+          escrito.push({ tabla: "fin_operaciones", metodo: "PATCH", url: decodeURIComponent(u), body: JSON.parse(o.body) });
+          return { status: 200, body: /id=in\.\(([^)]*)\)/.exec(decodeURIComponent(u))[1].split(",").map((id) => ({ id: Number(id) })) };
+        }
         if (u.includes("origen_id=in.")) return { status: 200, body: yaMarcas.map((m) => ({ origen_id: m })) };
+        if (/select=id,fecha(&|$)/.test(u)) return { status: 200, body: paraAnular };
         return { status: 200, body: opsCuenta };
       },
     },
@@ -277,7 +314,7 @@ test("/api/finanzas/banco — confirmar: una operación por renglón, sin repeti
   const fila = { fecha: "2026-09-01", descripcion: "Algo nuevo del banco", comprobante: null, importe: -95.5, marca: "abc123:1", tipo: "PAGO IMPUESTO", contra: IMP };
   const r = await pedir("gerencial", { accion: "confirmar", cuenta: BANCO, filas: [fila, { ...fila, marca: "abc123:2" }] });
   assert.equal(r.status, 200);
-  assert.deepEqual(await r.json(), { ok: true, cargadas: 1, repetidas: 1, carga: 5, aviso: null });
+  assert.deepEqual(await r.json(), { ok: true, cargadas: 1, repetidas: 1, anuladas: 0, carga: 5, aviso: null });
   const carga = escrito.find((x) => x.tabla === "fin_cargas_banco").body;
   assert.deepEqual([carga.cuenta, carga.cargadas, carga.movimientos, carga.cargada_por_nombre], [BANCO, 1, 2, "Tadeo"], "la carga queda registrada");
   const ops = escrito.find((x) => x.tabla === "fin_operaciones").body;
@@ -303,6 +340,43 @@ test("/api/finanzas/banco — confirmar (13/11): lo igual a algo de la cuenta so
   escrito = mockApi({ opsCuenta: [yaEsta] });
   assert.equal((await pedir("gerencial", { accion: "confirmar", cuenta: BANCO, filas: [{ ...fila, forzar: true }] })).status, 200);
   assert.equal(escrito.filter((x) => x.tabla === "fin_operaciones").length, 1);
+});
+
+test("/api/finanzas/banco — confirmar (20/11): reemplaza el impuesto de la mañana, anula lo que el banco ya no muestra y no frena lo ya emparejado", async () => {
+  // En Gypi: el impuesto de la mañana (41, del extracto), una comisión ya emparejada (42) y una que el banco ya no muestra (43)
+  const opsCuenta = [
+    { id: 41, fecha: "2026-11-19", tipo: "PAGO IMPUESTO", origen: "banco", total: 1200, total_ars: 1200, cuenta_debe: IMP, cuenta_haber: BANCO },
+    { id: 42, fecha: "2026-11-19", tipo: "PAGO IMPUESTO", origen: "manual", total: 600, total_ars: 600, cuenta_debe: IMP, cuenta_haber: BANCO },
+    { id: 43, fecha: "2026-11-19", tipo: "PAGO IMPUESTO", origen: "banco", total: 252, total_ars: 252, cuenta_debe: IMP, cuenta_haber: BANCO },
+  ];
+  const filas = [
+    { fecha: "2026-11-19", descripcion: "Impuesto Ley 25.413", comprobante: null, importe: -3400, marca: "abc123:1", tipo: "PAGO IMPUESTO", contra: IMP, reemplaza: 41 },
+    { fecha: "2026-11-19", descripcion: "Comision", comprobante: null, importe: -600, marca: "abc124:2", tipo: "PAGO IMPUESTO", contra: IMP },
+  ];
+  const body = { accion: "confirmar", cuenta: BANCO, desde: "2026-11-01", hasta: "2026-11-19", filas, emparejadas: [42], anular: [43] };
+  let escrito = mockApi({ opsCuenta, paraAnular: [{ id: 41, fecha: "2026-11-19" }, { id: 43, fecha: "2026-11-19" }] });
+  const r = await pedir("gerencial", body);
+  assert.equal(r.status, 200, "la segunda comisión de $600 entra: la otra ya tiene su renglón");
+  const d = await r.json();
+  assert.deepEqual([d.cargadas, d.anuladas], [2, 2]);
+  const patch = escrito.find((x) => x.metodo === "PATCH");
+  assert.match(patch.url, /origen=eq\.banco&anulada_at=is\.null&id=in\.\(41,43\)/);
+  assert.equal(patch.body.anulada_por_nombre, "Tadeo (como dice el banco)");
+  const iNuevas = escrito.findIndex((x) => x.tabla === "fin_operaciones" && !x.metodo);
+  assert.ok(iNuevas >= 0 && iNuevas < escrito.indexOf(patch), "primero entra lo nuevo, después se anula lo viejo");
+  assert.deepEqual(escrito.find((x) => x.tabla === "fin_cargas_banco").body.op_ids, [-41, -43], "lo anulado queda en la carga para devolverlo al deshacer");
+  // Sin "emparejadas", la comisión igual a la 42 frena como siempre
+  mockApi({ opsCuenta, paraAnular: [{ id: 41, fecha: "2026-11-19" }, { id: 43, fecha: "2026-11-19" }] });
+  assert.equal((await pedir("gerencial", { ...body, emparejadas: [] })).status, 409);
+  // Solo se anula lo del extracto, de esta cuenta y dentro de las fechas: si no, volver a subir
+  escrito = mockApi({ opsCuenta, paraAnular: [{ id: 43, fecha: "2026-11-19" }] });
+  assert.equal((await pedir("gerencial", body)).status, 409);
+  assert.equal(escrito.filter((x) => x.tabla === "fin_operaciones").length, 0);
+  // Solo ajustar, sin nada para cargar
+  escrito = mockApi({ opsCuenta, paraAnular: [{ id: 43, fecha: "2026-11-19" }] });
+  const solo = await pedir("gerencial", { accion: "confirmar", cuenta: BANCO, desde: "2026-11-01", hasta: "2026-11-19", filas: [], anular: [43] });
+  assert.equal(solo.status, 200);
+  assert.equal((await solo.json()).anuladas, 1);
 });
 
 test("/api/finanzas/banco — aprender guarda solo lo que tiene forma de regla", async () => {

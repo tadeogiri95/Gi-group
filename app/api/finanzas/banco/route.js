@@ -21,6 +21,14 @@
 //   13/11 (parte 7): lo mismo sirve para una caja con una planilla (Fecha,
 //       Concepto, Ingreso, Egreso). En una caja no se buscan cheques, órdenes
 //       ni plazos fijos: esos pasan por el banco.
+//   20/11: manda el banco. Un renglón con el mismo día y texto que uno de un
+//       extracto anterior pero otro importe (el impuesto a los débitos y
+//       créditos o el IVA, que se van sumando en el día) trae "reemplaza": al
+//       confirmarlo se anula el viejo. Lo de un extracto anterior que el banco
+//       ya no muestra viene en sin_banco con del_banco y se anula con
+//       "anular: [id]". Renglones iguales del mismo extracto (comisiones) no
+//       son sospechosos, y "emparejadas: [id]" (lo que ya tiene su renglón)
+//       no cuenta como repetido. Deshacer la carga entera devuelve lo anulado.
 //   GET ?cuenta=X → las últimas cargas de esa cuenta. GET ?carga=id → la
 //       carga con sus operaciones.
 //   POST { accion: "deshacer", id, ops?: [id] } → anula las operaciones de
@@ -38,7 +46,7 @@ import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { FECHA, hoyAr } from "../../../lib/finanzasOperaciones";
-import { idsParaDeshacer, pendientesDelExtracto } from "../../../lib/finanzasExtractoPendientes";
+import { idsAnuladosPorCarga, idsParaDeshacer, pendientesDelExtracto } from "../../../lib/finanzasExtractoPendientes";
 import { CLAVE_PLAZOS_FIJOS, leerGuardados, leerOpsPlazos, vencidosPendientes } from "../../../lib/finanzasPlazosFijos";
 import { claseDeArchivo, grillaDeArchivo, movimientosDeGrilla, movimientosDePdf } from "../../../lib/finanzasExtracto";
 import {
@@ -80,6 +88,7 @@ async function guardarReglas(e, cuenta, nuevas, actual) {
 const FALTA_188 = "Los movimientos se cargaron, pero para que quede registrada la carga (y se pueda deshacer entera) falta correr la migración 188 en Supabase.";
 const falta188 = (err) => /fin_cargas_banco/.test(String(err?.message)) && /does not exist|42P01|PGRST20[05]|schema cache/.test(String(err?.message));
 const txt = (v, max) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+const idsDe = (v) => [...new Set((Array.isArray(v) ? v : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, MAX_MOVIMIENTOS);
 
 /** Lo que Gypi espera que pase por el banco: cheques vivos, órdenes sin pagar y plazos vencidos sin registrar. */
 async function loQueSeEspera(sesion) {
@@ -179,12 +188,14 @@ async function leerExtracto(sesion, request) {
     control: controlSaldo(ext),
     reglas: Object.keys(reglas).length,
     filas: filas.map((f, i) => {
-      const s = f.op ? null : sugerir(f, reglas);
+      // 20/11: el renglón que corrige uno de un extracto anterior se carga como aquel
+      const r = f.reemplaza;
+      const s = f.op ? null : r?.tipo && r?.cuenta_debe ? { tipo: r.tipo, contra: r.cuenta_debe === cuenta ? r.cuenta_haber : r.cuenta_debe, por: "reemplaza", entidad: r.entidad || null } : sugerir(f, reglas);
       return {
         fecha: f.fecha, comprobante: f.comprobante, descripcion: f.descripcion, importe: f.importe, marca: f.marca,
-        op: ops(f.op), ya: f.ya, parecido: ops(parecidos.get(i)), pendiente: pendientes.get(i) || null,
+        op: ops(f.op), ya: f.ya, reemplaza: ops(r), parecido: ops(parecidos.get(i)), pendiente: pendientes.get(i) || null,
         sospecha: f.sospecha ? { nivel: f.sospecha.nivel, motivo: f.sospecha.motivo, parecida: ops(f.sospecha.parecida) } : null,
-        sugerencia: s ? { tipo: s.tipo, contra: s.contra, por: s.por, ...entidadDe(s.entidad, { proveedores, clientes }) } : null,
+        sugerencia: s ? { tipo: s.tipo, contra: s.contra, por: s.por, ...entidadDe(s.entidad, { proveedores, clientes }), ...(r?.proveedor_id ? { proveedor_id: r.proveedor_id } : {}), ...(r?.cliente_id ? { cliente_id: r.cliente_id } : {}) } : null,
       };
     }),
     sin_banco: sin_banco.map(ops),
@@ -198,7 +209,9 @@ async function confirmar(sesion, d) {
   const e = sesion.empresa_id;
   const cuenta = String(d.cuenta || "");
   const filas = Array.isArray(d.filas) ? d.filas : [];
-  if (!filas.length) return NextResponse.json({ error: "Elegí qué movimientos cargar" }, { status: 400 });
+  // 20/11: lo de un extracto anterior que el banco corrigió (reemplaza) o ya no muestra (anular) se anula
+  const pedidasAnular = idsDe([...(Array.isArray(d.anular) ? d.anular : []), ...filas.map((f) => f?.reemplaza)]);
+  if (!filas.length && !pedidasAnular.length) return NextResponse.json({ error: "Elegí qué movimientos cargar" }, { status: 400 });
   if (filas.length > MAX_MOVIMIENTOS) return NextResponse.json({ error: `Hasta ${MAX_MOVIMIENTOS} movimientos por vez` }, { status: 400 });
   const banco = await bancoDe(sesion, cuenta);
   if (!banco) return NextResponse.json({ error: "Elegí la cuenta del banco" }, { status: 400 });
@@ -227,10 +240,22 @@ async function confirmar(sesion, d) {
     r.forEach((o) => ya.add(o.origen_id));
   }
   const nuevas = ops.filter((o) => !ya.has(o.origen_id));
+  // Solo se anula lo que vino de un extracto, de esta cuenta, vivo y dentro de las fechas del extracto
+  let anular = [];
+  if (pedidasAnular.length) {
+    const c = encodeURIComponent(`"${cuenta.replace(/"/g, "")}"`);
+    const r = await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&origen=eq.${ORIGEN_BANCO}&anulada_at=is.null&id=in.(${pedidasAnular.join(",")})&or=(cuenta_debe.in.(${c}),cuenta_haber.in.(${c}))&select=id,fecha`);
+    const desde = FECHA.test(String(d.desde || "")) ? d.desde : null;
+    const hasta = FECHA.test(String(d.hasta || "")) ? d.hasta : null;
+    const validas = r.filter((o) => (!desde || o.fecha >= desde) && (!hasta || o.fecha <= hasta));
+    if (validas.length !== pedidasAnular.length) return NextResponse.json({ error: "Algo de Gypi cambió mientras revisabas: volvé a subir el extracto" }, { status: 409 });
+    anular = validas.map((o) => Number(o.id));
+  }
   // 13/11: lo que se parece a algo ya cargado en esta cuenta (mismo importe,
   // hasta 3 días) solo entra con "es otro distinto" en ese renglón
   const forzadas = new Set(filas.filter((f) => f?.forzar === true).map((f) => String(f.marca)));
-  const { repetidos, nombres } = await repetidosEnBase(sesion, nuevas, { tesoreria: [banco] });
+  // 20/11: lo que ya tiene su renglón en este extracto (emparejadas) y lo que se anula no cuentan como repetido
+  const { repetidos, nombres } = await repetidosEnBase(sesion, nuevas, { tesoreria: [banco], excluir: [...idsDe(d.emparejadas), ...anular] });
   const sinOk = repetidos.filter((r) => !forzadas.has(nuevas[r.i].origen_id));
   if (sinOk.length) {
     return NextResponse.json({
@@ -246,15 +271,23 @@ async function confirmar(sesion, d) {
     const hechas = await sbPost("fin_operaciones", nuevas.slice(i, i + 500).map((o) => ({ ...o, empresa_id: e, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora })), { sesion });
     if (Array.isArray(hechas)) ids.push(...hechas.map((o) => Number(o.id)).filter(Boolean));
   }
-  // 13/11 (parte 5, migración 188): la carga queda registrada para poder deshacerla
+  // Lo nuevo ya entró: recién ahora se anula lo que el banco corrigió o ya no muestra
+  let anuladas = 0;
+  for (let i = 0; i < anular.length; i += 200) {
+    const r = await sbPatch(`fin_operaciones?empresa_id=eq.${e}&origen=eq.${ORIGEN_BANCO}&anulada_at=is.null&id=in.(${anular.slice(i, i + 200).join(",")})`,
+      { anulada_at: ahora, anulada_por_nombre: quien ? `${quien} (como dice el banco)`.slice(0, 120) : "Gypi (como dice el banco)", updated_at: ahora }, { sesion });
+    anuladas += Array.isArray(r) ? r.length : 0;
+  }
+  // 13/11 (parte 5, migración 188): la carga queda registrada para poder deshacerla.
+  // 20/11: lo anulado va en op_ids con signo menos, así deshacer la carga entera lo devuelve
   let carga = null;
   let aviso = null;
-  if (nuevas.length) {
+  if (nuevas.length || anular.length) {
     try {
       const [fila] = (await sbPost("fin_cargas_banco", {
         empresa_id: e, cuenta, archivo: txt(d.archivo, 200) || null,
         desde: FECHA.test(String(d.desde || "")) ? d.desde : null, hasta: FECHA.test(String(d.hasta || "")) ? d.hasta : null,
-        movimientos: Math.max(Number.isInteger(d.movimientos) ? d.movimientos : 0, filas.length), cargadas: nuevas.length, op_ids: ids,
+        movimientos: Math.max(Number.isInteger(d.movimientos) ? d.movimientos : 0, filas.length), cargadas: nuevas.length, op_ids: [...ids, ...anular.map((n) => -n)],
         cargada_por_nombre: quien, created_at: ahora, updated_at: ahora,
       }, { sesion })) || [];
       carga = fila?.id || null;
@@ -269,8 +302,8 @@ async function confirmar(sesion, d) {
   } catch {
     // Las reglas son una ayuda: si no se guardan, las operaciones ya están
   }
-  if (nuevas.length) broadcastRefresh(e, "fin_operaciones");
-  return NextResponse.json({ ok: true, cargadas: nuevas.length, repetidas: ops.length - nuevas.length, carga, aviso });
+  if (nuevas.length || anuladas) broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, cargadas: nuevas.length, repetidas: ops.length - nuevas.length, anuladas, carga, aviso });
 }
 
 async function deshacer(sesion, d) {
@@ -280,7 +313,9 @@ async function deshacer(sesion, d) {
   const [carga] = (await leer(sesion, `fin_cargas_banco?id=eq.${id}&empresa_id=eq.${e}&select=*&limit=1`)) || [];
   if (!carga) return NextResponse.json({ error: "No encontré esa carga" }, { status: 404 });
   const ids = idsParaDeshacer(carga, Array.isArray(d.ops) ? d.ops : null);
-  if (!ids.length) return NextResponse.json({ error: "Elegí qué movimientos deshacer" }, { status: 400 });
+  // 20/11: deshacer la carga entera devuelve lo que esa carga había anulado "como dice el banco"
+  const devolver = Array.isArray(d.ops) ? [] : idsAnuladosPorCarga(carga);
+  if (!ids.length && !devolver.length) return NextResponse.json({ error: "Elegí qué movimientos deshacer" }, { status: 400 });
   const ahora = new Date().toISOString();
   const quien = await nombreEmpleado(sesion);
   let anuladas = 0;
@@ -295,9 +330,13 @@ async function deshacer(sesion, d) {
   for (let i = 0; i < todas.length; i += 200) {
     vivas += (await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&id=in.(${todas.slice(i, i + 200).join(",")})&select=id`)).length;
   }
+  for (let i = 0; i < devolver.length; i += 200) {
+    await sbPatch(`fin_operaciones?empresa_id=eq.${e}&origen=eq.${ORIGEN_BANCO}&id=in.(${devolver.slice(i, i + 200).join(",")})`,
+      { anulada_at: null, anulada_por_nombre: null, updated_at: ahora }, { sesion });
+  }
   if (!vivas) await sbPatch(`fin_cargas_banco?id=eq.${id}&empresa_id=eq.${e}`, { deshecha_at: ahora, deshecha_por_nombre: quien, updated_at: ahora }, { sesion });
-  if (anuladas) broadcastRefresh(e, "fin_operaciones");
-  return NextResponse.json({ ok: true, anuladas, vivas, deshecha: !vivas });
+  if (anuladas || devolver.length) broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, anuladas, devueltas: devolver.length, vivas, deshecha: !vivas });
 }
 
 export async function GET(request) {
