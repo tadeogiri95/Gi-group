@@ -140,6 +140,9 @@ export function scriptPlanilla({ url, clave }) {
 // nuevos cargados en Gypi (las columnas con fórmula las copia de la fila de
 // arriba). Pegalo en un archivo nuevo de Apps Script, guardá y
 // ejecutá instalarGypi una sola vez. Después corre solo cada hora.
+// instalarGypi también rehace los renglones de Gypi (los "GY-…"): los borra y
+// los vuelve a escribir, así quedan bien aunque una versión vieja los haya
+// dejado a medias.
 // La clave es privada: no compartas este código.
 var GYPI_URL = ${JSON.stringify(url)};
 var GYPI_CLAVE = ${JSON.stringify(clave)};
@@ -148,13 +151,33 @@ var GYPI_HOJA_INGRESOS = "fact_ingresos_stock";
 var GYPI_HOJA_PERSONAL = "PERSONAL";
 var GYPI_HOJA_ORDENES = "fact_ordenes_compra";
 var GYPI_HOJA_ARTICULOS = "ARTICULOS";
+var GYPI_TZ = null;
 
 function instalarGypi() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === "traerMovimientosGypi") ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger("traerMovimientosGypi").timeBased().everyHours(1).create();
+  gypiRehacer_();
   traerMovimientosGypi();
+}
+
+// Borra los renglones de Gypi de fact_consumos_stock y fact_ingresos_stock y
+// vuelve a pedir todo desde el principio: lo cargado a mano no se toca y lo de
+// Gypi se escribe de nuevo, completo y con la fecha bien.
+function gypiRehacer_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  [GYPI_HOJA_CONSUMOS, GYPI_HOJA_INGRESOS].forEach(function (nombre) {
+    var hoja = ss.getSheetByName(nombre);
+    if (!hoja) return;
+    var n = hoja.getLastRow();
+    if (n < 2) return;
+    var ids = hoja.getRange(2, 1, n - 1, 1).getValues();
+    for (var i = ids.length - 1; i >= 0; i--) {
+      if (String(ids[i][0]).indexOf("GY-") === 0) hoja.deleteRow(i + 2);
+    }
+  });
+  PropertiesService.getScriptProperties().setProperty("GYPI_DESDE", "0");
 }
 
 function traerMovimientosGypi() {
@@ -164,6 +187,7 @@ function traerMovimientosGypi() {
     var props = PropertiesService.getScriptProperties();
     var desde = Number(props.getProperty("GYPI_DESDE") || 0);
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    GYPI_TZ = ss.getSpreadsheetTimeZone ? ss.getSpreadsheetTimeZone() : null;
     var cons = ss.getSheetByName(GYPI_HOJA_CONSUMOS);
     var ing = ss.getSheetByName(GYPI_HOJA_INGRESOS);
     var personal = gypiPersonal_(ss);
@@ -198,7 +222,7 @@ function traerMovimientosGypi() {
         } else {
           dudasC.push(duda);
           var col = gypiColaborador_(personal, m.colaborador);
-          filasC.push([m.id, new Date(m.momento), m.sku, col.codigo, fecha.getMonth() + 1, fecha, m.nombre,
+          filasC.push([m.id, new Date(m.momento), m.sku, col.codigo, Number(String(m.fecha).split("-")[1]), fecha, m.nombre,
             m.cantidad, col.nombre, m.origen, m.ot, detalle]);
         }
       });
@@ -293,9 +317,38 @@ function gypiArticulos_(hoja, articulos, props) {
   return cambios;
 }
 
+// El día a las 0 h en la zona horaria de la planilla (no en la del script: si
+// son distintas, la fecha queda corrida un día)
 function gypiFecha_(texto) {
+  if (GYPI_TZ && typeof Utilities !== "undefined") return Utilities.parseDate(String(texto).slice(0, 10), GYPI_TZ, "yyyy-MM-dd");
   var p = String(texto).split("-");
   return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+}
+
+// Las listas desplegables de los renglones que escribe Gypi pasan a "mostrar
+// advertencia": si el proveedor o el artículo no están en la lista, el dato
+// entra igual (con el triangulito rojo) en vez de frenar el renglón.
+function gypiAflojar_(rango) {
+  if (!rango.getDataValidations) return;
+  var reglas = rango.getDataValidations();
+  var cambio = false;
+  for (var i = 0; i < reglas.length; i++) {
+    for (var j = 0; j < reglas[i].length; j++) {
+      var regla = reglas[i][j];
+      if (!regla || regla.getAllowInvalid()) continue;
+      reglas[i][j] = regla.copy().setAllowInvalid(true).build();
+      cambio = true;
+    }
+  }
+  if (cambio) rango.setDataValidations(reglas);
+}
+
+// Escribe y confirma enseguida: si la planilla rechaza algo, el error sale acá
+// y no más adelante, en otra hoja
+function gypiEscribir_(rango, valores) {
+  gypiAflojar_(rango);
+  rango.setValues(valores);
+  if (SpreadsheetApp.flush) SpreadsheetApp.flush();
 }
 
 // Ids "GY-…" que ya están en la columna A
@@ -320,7 +373,9 @@ function gypiPrimeraLibre_(hoja, columna) {
 // Artículo, OT, día y cantidad: si coinciden con un renglón cargado a mano,
 // puede ser el mismo retiro anotado dos veces.
 function gypiClave_(sku, ot, fecha, cantidad) {
-  var dia = fecha instanceof Date
+  var dia = fecha instanceof Date && GYPI_TZ && typeof Utilities !== "undefined"
+    ? Utilities.formatDate(fecha, GYPI_TZ, "yyyy-MM-dd")
+    : fecha instanceof Date
     ? fecha.getFullYear() + "-" + ("0" + (fecha.getMonth() + 1)).slice(-2) + "-" + ("0" + fecha.getDate()).slice(-2)
     : String(fecha || "");
   return [String(sku || "").trim(), String(ot || "").trim().toUpperCase(), dia, Math.round(Number(cantidad) * 1000) / 1000].join("|");
@@ -341,7 +396,7 @@ function gypiAgregar_(hoja, filas, columnaGuia, conTotales, dudas) {
   var desde = gypiPrimeraLibre_(hoja, columnaGuia);
   var falta = desde + filas.length - 1 - hoja.getMaxRows();
   if (falta > 0) hoja.insertRowsAfter(hoja.getMaxRows(), falta);
-  hoja.getRange(desde, 1, filas.length, filas[0].length).setValues(filas);
+  gypiEscribir_(hoja.getRange(desde, 1, filas.length, filas[0].length), filas);
   if (conTotales) {
     var totales = filas.map(function (_, i) {
       var r = desde + i;
@@ -397,7 +452,7 @@ function gypiOrdenes_(hoja, ordenes) {
   if (!filas.length) return;
   var falta = ultimaAMano + filas.length - hoja.getMaxRows();
   if (falta > 0) hoja.insertRowsAfter(hoja.getMaxRows(), falta);
-  hoja.getRange(ultimaAMano + 1, 1, filas.length, ANCHO).setValues(filas);
+  gypiEscribir_(hoja.getRange(ultimaAMano + 1, 1, filas.length, ANCHO), filas);
 }
 
 function gypiNormalizar_(texto) {
