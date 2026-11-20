@@ -139,7 +139,7 @@ export function informeTesoreria({ hoy, tesoreria = [], operaciones = [], invers
     .map((c) => ({ clase: "cobro", fecha: fechaDebito(c.fecha_pago, fer) || c.fecha_pago, vence: c.fecha_pago, importe: centavos(c.importe), detalle: [c.banco, c.numero ? `N° ${c.numero}` : ""].filter(Boolean).join(" "), quien: quien(c) }));
   const cobrar = repartir(aCobrar, periodosSemanas(hoy))
     .filter((t) => t.items.length)
-    .map((t) => ({ id: t.id, etiqueta: t.id === "vencidos" ? "Vencidos (sin depositar)" : t.etiqueta, total: centavos(t.items.reduce((s, x) => s + x.importe, 0)), items: t.items }));
+    .map((t) => ({ id: t.id, desde: t.desde, hasta: t.hasta, etiqueta: t.id === "vencidos" ? "Vencidos (sin depositar)" : t.etiqueta, total: centavos(t.items.reduce((s, x) => s + x.importe, 0)), items: t.items }));
 
   const total = (xs) => centavos(xs.reduce((s, x) => s + x.importe, 0));
   return {
@@ -166,49 +166,142 @@ ${filas.map((t) => `<tr><td>${esc(t.etiqueta)}</td><td class="n">${num(t.cheques
 </tbody></table>`;
 }
 
-/** Más apretado que los otros informes, para que entre en 3 hojas A4. */
-const ESTILO_CORTO = "body{padding:16px;font-size:11px}.cabecera{padding:10px 14px;margin-bottom:8px}.cabecera h1{font-size:17px}h2{font-size:13px;margin:0 0 6px;padding:4px 8px}section{margin:10px 0 0}th,td{padding:2px 5px}.kpi{padding:5px 8px;flex:1 1 110px}.kpi b{font-size:13px}p{margin:2px 0 4px}";
-export const MAX_COBROS = 15;
+/*
+ * El PDF en 4 páginas fijas (pedido de Tadeo del 20/11: hasta 4 páginas, sin
+ * saltos de página ni cuadros cortados, texto y gráficos equilibrados):
+ *   1. Panorama de hoy: los números grandes, un párrafo con lo importante y
+ *      "¿Dónde está la plata?".
+ *   2. Fondos e inversiones, lado a lado.
+ *   3. Calce de cheques y plazos fijos: por semana (gráfico y tabla) y por día.
+ *   4. Cheques a cobrar.
+ * Cada página es un bloque del alto de una hoja A4 y el PDF corta entre ellas
+ * (pdfDeHtml con bloques ".pagina"). Lo que no entra se resume con "y N más
+ * (en el Excel)": nunca se parte una tabla.
+ */
+export const PAGINA_ALTO_PX = 1040; // una hoja A4 a 718 px de ancho (pdfDeHtml: 1046)
+export const MAX_FILAS_FONDOS = 26;
+export const MAX_COBROS = 26;
 
+const ESTILO_PAGINAS = `body{padding:0;font-size:11px}
+.pagina{height:${PAGINA_ALTO_PX}px;overflow:hidden;position:relative;padding:14px 16px 0;box-sizing:border-box}
+.pagina+.pagina{border-top:1px dashed #e3e7eb}
+.cabecera{padding:10px 14px;margin-bottom:8px}.cabecera h1{font-size:18px}
+.pagina>h2{font-size:15px;margin:0 0 8px;padding:6px 10px}
+h3{font-size:12px;margin:12px 0 4px;color:#0e7490}
+th,td{padding:3px 6px}
+.kpi{padding:6px 8px;flex:1 1 0;min-width:0}.kpi span{font-size:10px}.kpi b{font-size:12px;white-space:nowrap}
+.texto{font-size:12px;line-height:1.55;margin:6px 0 10px;color:#1f2937}
+.texto b{font-variant-numeric:tabular-nums}
+.resumen{background:#f6f8fa;border-left:4px solid #0e7490;border-radius:6px;padding:8px 12px}
+.pie-pagina{position:absolute;left:16px;right:16px;bottom:10px;font-size:9px;color:#6b7280;display:flex;justify-content:space-between}
+.cols{display:flex;gap:14px;align-items:flex-start}.cols>div{flex:1;min-width:0}`;
 
-/** { titulo, html, hojas } para los botones 📄 PDF y 📊 Excel. */
+/** Plata corta para los textos: "$ 2,5 M", "USD 4.200". */
+const corto = (n, m = "ARS") => (m === "USD" ? esc(plata(n, "USD")) : `$&nbsp;${esc(compacto(n)).replace(/ /g, "&nbsp;")}`);
+const semanaTxt = (t) => (t.id === "vencidos" ? "los cheques vencidos" : t.id === "despues" ? "después de las 8 semanas" : `la semana del ${dm(t.desde)} al ${dm(t.hasta)}`);
+
+/** Los párrafos del panorama: lo importante de hoy, con los números del informe. */
+export function panoramaTexto(r) {
+  const res = r.resumen;
+  const out = [];
+  const usd = res.dolares ? ` y <b>${corto(res.dolares, "USD")}</b> en dólares` : "";
+  const partes = repartoFondos(r).partes.filter((p) => p.id !== "caja" && p.id !== "banco");
+  const enQue = partes.length ? ` (${partes.map((p) => `${p.id === "fci" ? "FCI" : p.nombre.toLowerCase()} ${corto(p.valor)}`).join(", ")})` : "";
+  out.push(`Hoy hay <b>${corto(res.pesos)}</b> en cajas y bancos en pesos${usd}. Invertido: <b>${corto(res.invertido_ars)}</b>${enQue}${res.invertido_usd ? ` y ${corto(res.invertido_usd, "USD")}` : ""}.`);
+  const sem = r.calce.semanal;
+  const cheques = centavos(sem.reduce((s, t) => s + t.cheques, 0));
+  const plazos = centavos(sem.reduce((s, t) => s + t.plazos, 0));
+  if (cheques || plazos) {
+    const dif = centavos(plazos - cheques);
+    let t = `Se van a debitar <b>${corto(cheques)}</b> en cheques propios y vencen <b>${corto(plazos)}</b> en plazos fijos: ${dif < 0 ? `<b class="rojo">faltan ${corto(-dif)}</b>` : `<b class="verde">sobran ${corto(dif)}</b>`}.`;
+    const peor = sem.reduce((m, x) => (x.acumulado < m.acumulado ? x : m), sem[0]);
+    if (peor && peor.acumulado < -0.005) t += ` El momento más ajustado es ${semanaTxt(peor)}, con el acumulado en <b class="rojo">${corto(peor.acumulado)}</b>.`;
+    else t += " Los plazos fijos alcanzan en todo momento para los cheques.";
+    const venc = sem.find((x) => x.id === "vencidos");
+    if (venc && venc.cheques) t += ` Hay <b class="rojo">${corto(venc.cheques)}</b> en cheques vencidos que todavía figuran sin debitar: conviene revisarlos.`;
+    out.push(t);
+  } else out.push("No hay cheques propios por debitar ni plazos fijos que venzan.");
+  const cob = r.cobrar.filter((t) => t.id !== "vencidos");
+  if (res.cheques_cobrar) {
+    const mayor = cob.reduce((m, x) => (!m || x.total > m.total ? x : m), null);
+    const n = r.cobrar.reduce((s, t) => s + t.items.length, 0);
+    out.push(`A cobrar: <b class="verde">${corto(res.cheques_cobrar)}</b> en ${n} ${n === 1 ? "cheque" : "cheques"} de terceros${mayor ? `; lo que más entra es ${semanaTxt(mayor)} (${corto(mayor.total)})` : ""}.`);
+  } else out.push("No hay cheques de terceros en cartera.");
+  return out;
+}
+
+/** La hoja completa del PDF, en 4 páginas. */
+function paginasHtml(r, { titulo, empresa }) {
+  const base = hojaInforme({ titulo, empresa, cuerpo: "" });
+  const estilo = (base.match(/<style>[\s\S]*?<\/style>/) || [""])[0];
+  const pie = (n) => `<div class="pie-pagina"><span>${esc([empresa, titulo].filter(Boolean).join(" · "))}</span><span>Generado por Gypi el ${esc(dma(new Date().toISOString().slice(0, 10)))} · Página ${n} de 4</span></div>`;
+  const pagina = (n, contenido) => `<div class="pagina">${contenido}${pie(n)}</div>`;
+  const res = r.resumen;
+
+  // 1. Panorama
+  const kpis = `<div class="kpis">${kpi("Pesos en cajas y bancos", $(res.pesos))}${kpi("Dólares en cajas y bancos", $(res.dolares, "USD"))}${kpi("Invertido", $(res.invertido_ars) + (res.invertido_usd ? ` + ${$(res.invertido_usd, "USD")}` : ""))}${kpi("Cheques a pagar", $(res.cheques_pagar), "rojo")}${kpi("Cheques a cobrar", $(res.cheques_cobrar), "verde")}</div>`;
+  const p1 = pagina(1, `<div class="cabecera"><h1>${esc(titulo)}</h1><p>${esc([empresa, "Panorama financiero de hoy"].filter(Boolean).join(" · "))}</p></div>
+${kpis}
+<h2>Panorama de hoy</h2><div class="texto resumen">${panoramaTexto(r).map((t) => `<p>${t}</p>`).join("")}</div>
+<h3>¿Dónde está la plata? (en pesos)</h3>${svgReparto(repartoFondos(r)) || '<p class="dim">No hay plata en pesos.</p>'}
+<h3>Lo que hay, lo que sale y lo que entra (en pesos)</h3>${svgBalance(r)}`);
+
+  // 2. Fondos e inversiones
+  const fila = (nombre, valor, m = "ARS") => `<tr><td>${nombre}</td><td class="n${valor < 0 ? " rojo" : ""}">${$(valor, m)}</td></tr>`;
+  const tot = (nombre, valor, m = "ARS") => `<tr class="tot"><td>${esc(nombre)}</td><td class="n">${$(valor, m)}</td></tr>`;
+  const sec = (nombre) => `<tr class="sec"><td colspan="2">${esc(nombre)}</td></tr>`;
+  const mas = (n) => (n > 0 ? `<tr><td colspan="2" class="dim">… y ${n} más (en el Excel)</td></tr>` : "");
+  const recortar = (xs, max) => ({ xs: xs.slice(0, max), resto: Math.max(0, xs.length - max) });
+  const fondos = ["ARS", "USD"].filter((m) => r.fondos[m].cajas.length).map((m) => {
+    const { xs, resto } = recortar(r.fondos[m].cajas, MAX_FILAS_FONDOS / 2);
+    return sec(m === "USD" ? "En dólares" : "En pesos") + xs.map((c) => fila(esc(c.nombre), c.saldo, m)).join("") + mas(resto) + tot(`Total ${m === "USD" ? "dólares" : "pesos"}`, r.fondos[m].total, m);
+  }).join("");
+  const grupo = (titulo2, xs, render) => { const { xs: v, resto } = recortar(xs, Math.floor(MAX_FILAS_FONDOS / 3)); return xs.length ? sec(titulo2) + v.map(render).join("") + mas(resto) : ""; };
+  const inv = grupo("FCI", r.fci, (f) => fila(esc(f.nombre), f.saldo, f.moneda))
+    + grupo(`Títulos${r.titulos.tipo_cambio ? ` (dólar a ${plata(r.titulos.tipo_cambio)})` : ""}`, r.titulos.especies, (e) => fila(`${esc(e.especie)} <span class="dim">· ${esc(e.laminas.toLocaleString("es-AR"))} lám.</span>`, e.valor, e.moneda))
+    + grupo("Plazos fijos (capital)", r.plazos, (p) => fila(`N° ${esc(p.certificado)} <span class="${p.vencido ? "rojo" : "dim"}">· vence ${esc(dm(p.vencimiento))}</span>`, p.depositado, p.moneda));
+  const invTot = inv ? tot("Total invertido en pesos", r.invertido.ARS) + (r.invertido.USD ? tot("Total invertido en dólares", r.invertido.USD, "USD") : "") : "";
+  const nCajas = r.fondos.ARS.cajas.length + r.fondos.USD.cajas.length;
+  const proxPf = r.plazos.filter((p) => !p.vencido)[0];
+  const textoFondos = `Hay <b>${corto(res.pesos)}</b> en ${nCajas} ${nCajas === 1 ? "caja o banco" : "cajas y bancos"}${res.dolares ? ` y <b>${corto(res.dolares, "USD")}</b> en dólares` : ""}. `
+    + `Invertido: <b>${corto(r.invertido.ARS)}</b> en ${[r.fci.length && `${r.fci.length} FCI`, r.titulos.especies.length && `${r.titulos.especies.length} ${r.titulos.especies.length === 1 ? "título" : "títulos"}`, r.plazos.length && `${r.plazos.length} ${r.plazos.length === 1 ? "plazo fijo" : "plazos fijos"}`].filter(Boolean).join(", ") || "nada"}`
+    + `${proxPf ? `; el próximo plazo fijo vence el ${esc(dma(proxPf.vencimiento))} y devuelve ${corto(proxPf.reembolsar, proxPf.moneda)}` : ""}.`
+    + `${r.plazos.some((p) => p.vencido) ? ' <span class="rojo">Hay plazos fijos vencidos sin registrar en Gypi.</span>' : ""}`;
+  const p2 = pagina(2, `<h2>1. Posición de fondos e inversiones</h2><p class="texto">${textoFondos}</p>
+<div class="cols"><div><table><thead><tr><th>Cajas y bancos</th><th class="n">Saldo</th></tr></thead><tbody>${fondos || '<tr><td colspan="2" class="dim">No hay cajas ni bancos.</td></tr>'}</tbody></table></div>
+<div><table><thead><tr><th>Inversiones</th><th class="n">Valor</th></tr></thead><tbody>${inv + invTot || '<tr><td colspan="2" class="dim">No hay inversiones cargadas.</td></tr>'}</tbody></table>${r.titulos.falta_tc ? '<p class="rojo">Falta el tipo de cambio: los títulos en dólares no suman.</p>' : ""}</div></div>`);
+
+  // 3. Calce
+  const dias = r.calce.diario;
+  const diasConAlgo = dias.filter((t) => t.cheques || t.plazos);
+  const peorDia = dias.reduce((m, x) => (x.acumulado < m.acumulado ? x : m), dias[0]);
+  const textoCalce = `${panoramaTexto(r)[1]} En los próximos ${DIAS_CALCE} días hay movimiento en ${diasConAlgo.length} ${diasConAlgo.length === 1 ? "día" : "días"}${peorDia && peorDia.acumulado < -0.005 ? `; el peor día es el ${esc(dm(peorDia.desde))}, con <b class="rojo">${corto(peorDia.acumulado)}</b> acumulado` : ""}. Solo cheques contra plazos fijos en pesos, sin la plata de los bancos.`;
+  const p3 = pagina(3, `<h2>2. Calce de cheques a pagar y plazos fijos</h2><p class="texto">${textoCalce}</p>
+<h3>Por semana</h3>${svgCalce(r.calce.semanal, "Calce por semana")}${tablaCalce(r.calce.semanal.filter((t) => t.id !== "despues" || t.cheques || t.plazos), "Semana")}
+<h3>Por día · próximos ${DIAS_CALCE} días</h3>${svgCalce(dias, "Calce por día")}`);
+
+  // 4. Cheques a cobrar
+  const cobros = r.cobrar.flatMap((t) => t.items);
+  const { xs: verCobros, resto } = recortar(cobros, MAX_COBROS);
+  const p4 = pagina(4, `<h2>3. Cheques a cobrar</h2><p class="texto">${panoramaTexto(r)[2]}</p>
+${cobros.length ? svgCobrar(r) : ""}
+${cobros.length ? `<table><thead><tr><th>Se acredita</th><th>Banco y número</th><th>De quién</th><th class="n">Importe</th></tr></thead><tbody>${verCobros.map((x) => `<tr${x.fecha < r.hoy ? ' class="rojo"' : ""}><td>${esc(dma(x.fecha))}</td><td>${esc(x.detalle)}</td><td>${esc(x.quien)}</td><td class="n">${$(x.importe)}</td></tr>`).join("")}
+${resto ? `<tr><td colspan="4" class="dim">… y ${resto} cheques más (en el Excel)</td></tr>` : ""}
+<tr class="tot"><td colspan="3">Total a cobrar</td><td class="n">${$(res.cheques_cobrar)}</td></tr></tbody></table>` : ""}`);
+
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(titulo)}</title>${estilo}<style>${ESTILO_PAGINAS}</style></head><body>${p1}${p2}${p3}${p4}</body></html>`;
+}
+
+/** { titulo, html, hojas, bloques } para los botones 📄 PDF y 📊 Excel. */
 export function exportarInformeTesoreria(r, { empresa = "" } = {}) {
   const titulo = `Informe de tesorería al ${dma(r.hoy)}`;
-  const sub = "Posición de fondos, inversiones, calce de cheques y plazos fijos, y cheques a cobrar";
-  // 19/11 (Tadeo): conciso, 3 páginas como máximo. Fondos e inversiones lado a
-  // lado, la tabla diaria solo con los días que tienen algo y sin el detalle de
-  // cada cheque del calce (los montos están en el gráfico); cobros hasta MAX_COBROS.
-  const cuerpo = () => {
-    const fila = (nombre, valor, m = "ARS", extra = "") => `<tr><td>${nombre}</td><td class="n${valor < 0 ? " rojo" : ""}">${$(valor, m)}${extra}</td></tr>`;
-    const tot = (nombre, valor, m = "ARS") => `<tr class="tot"><td>${esc(nombre)}</td><td class="n">${$(valor, m)}</td></tr>`;
-    const sec = (nombre) => `<tr class="sec"><td colspan="2">${esc(nombre)}</td></tr>`;
-    const fondos = ["ARS", "USD"].filter((m) => r.fondos[m].cajas.length).map((m) => sec(m === "USD" ? "En dólares" : "En pesos")
-      + r.fondos[m].cajas.map((c) => fila(esc(c.nombre), c.saldo, m)).join("") + tot(`Total ${m === "USD" ? "dólares" : "pesos"}`, r.fondos[m].total, m)).join("");
-    const inv = [
-      r.fci.length ? sec("FCI") + r.fci.map((f) => fila(esc(f.nombre), f.saldo, f.moneda)).join("") : "",
-      r.titulos.especies.length ? sec(`Títulos${r.titulos.tipo_cambio ? ` (dólar a ${plata(r.titulos.tipo_cambio)})` : ""}`) + r.titulos.especies.map((e) => fila(`${esc(e.especie)} <span class="dim">· ${esc(e.laminas.toLocaleString("es-AR"))} lám.</span>`, e.valor, e.moneda)).join("") : "",
-      r.plazos.length ? sec("Plazos fijos (capital)") + r.plazos.map((p) => fila(`N° ${esc(p.certificado)} <span class="${p.vencido ? "rojo" : "dim"}">· vence ${esc(dm(p.vencimiento))}</span>`, p.depositado, p.moneda)).join("") : "",
-    ].join("");
-    const invTot = inv ? tot("Total invertido en pesos", r.invertido.ARS) + (r.invertido.USD ? tot("Total invertido en dólares", r.invertido.USD, "USD") : "") : "";
-    const diasConAlgo = r.calce.diario.filter((t) => t.cheques || t.plazos);
-    const cobros = r.cobrar.flatMap((t) => t.items);
-    const cobrar = cobros.length ? `<table><thead><tr><th>Se acredita</th><th>Banco y número</th><th>De quién</th><th class="n">Importe</th></tr></thead><tbody>${cobros.slice(0, MAX_COBROS).map((x) => `<tr><td>${esc(dma(x.fecha))}</td><td>${esc(x.detalle)}</td><td>${esc(x.quien)}</td><td class="n">${$(x.importe)}</td></tr>`).join("")}
-${cobros.length > MAX_COBROS ? `<tr><td colspan="4" class="dim">… y ${cobros.length - MAX_COBROS} cheques más (están en el Excel)</td></tr>` : ""}
-<tr class="tot"><td colspan="3">Total a cobrar</td><td class="n">${$(r.resumen.cheques_cobrar)}</td></tr></tbody></table>` : '<p class="dim">No hay cheques de terceros en cartera.</p>';
-    return `<div class="kpis">${kpi("Pesos en cajas y bancos", $(r.resumen.pesos))}${kpi("Dólares en cajas y bancos", $(r.resumen.dolares, "USD"))}${kpi("Invertido", $(r.resumen.invertido_ars) + (r.resumen.invertido_usd ? ` + ${$(r.resumen.invertido_usd, "USD")}` : ""))}${kpi("Cheques a pagar", $(r.resumen.cheques_pagar), "rojo")}${kpi("Cheques a cobrar", $(r.resumen.cheques_cobrar), "verde")}</div>
-<section><h2>1. Posición de fondos e inversiones</h2>${svgReparto(repartoFondos(r))}
-<div style="display:flex;gap:14px;align-items:flex-start"><div style="flex:1;min-width:0"><table><thead><tr><th>Cajas y bancos</th><th class="n">Saldo</th></tr></thead><tbody>${fondos || '<tr><td colspan="2" class="dim">No hay cajas ni bancos.</td></tr>'}</tbody></table></div>
-<div style="flex:1;min-width:0"><table><thead><tr><th>Inversiones</th><th class="n">Valor</th></tr></thead><tbody>${inv + invTot || '<tr><td colspan="2" class="dim">No hay inversiones cargadas.</td></tr>'}</tbody></table>${r.titulos.falta_tc ? '<p class="rojo">Falta el tipo de cambio: los títulos en dólares no suman.</p>' : ""}</div></div></section>
-<section><h2>2. Calce de cheques a pagar y plazos fijos · por semana</h2><p class="dim">Solo cheques contra plazos fijos en pesos, sin los bancos. Diferencia = plazos fijos − cheques; en rojo, falta plata.</p>
-${svgCalce(r.calce.semanal, "Calce por semana")}${tablaCalce(r.calce.semanal.filter((t) => t.id !== "despues" || t.cheques || t.plazos), "Semana")}</section>
-<section><h2>3. Calce por día · próximos ${DIAS_CALCE} días</h2>${svgCalce(r.calce.diario, "Calce por día")}${diasConAlgo.length ? tablaCalce(diasConAlgo, "Día con movimiento") : '<p class="dim">No hay cheques ni plazos fijos en los próximos días.</p>'}</section>
-<section><h2>4. Cheques a cobrar</h2>${cobros.length ? svgCobrar(r) : ""}${cobrar}</section>`;
-  };
   const filasCalce = (xs) => xs.map((t) => [t.etiqueta, N(t.cheques), N(t.plazos), N(t.diferencia), NB(t.acumulado)]);
   const cabCalce = (c) => [B(c), B("Cheques a debitar"), B("Vencen plazos fijos"), B("Diferencia"), B("Acumulado")];
   return {
     titulo,
-    html: () => hojaInforme({ titulo, subtitulo: sub, empresa, cuerpo: cuerpo().replace("<div class=\"kpis\">", `<style>${ESTILO_CORTO}</style><div class="kpis">`) }),
+    html: () => paginasHtml(r, { titulo, empresa }),
+    // El PDF corta entre páginas, nunca adentro de una (20/11)
+    bloques: ".pagina",
     hojas: () => [
       {
         nombre: "Fondos e inversiones",
@@ -367,6 +460,33 @@ function svgColumnas(serie, { H = 230, linea = false, colorA = COLOR.rojo, color
   return `<svg class="graf" viewBox="0 0 ${g.W} ${g.H}" role="img" aria-label="${esc(titulo)}" style="width:100%;height:auto;display:block;margin:6px 0 2px">
 <line x1="${g.izq}" x2="${g.W - g.der}" y1="${g.cero.toFixed(1)}" y2="${g.cero.toFixed(1)}" stroke="${COLOR.linea}"/>${cuerpo}${lin}</svg>
 <div style="font-size:11px;color:#4b5563;margin:0 0 8px">${leyenda}</div>`;
+}
+
+/** Barras horizontales de la página 1: lo que hay, lo que sale y lo que entra, en pesos. */
+export function balanceTesoreria(r) {
+  const sem = r.calce.semanal;
+  return [
+    { id: "disponible", nombre: "Cajas y bancos", valor: r.resumen.pesos, color: COLOR_REPARTO.caja },
+    { id: "invertido", nombre: "Invertido (FCI, títulos y plazos fijos)", valor: r.resumen.invertido_ars, color: COLOR_REPARTO.fci },
+    { id: "pagar", nombre: "Cheques a pagar", valor: r.resumen.cheques_pagar, color: COLOR.rojo },
+    { id: "plazos", nombre: "Plazos fijos que vencen (8 semanas)", valor: centavos(sem.reduce((s, t) => s + t.plazos, 0)), color: COLOR.verde },
+    { id: "cobrar", nombre: "Cheques a cobrar", valor: r.resumen.cheques_cobrar, color: COLOR_REPARTO.titulos },
+  ];
+}
+
+function svgBalance(r) {
+  const items = balanceTesoreria(r);
+  const W = 700, fila = 30, nombre = 250, valor = 120;
+  const max = Math.max(1, ...items.map((x) => Math.abs(x.valor)));
+  const ancho = W - nombre - valor - 16;
+  const H = items.length * fila;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Lo que hay, lo que sale y lo que entra" style="width:100%;height:auto;display:block;margin:6px 0 4px">${items.map((x, i) => {
+    const y = i * fila;
+    const w = Math.max(2, (Math.abs(x.valor) / max) * ancho);
+    return `<text x="${nombre}" y="${y + 19}" text-anchor="end" font-size="12" fill="#222">${esc(x.nombre)}</text>`
+      + `<rect x="${nombre + 8}" y="${y + 6}" width="${w.toFixed(1)}" height="${fila - 12}" rx="3" fill="${x.color}"/>`
+      + `<text x="${W - 2}" y="${y + 19}" text-anchor="end" font-size="12" font-weight="700" fill="#222">${esc(plata(x.valor))}</text>`;
+  }).join("")}</svg>`;
 }
 
 /** La barra de "¿Dónde está la plata?" para el PDF. */
