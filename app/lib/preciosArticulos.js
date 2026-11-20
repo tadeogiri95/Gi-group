@@ -103,3 +103,46 @@ export function textoPrecio(n, moneda = "ARS") {
   const v = Number(n).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `${moneda === "USD" ? "US$" : "$"} ${v}`;
 }
+
+/** Quién ve precios: Dueño, Supervisor y Administración (la RLS de 164 pide lo mismo). */
+export const veePrecios = (usuario) => usuario?.rol === "gerencial" || usuario?.rol === "administrativo";
+
+/**
+ * Último precio de cada artículo, para la lista de Stock y la ficha.
+ * Toma la compra con fecha más nueva y precio en pesos (mismo día: la primera
+ * de la lista, que viene ordenada de la más nueva a la más vieja). Si un
+ * artículo no tiene ninguna compra, usa el "último precio" de la planilla
+ * (ARTICULOS) sin fecha.
+ * @param {object[]} precios renglones de v_precios_articulos
+ * @param {object[]} articulos renglones de articulos_stock (para ultimo_precio)
+ * @returns {Map<string, { precio: number, fecha: string|null, origen: string, proveedor: string|null, moneda: string, precio_usd: number|null }>}
+ */
+export function ultimosPrecios(precios = [], articulos = []) {
+  const res = new Map();
+  for (const p of precios) {
+    const v = Number(p?.precio_ars);
+    if (!p?.sku || !p.fecha || p.precio_ars === null || p.precio_ars === undefined || !Number.isFinite(v) || v < 0) continue;
+    const fecha = String(p.fecha).slice(0, 10);
+    const ya = res.get(p.sku);
+    if (ya && ya.fecha >= fecha) continue;
+    res.set(p.sku, {
+      precio: v,
+      fecha,
+      origen: p.origen || null,
+      proveedor: p.proveedor || null,
+      moneda: p.moneda || "ARS",
+      precio_usd: p.moneda === "USD" && Number.isFinite(Number(p.precio)) ? Number(p.precio) : null,
+    });
+  }
+  for (const a of articulos) {
+    const v = Number(a?.ultimo_precio);
+    if (!a?.sku || res.has(a.sku) || !(v > 0)) continue;
+    res.set(a.sku, { precio: v, fecha: null, origen: "planilla", proveedor: null, moneda: "ARS", precio_usd: null });
+  }
+  return res;
+}
+
+/** "14/11/2026" o "sin fecha" para el último precio. */
+export function textoFechaPrecio(u) {
+  return u?.fecha ? u.fecha.split("-").reverse().join("/") : "sin fecha";
+}

@@ -17,6 +17,7 @@ import {
 import FichaArticulo, { Semaforo } from "./FichaArticulo";
 import { BotonesCargar } from "./MovimientosStock";
 import ArticuloNuevo from "./ArticuloNuevo";
+import { textoFechaPrecio, textoPrecio, ultimosPrecios, veePrecios } from "../lib/preciosArticulos";
 
 const GREEN = "#16A34A";
 const RED = "#DC2626";
@@ -44,6 +45,9 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
   const [elegidos, setElegidos] = useState(() => new Set());
   const [tamano, setTamano] = useState(leerTamano);
   const [ficha, setFicha] = useState(null);
+  // Último precio con fecha de cada artículo (solo Dueño, Supervisor y Administración)
+  const conPrecios = veePrecios(usuario);
+  const [precios, setPrecios] = useState([]);
 
   const cargar = useCallback(async () => {
     if (!empresaId) return;
@@ -71,6 +75,17 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
 
   useEffect(() => { cargar(); cargarCfg(); }, [cargar, cargarCfg]);
 
+  const cargarPrecios = useCallback(async () => {
+    if (!conPrecios || !empresaId) return;
+    try {
+      // De la más nueva a la más vieja: si se corta, se pierden solo las viejas
+      const { data } = await sbGetAll("v_precios_articulos?select=sku,fecha,precio,moneda,precio_ars,origen,proveedor&order=fecha.desc", { maxFilas: 20000 });
+      setPrecios(data || []);
+    } catch { /* sin la migración 164 o sin permiso: no se muestran */ }
+  }, [conPrecios, empresaId]);
+  useEffect(() => { cargarPrecios(); }, [cargarPrecios]);
+  const ultimos = useMemo(() => (conPrecios ? ultimosPrecios(precios, articulos) : new Map()), [conPrecios, precios, articulos]);
+
   const divisiones = useMemo(() => divisionesDe(articulos), [articulos]);
   const filtrados = useMemo(() => filtrarArticulos(articulos, { texto, division, urgentes, negativos }), [articulos, texto, division, urgentes, negativos]);
   const urgentesTotal = useMemo(() => filtrarArticulos(articulos, { urgentes: true }).length, [articulos]);
@@ -88,6 +103,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
       else toast.show(`✅ ${data.articulos} artículos sincronizados${data.desactivados ? ` (${data.desactivados} ya no están en la planilla)` : ""}`, GREEN);
       setCfg((c) => ({ ...c, ultima_sync: new Date().toISOString() }));
       await cargar();
+      cargarPrecios();
     } catch (e) {
       toast.show(e.message, RED);
     }
@@ -223,6 +239,11 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
                 <button onClick={() => setFicha(a)} className="flex-1 min-w-0 min-h-[44px] text-left bg-transparent border-none p-0 cursor-pointer text-gypi-text font-body">
                   <div className="text-[14px] font-semibold truncate">{a.nombre || a.sku}</div>
                   <div className="text-[12px] text-gypi-dim truncate">{a.origen === "gypi" ? "🆕 Nuevo, falta pasar a la planilla · " : ""}{a.sku}{a.division ? ` · ${a.division}` : ""}</div>
+                  {ultimos.has(a.sku) && (
+                    <div className="text-[12px] text-gypi-dim truncate">
+                      💲 <b className="text-gypi-text">{textoPrecio(ultimos.get(a.sku).precio)}</b> · {textoFechaPrecio(ultimos.get(a.sku))}
+                    </div>
+                  )}
                 </button>
                 <div className="text-right shrink-0">
                   <div className="text-[14px] font-bold">{cantidadTexto(a.disponible ?? a.stock)} <span className="text-[12px] font-semibold text-gypi-dim">{a.unidad || ""}</span></div>
