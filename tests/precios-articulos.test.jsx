@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import { createFetchMock } from "./helpers/mockFetch.js";
-import { leerIngresosMrp, historialPrecios, textoPrecio } from "../app/lib/preciosArticulos.js";
+import { leerIngresosMrp, historialPrecios, textoPrecio, ultimosPrecios, textoFechaPrecio, veePrecios } from "../app/lib/preciosArticulos.js";
 import { autorizar } from "../app/lib/dataPolicy.js";
 
 before(() => {
@@ -142,8 +142,31 @@ test("ficha — historial de precios con origen, y en dólares el tipo de cambio
     });
   };
   render(<PreciosArticulo sku="1.3.2.69.155.5.3.53" />);
-  await waitFor(() => screen.getByText(/HAFELE/));
+  await waitFor(() => screen.getByLabelText("Último precio"));
+  assert.match(screen.getByLabelText("Último precio").textContent, /\$ 1\.500,00.*Del 02\/10\/2026 · HAFELE · US\$ 1,50/, "arriba, el último precio con fecha");
   const items = screen.getAllByRole("listitem");
   assert.match(items[0].textContent, /02\/10\/2026.*HAFELE.*\$ 1\.500,00.*US\$ 1,50 × 1000/, "el más nuevo primero");
   assert.match(items[1].textContent, /28\/03\/2026.*GRUPO EURO SA.*A-1.*\$ 514,00/);
+});
+
+test("ultimosPrecios: la compra más nueva de cada artículo, y si no hay, el de la planilla sin fecha", () => {
+  const m = ultimosPrecios(
+    [
+      { sku: "A-1", fecha: "2026-11-14", precio_ars: 1500, precio: 1.5, moneda: "USD", origen: "oc", proveedor: "HAFELE" },
+      { sku: "A-1", fecha: "2026-11-14", precio_ars: 999, moneda: "ARS", origen: "mrp" },
+      { sku: "A-1", fecha: "2026-03-28", precio_ars: 514, moneda: "ARS", origen: "mrp" },
+      { sku: "B-2", fecha: "2026-01-02", precio_ars: null, moneda: "USD", origen: "oc" },
+      { sku: "C-3", fecha: "2026-02-01T00:00:00", precio_ars: "80.5", moneda: "ARS", origen: "factura" },
+    ],
+    [{ sku: "A-1", ultimo_precio: 1 }, { sku: "B-2", ultimo_precio: 42 }, { sku: "D-4", ultimo_precio: 0 }],
+  );
+  assert.deepEqual(m.get("A-1"), { precio: 1500, fecha: "2026-11-14", origen: "oc", proveedor: "HAFELE", moneda: "USD", precio_usd: 1.5 });
+  assert.equal(m.get("B-2").precio, 42, "sin precio en pesos: usa el de la planilla");
+  assert.equal(m.get("B-2").fecha, null);
+  assert.equal(m.get("C-3").fecha, "2026-02-01");
+  assert.equal(m.has("D-4"), false);
+  assert.equal(textoFechaPrecio(m.get("A-1")), "14/11/2026");
+  assert.equal(textoFechaPrecio(m.get("B-2")), "sin fecha");
+  assert.equal(veePrecios({ rol: "gerencial" }) && veePrecios({ rol: "administrativo" }), true);
+  assert.equal(veePrecios({ rol: "operativo" }), false);
 });
