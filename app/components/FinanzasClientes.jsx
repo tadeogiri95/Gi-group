@@ -22,6 +22,7 @@ import {
   FORMAS_COBRO, ORIGEN_COBRO, clienteDeOt, emparejarCliente, movimientosCliente, saldoPorOt, saldosClientes, saldosClientesDelLibro,
 } from "../lib/finanzasClientes";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
+import BotonEstadoCuenta from "./FinanzasEstadoCuenta";
 import { useToast } from "./ui/Toast";
 import AjusteSaldo, { anularAjuste } from "./FinanzasAjusteSaldo";
 import { ORIGEN_AJUSTE_SALDO } from "../lib/finanzasAjusteSaldo";
@@ -341,6 +342,7 @@ export function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
             <div><button type="button" className="g-btn g-btn-secondary" onClick={() => setModal("ajuste")}>⚖ Ajustar saldo</button></div>
           </div>
         )}
+        <div><BotonEstadoCuenta cliente={saldo.clave} nombre={saldo.nombre} /></div>
         {saldo.cliente_id && <LineaUnificada clienteId={saldo.cliente_id} onCambio={onCambio} />}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         <div className="flex flex-wrap gap-2">

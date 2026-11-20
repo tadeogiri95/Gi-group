@@ -17,6 +17,7 @@ import { saldosClientes } from "../lib/finanzasClientes";
 import { saldosProveedores } from "../lib/finanzasProveedores";
 import { FILTROS_CC, cuentasCorrientes, entraEnFiltro, filtroInicialCc, totalesCc } from "../lib/finanzasCuentasCorrientes";
 import { Chip, Modal, Spinner } from "./ui";
+import BotonEstadoCuenta from "./FinanzasEstadoCuenta";
 import { useToast } from "./ui/Toast";
 import {
   DatosCliente, Ficha as FichaCliente, SaldosIniciales as SaldosInicialesClientes, VentasOt, textoSaldoCliente,
@@ -71,6 +72,7 @@ function FichaAmbos({ r, onCliente, onProveedor, onCerrar, onCambio }) {
           <button type="button" className="g-btn g-btn-secondary flex-1" onClick={onCliente}>👥 Ver como cliente</button>
           <button type="button" className="g-btn g-btn-secondary flex-1" onClick={onProveedor}>🏭 Ver como proveedor</button>
         </div>
+        <div><BotonEstadoCuenta cliente={r.cliente.clave} proveedor={r.proveedor.clave} nombre={r.nombre} /></div>
         {cuenta.compensable > 0 && (
           <button type="button" className="g-btn g-btn-primary" onClick={() => setCompensar(true)}>⚖ Compensar una deuda con la otra</button>
         )}

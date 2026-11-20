@@ -22,6 +22,7 @@ import {
   CLASES_COMPRA, CUENTA_AJUSTE_CAPITAL, ORIGEN_SALDO_INICIAL, cuentaDeProveedor, cuentasAprendidas, emparejarProveedor, movimientosProveedor, pendientesProveedor, saldosDelLibro, saldosProveedores,
 } from "../lib/finanzasProveedores";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
+import BotonEstadoCuenta from "./FinanzasEstadoCuenta";
 import { NuevaOrden, leerDatosPagos } from "./FinanzasPagos";
 import BotonCargar from "./FinanzasCargar";
 import FinanzasSos from "./FinanzasSos";
@@ -383,6 +384,7 @@ export function Ficha({ saldo, datos, cuentasProv, aprendidas, onCerrar, onCarga
             <div><button type="button" className="g-btn g-btn-secondary" onClick={() => setAjuste(true)}>⚖ Ajustar saldo</button></div>
           </div>
         )}
+        <div><BotonEstadoCuenta proveedor={saldo.clave} nombre={saldo.nombre} /></div>
         {saldo.proveedor_id && <LineaUnificada proveedorId={saldo.proveedor_id} onCambio={onCargada} />}
         {errorPago && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {errorPago}</p>}
         {errorAjuste && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {errorAjuste}</p>}
