@@ -83,6 +83,40 @@ test("resumen en PDF — débito o crédito por columna, descripción en dos ren
   assert.deepEqual(controlSaldo(r), { calculado: 22774, final: 22774, ok: true });
 });
 
+// 20/11: el resumen del Banco Nación (fecha pegada a la descripción, comprobante en su columna, "SALDO FINAL")
+const P = (str, x, fin, y) => ({ str, x, y, w: fin - x });
+const NACION = [
+  P("RESUMEN DE EMISION MENSUAL", 65, 198, 561), P("PERIODO: 30/09/2026 AL 30/10/2026", 437, 575, 561),
+  P("FECHA", 75, 99, 437), P("MOVIMIENTOS", 137, 191, 437), P("COMPROB.", 243, 282, 437), P("DEBITOS", 324, 358, 437), P("CREDITOS", 416, 454, 437), P("SALDO", 526, 550, 437),
+  P("SALDO", 123, 147, 420), P("ANTERIOR", 152, 191, 420), P("96.432,23", 521, 565, 420),
+  P("08/10/26 COMISION PAQUETES", 65, 191, 411), P("1417", 257, 277, 411), P("69.000,00", 329, 373, 411), P("27.432,23", 521, 565, 411),
+  P("08/10/26 GRAVAMEN LEY", 65, 167, 386), P("25413", 172, 196, 386), P("S/DEB", 201, 225, 386), P("1417", 257, 277, 386), P("414,00", 344, 373, 386), P("27.018,23", 521, 565, 386),
+  P("20/10/26 TRANSF.INTER.MM-LINKULAR", 65, 225, 361), P("1424", 257, 277, 361), P("4.500.000,00", 411, 469, 361), P("4.527.018,23", 507, 565, 361),
+  P("SALDO", 123, 147, 336), P("FINAL", 152, 176, 336), P("4.527.018,23", 521, 565, 336),
+  P("TOTAL", 65, 89, 319), P("GRAV. LEY", 113, 157, 319), P("25413", 162, 186, 319), P("$", 468, 473, 319), P("414,00", 536, 565, 319),
+  P("PAGINA:", 500, 530, 100), P("1", 540, 545, 100),
+];
+
+test("resumen en PDF del Banco Nación (20/11) — fecha pegada, comprobante en su columna, saldo final", () => {
+  const r = movimientosDePdf([NACION]);
+  assert.deepEqual(r.movimientos.map((m) => [m.fecha, m.comprobante, m.descripcion, m.importe]), [
+    ["2026-10-08", "1417", "COMISION PAQUETES", -69000],
+    ["2026-10-08", "1417", "GRAVAMEN LEY 25413 S/DEB", -414],
+    ["2026-10-20", "1424", "TRANSF.INTER.MM-LINKULAR", 4500000],
+  ]);
+  assert.deepEqual([r.saldo_anterior, r.saldo_final, r.desde, r.hasta], [96432.23, 4527018.23, "2026-09-30", "2026-10-30"]);
+  assert.equal(controlSaldo(r).ok, true);
+});
+
+test("Excel del banco (20/11) — un solo día del más nuevo al más viejo: el orden sale del saldo", () => {
+  const grilla = [["", "Fecha", "Concepto", "Nro.Cpbte.", "Débito", "Crédito", "Saldo", "Cód."],
+    ["", "18/11/2026", "Impuesto Ley 25.413 Ali Gral s/Creditos", "0", "76.72", "0", "85586.01", "IDCC1"],
+    ["", "18/11/2026", "Transf. Inmediata 30545785338-FAC-SINDICATO", "415505", "0", "12785.98", "85662.73", "1872"]];
+  const r = movimientosDeGrilla(grilla);
+  assert.deepEqual(r.movimientos.map((m) => m.importe), [12785.98, -76.72], "primero la transferencia, después el impuesto");
+  assert.deepEqual([r.saldo_anterior, r.saldo_final, controlSaldo(r).ok], [72876.75, 85586.01, true]);
+});
+
 test("Excel, CSV y tabla HTML — por los títulos", () => {
   const grilla = [["Banco Credicoop"], [], ["Fecha", "Concepto", "Nro. Comprobante", "Débito", "Crédito", "Saldo"],
     ["01/09/2026", "Transf.Inmediata 30717953866-FAC-VINY", "322964", "1.633.500,00", "", "100,00"], ["02/09/2026", "Cobro", "", "", "2.000,00", ""], ["", "Total", "", "", "", ""]];
@@ -242,14 +276,15 @@ const pedir = async (rol, body) => api.POST(new Request("http://localhost/api/fi
   body: body instanceof FormData ? body : JSON.stringify(body),
 }));
 
-function mockApi({ reglas = null, opsCuenta = [], yaMarcas = [], paraAnular = [] } = {}) {
+function mockApi({ reglas = null, opsCuenta = [], yaMarcas = [], paraAnular = [], usd = null } = {}) {
   const escrito = [];
   global.fetch = createFetchMock([
     ...authPassHandlers(),
     { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
     { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
     { match: (u) => u.includes("/rest/v1/empleados?"), respond: () => ({ status: 200, body: [{ id: EMP, nombre: "Tadeo" }] }) },
-    { match: (u) => u.includes("/rest/v1/fin_tesoreria"), respond: (u) => ({ status: 200, body: decodeURIComponent(u).includes(`cuenta=eq.${BANCO}`) ? [{ cuenta: BANCO, nombre: "Credicoop", tipo: "banco", moneda: "ARS" }] : [] }) },
+    { match: (u) => u.includes("/rest/v1/fin_tesoreria"), respond: (u) => ({ status: 200, body: decodeURIComponent(u).includes(`cuenta=eq.${BANCO}`) ? [{ cuenta: BANCO, nombre: "Credicoop", tipo: "banco", moneda: "ARS" }] : usd && decodeURIComponent(u).includes(`cuenta=eq.${usd}`) ? [{ cuenta: usd, nombre: "Credicoop dólares", tipo: "banco", moneda: "USD" }] : [] }) },
+    { match: (u) => u.includes("/rest/v1/cotizaciones"), respond: () => ({ status: 200, body: [{ fecha: "2026-11-18", usd_ars: 1450, fuente: "Dólar oficial BNA" }] }) },
     { match: (u) => u.includes("/rest/v1/fin_tipos_operacion"), respond: () => ({ status: 200, body: [{ codigo: "PAGO IMPUESTO" }, { codigo: "COBRO TRANSF" }] }) },
     { match: (u) => u.includes("/rest/v1/fin_cuentas"), respond: () => ({ status: 200, body: [{ codigo: IMP }, { codigo: BANCO }, { codigo: "01.01.02.001.001" }] }) },
     { match: (u) => u.includes("/rest/v1/proveedores"), respond: () => ({ status: 200, body: [] }) },
@@ -377,6 +412,28 @@ test("/api/finanzas/banco — confirmar (20/11): reemplaza el impuesto de la ma�
   const solo = await pedir("gerencial", { accion: "confirmar", cuenta: BANCO, desde: "2026-11-01", hasta: "2026-11-19", filas: [], anular: [43] });
   assert.equal(solo.status, 200);
   assert.equal((await solo.json()).anuladas, 1);
+});
+
+test("/api/finanzas/banco (20/11) — cuenta en dólares: compara en dólares y carga en dólares con el tipo de cambio", async () => {
+  const USD = "01.01.01.003.009";
+  const opsCuenta = [{ id: 50, fecha: "2026-11-18", tipo: "COBRO TRANSF", cuenta_debe: USD, cuenta_haber: "01.01.02.001.001", total: 12785.98, total_ars: 18000000, moneda: "USD", tipo_cambio: 1407.8, origen: "cobro" }];
+  mockApi({ opsCuenta, usd: USD });
+  const form = new FormData();
+  form.append("cuenta", USD);
+  form.append("file", new File(["Fecha;Concepto;Débito;Crédito;Saldo\n18/11/2026;Impuesto Ley 25.413 Ali Gral s/Creditos;76.72;0;85586.01\n18/11/2026;Transf. Inmediata 30545785338-FAC-SINDICATO;0;12785.98;85662.73\n"], "SaldMovs.csv", { type: "text/csv" }));
+  const r = await pedir("gerencial", form);
+  assert.equal(r.status, 200, "ya no frena las cuentas en dólares");
+  const d = await r.json();
+  assert.equal(d.banco.moneda, "USD");
+  assert.equal(d.tipo_cambio.valor, 1450, "dólar oficial BNA del día");
+  assert.deepEqual(d.filas.map((f) => f.op?.id ?? null), [50, null], "la transferencia ya está: se compara en dólares, no en pesos");
+  assert.equal(d.saldo_gypi.saldo, 12785.98);
+  const escrito = mockApi({ usd: USD });
+  const fila = { fecha: "2026-11-18", descripcion: "Impuesto Ley 25.413", comprobante: null, importe: -76.72, marca: "abc123:1", tipo: "PAGO IMPUESTO", contra: IMP };
+  assert.equal((await pedir("gerencial", { accion: "confirmar", cuenta: USD, filas: [fila] })).status, 400, "sin tipo de cambio no");
+  assert.equal((await pedir("gerencial", { accion: "confirmar", cuenta: USD, filas: [fila], tipo_cambio: 1450 })).status, 200);
+  const [op] = escrito.find((x) => x.tabla === "fin_operaciones").body;
+  assert.deepEqual([op.moneda, op.total, op.tipo_cambio, op.total_ars, op.cuenta_haber], ["USD", 76.72, 1450, 111244, USD]);
 });
 
 test("/api/finanzas/banco — aprender guarda solo lo que tiene forma de regla", async () => {

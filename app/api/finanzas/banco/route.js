@@ -55,6 +55,7 @@ import {
 } from "../../../lib/finanzasBanco";
 
 import { respuestaRepetidos } from "../../../lib/finanzasRepetidos";
+import { cotizacionValida, cotizacionVigente } from "../../../lib/cotizacion";
 import { repetidosEnBase } from "../../../lib/finanzasRepetidosServidor";
 
 export const runtime = "nodejs";
@@ -112,6 +113,18 @@ async function loQueSeEspera(sesion) {
   return { cheques, ordenes, plazos };
 }
 
+/** El dólar oficial BNA guardado para ese día o el más cercano antes; si no hay, el de hoy. null si no hay ninguno. */
+async function tipoCambioDel(fecha) {
+  try {
+    const [c] = (await sbGet(`cotizaciones?fecha=lte.${fecha}&select=fecha,usd_ars,fuente&order=fecha.desc&limit=1`, { silent: true, fallback: [] })) || [];
+    if (c && cotizacionValida(c.usd_ars)) return { valor: Number(c.usd_ars), fecha: c.fecha, fuente: c.fuente };
+    const hoy = await cotizacionVigente();
+    return hoy ? { valor: hoy.usd_ars, fecha: hoy.fecha, fuente: hoy.fuente } : null;
+  } catch {
+    return null;
+  }
+}
+
 async function bancoDe(sesion, cuenta) {
   const [t] = await leer(sesion, `fin_tesoreria?empresa_id=eq.${sesion.empresa_id}&cuenta=eq.${encodeURIComponent(cuenta)}&select=cuenta,nombre,tipo,moneda,activa&limit=1`);
   return t || null;
@@ -147,7 +160,8 @@ async function leerExtracto(sesion, request) {
   if (file.size > MAX_BYTES) return NextResponse.json({ error: "El archivo pesa más de 4 MB" }, { status: 413 });
   const banco = await bancoDe(sesion, cuenta);
   if (!banco || !CON_PLANILLA.has(banco.tipo || "banco")) return NextResponse.json({ error: "Elegí la caja o el banco" }, { status: 400 });
-  if (banco.moneda === "USD") return NextResponse.json({ error: "Por ahora el extracto o la planilla se suben solo para cuentas en pesos" }, { status: 400 });
+  // 20/11: una cuenta en dólares también: el extracto viene en dólares y se compara en dólares
+  const usd = banco.moneda === "USD";
 
   let ext;
   try {
@@ -170,19 +184,21 @@ async function leerExtracto(sesion, request) {
     leer(sesion, `proveedores?empresa_id=eq.${e}&select=id,nombre&order=nombre.asc`, 5000).catch(() => []),
     leer(sesion, `fin_clientes?empresa_id=eq.${e}&select=id,nombre,alias,activo&order=nombre.asc`, 5000).catch(() => []),
     // Cheques, órdenes por transferencia y plazos fijos pasan por el banco, no por una caja
-    (banco.tipo || "banco") === "banco" ? loQueSeEspera(sesion) : {},
+    (banco.tipo || "banco") === "banco" && !usd ? loQueSeEspera(sesion) : {},
   ]);
   const reglas = reglasTodas?.[cuenta] || {};
   const operaciones = todas.filter((o) => o.fecha >= desde);
-  const { filas, sin_banco } = emparejarExtracto(ext.movimientos, operaciones, cuenta);
-  const parecidos = parecidosEnGypi(filas, sin_banco, cuenta);
+  const { filas, sin_banco } = emparejarExtracto(ext.movimientos, operaciones, cuenta, { usd });
+  const parecidos = parecidosEnGypi(filas, sin_banco, cuenta, usd);
   const pendientes = pendientesDelExtracto(filas, { ...espera, cuenta });
   const finExtracto = ext.hasta || fechas[fechas.length - 1];
   const ops = (o) => (o ? { ...o, empresa_id: undefined } : null);
   return NextResponse.json({
     ok: true,
     archivo: txt(file.name, 200) || null,
-    banco: { cuenta: banco.cuenta, nombre: banco.nombre },
+    banco: { cuenta: banco.cuenta, nombre: banco.nombre, moneda: usd ? "USD" : "ARS" },
+    // En dólares: el tipo de cambio sugerido (dólar oficial BNA del último día del extracto o el más cercano antes)
+    tipo_cambio: usd ? await tipoCambioDel(ext.hasta || fechas[fechas.length - 1]) : null,
     cuenta_extracto: ext.cuenta || null,
     desde: ext.desde || fechas[0], hasta: ext.hasta || fechas[fechas.length - 1],
     control: controlSaldo(ext),
@@ -200,8 +216,8 @@ async function leerExtracto(sesion, request) {
     }),
     sin_banco: sin_banco.map(ops),
     // Cómo se arma el saldo de Gypi al último día del extracto, y lo que parece cargado dos veces
-    saldo_gypi: saldoPorOrigen(todas, cuenta, finExtracto),
-    repetidos: repetidosEnCuenta(todas, cuenta).map((g) => ({ ...g, ops: g.ops.map(ops) })),
+    saldo_gypi: saldoPorOrigen(todas, cuenta, finExtracto, usd),
+    repetidos: repetidosEnCuenta(todas, cuenta, { usd }).map((g) => ({ ...g, ops: g.ops.map(ops) })),
   });
 }
 
@@ -221,6 +237,11 @@ async function confirmar(sesion, d) {
   ]);
   const hayTipo = new Set(tipos.filter((t) => t.activo !== false).map((t) => t.codigo));
   const hayCuenta = new Set(cuentas.filter((c) => c.activa !== false).map((c) => c.codigo));
+  // 20/11: en una cuenta en dólares cada renglón va en dólares, con el tipo de cambio para los informes en pesos
+  const usd = banco.moneda === "USD";
+  const tc = Number(d.tipo_cambio);
+  if (usd && filas.length && !cotizacionValida(tc)) return NextResponse.json({ error: "Falta el tipo de cambio para pasar los dólares a pesos" }, { status: 400 });
+  const dolares = usd ? { tipo_cambio: tc } : null;
   const ops = [];
   for (const [i, f] of filas.entries()) {
     const imp = Number(f?.importe);
@@ -230,7 +251,7 @@ async function confirmar(sesion, d) {
     if (!/^[0-9a-z:]{6,60}$/.test(String(f?.marca || ""))) return NextResponse.json({ error: `Renglón ${i + 1}: volvé a subir el extracto` }, { status: 400 });
     if (!hayTipo.has(f?.tipo)) return NextResponse.json({ error: `Renglón ${i + 1}: elegí el tipo de operación` }, { status: 400 });
     if (!hayCuenta.has(f?.contra) || f.contra === cuenta) return NextResponse.json({ error: `Renglón ${i + 1}: elegí la cuenta de enfrente` }, { status: 400 });
-    ops.push(operacionDeMovimiento({ ...f, importe: imp }, cuenta));
+    ops.push(operacionDeMovimiento({ ...f, importe: imp }, cuenta, dolares));
   }
   // Lo que ya se cargó desde otro extracto no se repite
   const marcas = ops.map((o) => `"${o.origen_id}"`);
