@@ -5,7 +5,7 @@
 // financiero (18/11), los dos pedidos de Tadeo. Solo servidor.
 import { sbGet, sbGetAll } from "./sbHelpers";
 import { CLAVE_ENTREGAS_ESTIMADAS } from "./finanzasVentas";
-import { materialesDeOts } from "./finanzasMaterialesOt";
+import { materialesDeOts, leerPreciosOt } from "./finanzasMaterialesOt";
 import { valorOt } from "./finanzasOtClientes";
 import { hoyAr } from "./finanzasOperaciones";
 import { logger } from "./logger";
@@ -62,8 +62,7 @@ export async function entregasEstimadas(sesion, desde, hasta) {
       conFecha("estado=neq.cerrado", desde, tope),
     ]);
     // Si le pusieron precio desde la última sync, ya no se estima
-    const precios = await sbGet(`precios_ot?empresa_id=eq.${e}&select=ot,precio`, { sesion, silent: true, fallback: [] });
-    const conPrecio = new Set((precios || []).filter((f) => Number(f.precio) > 0).map((f) => String(f.ot)));
+    const conPrecio = new Set((await leerPreciosOt(sesion, e)).keys());
     const sinPrecio = (p) => !conPrecio.has(String(p.ot));
     const vivos = [...proyectos.values()].filter((p) => p.estado === "cerrado" && sinPrecio(p));
     const [materiales, factor] = await Promise.all([materialesDeOts(sesion, vivos), factorMateriales(e)]);
