@@ -135,6 +135,32 @@ test("NIIF — solo las entregas son ingreso; ventas aparte; gastos por función
   assert.ok(r.filas.some((f) => f.nombre === "Impuestos: ingresos brutos"));
 });
 
+test("20/11 — intereses ganados (plazos fijos y FCI) van en Resultados financieros, no en Otros ingresos", () => {
+  const cuentas = [
+    ...CUENTAS,
+    { codigo: "04.01.02.002.001", nombre: "Intereses Ganados", rubro: "RESULTADO", linea_eerr: "ING_RENTA_FIN" },
+    { codigo: "01.01.05", nombre: "Plazo fijo Credicoop", rubro: "ACTIVO CORRIENTE" },
+  ];
+  const ops = [
+    op("2026-10-05", "01.01.02.001.001", "04.01.01.001.002", 100000),
+    // El interés aparte que registra Gypi: Debe el plazo fijo / Haber Intereses Ganados
+    op("2026-10-15", "01.01.05", "04.01.02.002.001", 8000, { tipo: "RENDIMIENTOS FINANCIEROS" }),
+    op("2026-10-10", "04.02.01.001.008", "01.01.01.003.002", 600),
+  ];
+  const r = estadoResultados({ ops, cuentas, hasta: "2026-10", materialesPct: 0 });
+  const oct = (id) => r.filas.find((f) => f.id === id)?.valores[11];
+  assert.equal(oct("OTR"), 0, "ya no cae en Otros ingresos y gastos");
+  assert.equal(oct("FIN"), -7400, "costo neto: 600 de comisiones menos 8.000 de intereses");
+  const grupo = r.filas.find((f) => f.id === "FIN_FIN_RENTA");
+  assert.equal(grupo.nombre, "Intereses ganados (plazos fijos y FCI)");
+  assert.equal(grupo.valores[11], -8000);
+  assert.equal(oct("RAI"), 100000 - 600 + 8000, "el interés suma al resultado");
+  // Sin renglón en el plan de cuentas también entra (antes quedaba en "sin renglón")
+  const sinLinea = estadoResultados({ ops, cuentas: cuentas.map((c) => (c.codigo === "04.01.02.002.001" ? { ...c, linea_eerr: null } : c)), hasta: "2026-10", materialesPct: 0 });
+  assert.equal(sinLinea.filas.find((f) => f.id === "FIN").valores[11], -7400);
+  assert.ok(!sinLinea.sin_linea.some((x) => x.codigo === "04.01.02.002.001"));
+});
+
 test("plan de cuentas — trae clasificacion_eerr y atribucion_div; editar a mano no las borra", () => {
   const r = cuentasDeHoja([
     ["codigo", "nombre", "tipo", "rubro", "imputable", "naturaleza", "clasificacion_eerr", "naturaleza_costo", "atribucion_div"],

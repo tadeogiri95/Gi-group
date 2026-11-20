@@ -19,6 +19,9 @@
 // antes del "desde"), su fecha de entrega del Plan o, si ENTREGA no es una
 // fecha, el último día de su SEMANA. Van en un renglón aparte de Entregas.
 //
+// 20/11: trae plazos_sin_interes { cantidad, importe, certificados }: los
+// plazos fijos vencidos cuyo interés todavía no está registrado (aviso).
+//
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige). La
 // configuración va en config_sistema.
 import { NextResponse } from "next/server";
@@ -29,6 +32,7 @@ import { hoyAr } from "../../../lib/finanzasOperaciones";
 import { logger } from "../../../lib/logger";
 import { materialesRealesDeOts } from "../../../lib/costoRealServidor";
 import { entregasEstimadas, MOTIVOS_NO_ESTIMADA } from "../../../lib/finanzasEntregasEstimadas";
+import { plazosSinInteres } from "../../../lib/finanzasPlazosFijosServidor";
 import { CLAVE_RESULTADOS, configResultados, estadoResultados, finDeMes, mesesHasta, resumenDivisiones, validarPonderador } from "../../../lib/finanzasResultados";
 
 export const maxDuration = 60;
@@ -94,7 +98,9 @@ export async function GET(request) {
     const no_estimadas_ot = noEstimadas
       .map((x) => ({ ...x, motivo_texto: MOTIVOS_NO_ESTIMADA[x.motivo] }))
       .sort((a, b) => a.motivo.localeCompare(b.motivo) || (a.fecha || "").localeCompare(b.fecha || "") || a.ot.localeCompare(b.ot));
-    return NextResponse.json({ hasta, config, division, divisiones, por_division, estimadas_ot, no_estimadas_ot, ...estado });
+    // 20/11: plazos fijos vencidos sin el interés registrado (no entran en el resultado)
+    const plazos_sin_interes = await plazosSinInteres(sesion).catch(() => null);
+    return NextResponse.json({ hasta, config, division, divisiones, por_division, estimadas_ot, no_estimadas_ot, plazos_sin_interes, ...estado });
   } catch (err) {
     if (falta179(err)) return NextResponse.json({ error: FALTA_179, falta_migracion: 179 }, { status: 409 });
     return errorFinanzas(err, "resultados GET");
