@@ -14,13 +14,15 @@
 // comprobante de cada una (foto, opcional) y la suma de lo inmediato
 // (efectivo y transferencia) y de los cheques. Se lo invita al CFO por
 // WhatsApp (/op/resumen/<token>, solo para mirar) o se exporta en PDF.
+// 20/11: cada e-cheq puede llevar el plazo fijo nuevo que lo calza (🏦); la
+// orden y el resumen muestran "A rescatar del FCI" (transferencias + plazos).
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import { numeroWhatsapp } from "../lib/compras";
 import {
-  ESTADOS_ORDEN, FORMAS_PAGO, SIN_PAGAR, accionesOrden, adjuntosDe, cuentasParaPagar, fechaCorta, imprimirOrdenPago, mandadaAlCfo, textoForma, textoWhatsappCfo, vistaPorCfo,
+  ESTADOS_ORDEN, FORMAS_PAGO, SIN_PAGAR, accionesOrden, adjuntosDe, cuentasParaPagar, fechaCorta, imprimirOrdenPago, mandadaAlCfo, sumasPagos, textoForma, textoPlazo, textoWhatsappCfo, vistaPorCfo,
 } from "../lib/finanzasPagos";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -31,6 +33,7 @@ import {
 } from "../lib/finanzasResumenPago";
 import { fotoBase64, subirImagen } from "../lib/foto";
 import Comprobantes from "./FinanzasComprobantes";
+import RescateFci from "./RescateFci";
 
 const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
@@ -87,7 +90,7 @@ function campo(label, input) {
 
 /* ─── Nueva orden ────────────────────────────────────────────────────── */
 
-const FORMA_VACIA = { efectivo: { cuenta: "", importe: "" }, transferencia: { cuenta: "", importe: "" }, echeq: { importe: "", fecha_pago: "", numero: "" }, cheque_tercero: { cheque_id: "" } };
+const FORMA_VACIA = { efectivo: { cuenta: "", importe: "" }, transferencia: { cuenta: "", importe: "" }, echeq: { importe: "", fecha_pago: "", numero: "", pf: false, pf_importe: "", pf_vence: "" }, cheque_tercero: { cheque_id: "" } };
 
 /**
  * @param {{ datos: object, proveedorId?: number, pendientes?: { op: object, falta: number }[], onCerrar: Function, onGuardada: Function }} props
@@ -120,6 +123,14 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
     ...(forma !== "cheque_tercero" && aPagar - total > 0 ? { importe: String(Math.round((aPagar - total) * 100) / 100).replace(".", ",") } : {}),
   }]);
   const cambiar = (i, k) => (e) => setFormas((x) => x.map((f, j) => (j === i ? { ...f, [k]: e.target.value } : f)));
+  // 🏦 Plazo fijo que calza el e-cheq: al tildarlo propone el importe y la fecha del cheque
+  const tildarPlazo = (i) => (e) => setFormas((x) => x.map((f, j) => (j !== i ? f : {
+    ...f, pf: e.target.checked,
+    ...(e.target.checked && !f.pf_importe ? { pf_importe: f.importe } : {}),
+    ...(e.target.checked && !f.pf_vence ? { pf_vence: f.fecha_pago } : {}),
+  })));
+  const plazosNuevos = formas.filter((f) => f.forma === "echeq" && f.pf).reduce((s, f) => s + (numero(f.pf_importe) || 0), 0);
+  const transferencias = formas.filter((f) => f.forma === "transferencia").reduce((s, f) => s + (numero(f.importe) || 0), 0);
   const quitar = (i) => setFormas((x) => x.filter((_, j) => j !== i));
   const elegir = (id) => setElegidas((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
@@ -132,7 +143,10 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
         orden: {
           proveedor_id: proveedor ? Number(proveedor) : null, fecha, notas,
           facturas: pendientes.filter((p) => elegidas.has(p.op.id)).map((p) => ({ op_id: p.op.id, fecha: p.op.fecha, detalle: [p.op.tipo, p.op.descripcion].filter(Boolean).join(" · "), importe: p.falta })),
-          formas: formas.map((f) => ({ ...f, importe: f.forma === "cheque_tercero" ? undefined : numero(f.importe) })),
+          formas: formas.map(({ pf, pf_importe: pfImporte, pf_vence: pfVence, ...f }) => ({
+            ...f, importe: f.forma === "cheque_tercero" ? undefined : numero(f.importe),
+            ...(f.forma === "echeq" && pf ? { plazo_fijo: { importe: numero(pfImporte), vencimiento: pfVence } } : {}),
+          })),
           ...(adjuntos.length ? { adjuntos } : {}),
         },
       });
@@ -194,6 +208,20 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
                   {campo("N° (si ya lo tenés)", <input className="g-input w-[130px]" aria-label="Número del e-cheq" value={f.numero} maxLength={40} onChange={cambiar(i, "numero")} />)}
                 </>
               )}
+              {f.forma === "echeq" && (
+                <div className="order-last w-full flex flex-col gap-2">
+                  <label className="flex items-center gap-2 text-[13px] min-h-[36px] cursor-pointer">
+                    <input type="checkbox" checked={!!f.pf} onChange={tildarPlazo(i)} aria-label="Agregar el plazo fijo que calza este e-cheq" />
+                    🏦 Plazo fijo que lo calza (opcional)
+                  </label>
+                  {f.pf && (
+                    <div className="flex flex-wrap items-end gap-2 pl-6">
+                      {campo("Monto a depositar", <input className="g-input w-[150px] text-right font-mono" inputMode="decimal" aria-label="Monto del plazo fijo" placeholder="Importe" value={f.pf_importe} onChange={cambiar(i, "pf_importe")} />)}
+                      {campo("Vence el", <input type="date" className="g-input" aria-label="Vencimiento del plazo fijo" value={f.pf_vence} max={f.fecha_pago || undefined} onChange={cambiar(i, "pf_vence")} />)}
+                    </div>
+                  )}
+                </div>
+              )}
               {f.forma === "cheque_tercero" ? (
                 <SelectBuscable className="g-input flex-1 min-w-[220px]" aria-label="Cheque de la cartera" value={f.cheque_id} onChange={cambiar(i, "cheque_id")}>
                   <option value="">Elegí un cheque en cartera</option>
@@ -216,6 +244,7 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
         </div>
 
         <p className="m-0 text-[16px]">Total de la orden: <b className="font-mono">{plata(total, "ARS")}</b></p>
+        {plazosNuevos > 0 && <RescateFci compacto transferencia={transferencias} plazos={plazosNuevos} cantidadPlazos={formas.filter((f) => f.forma === "echeq" && f.pf).length} rescatar={Math.round((transferencias + plazosNuevos) * 100) / 100} />}
         {pendientes.length > 0 && elegidas.size > 0 && Math.abs(diferencia) >= 0.01 && (
           <p className="m-0 text-[13px] text-gypi-amber-ink">
             {diferencia > 0 ? `Pagás ${plata(diferencia, "ARS")} más que lo elegido: queda a cuenta.` : `Faltan ${plata(-diferencia, "ARS")} para cubrir lo elegido: queda un pago parcial.`}
@@ -290,12 +319,21 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
         <p className="m-0 text-[22px] font-bold font-mono">{plata(orden.total, "ARS")}</p>
         <ul className="list-none m-0 p-0 flex flex-col gap-1" aria-label="Formas de pago">
           {(orden.formas || []).map((f, i) => (
-            <li key={i} className="flex items-baseline gap-2 text-[13px]">
-              <span className="flex-1 min-w-0">{textoForma(f)}</span>
-              <span className="font-mono font-semibold">{plata(f.importe, "ARS")}</span>
+            <li key={i} className="flex flex-col text-[13px]">
+              <div className="flex items-baseline gap-2">
+                <span className="flex-1 min-w-0">{textoForma(f)}</span>
+                <span className="font-mono font-semibold">{plata(f.importe, "ARS")}</span>
+              </div>
+              {f.plazo_fijo && (
+                <div className="flex items-baseline gap-2 pl-4 text-gypi-dim">
+                  <span className="flex-1 min-w-0">{textoPlazo(f)}</span>
+                  <span className="font-mono">{plata(f.plazo_fijo.importe, "ARS")}</span>
+                </div>
+              )}
             </li>
           ))}
         </ul>
+        {sumasPagos([orden]).plazos > 0 && <RescateFci compacto {...sumasPagos([orden])} />}
         {(orden.facturas || []).length > 0 && (
           <div className="text-[13px] text-gypi-dim">
             Paga: {(orden.facturas || []).map((f) => `${fechaCorta(f.fecha)} ${f.detalle} (${plata(f.importe, "ARS")})`).join(" · ")}
@@ -397,6 +435,7 @@ function Totales({ ordenes }) {
       <div className="flex items-baseline gap-2"><span className="flex-1">⚡ Transferencia, efectivo o inmediato</span><b className="font-mono">{plata(t.inmediato, "ARS")}</b></div>
       <div className="flex items-baseline gap-2"><span className="flex-1">🧾 Cheques (e-cheq y de terceros)</span><b className="font-mono">{plata(t.cheques, "ARS")}</b></div>
       <div className="flex items-baseline gap-2 border-t border-gypi-border pt-1 text-[16px]"><span className="flex-1 font-bold">Total · {t.ordenes} {t.ordenes === 1 ? "orden" : "órdenes"}</span><b className="font-mono">{plata(t.total, "ARS")}</b></div>
+      <RescateFci compacto transferencia={t.porForma.transferencia} plazos={t.plazos} cantidadPlazos={t.cantidadPlazos} rescatar={t.rescatar} />
     </div>
   );
 }
@@ -421,7 +460,7 @@ function TablaResumen({ ordenes }) {
             <tr key={`${r.orden_id}-${i}`} className="border-t border-gypi-border align-top">
               <td className="py-1 px-1.5 font-mono whitespace-nowrap">{fechaCorta(r.fecha)}</td>
               <td className="py-1 px-1.5">{r.proveedor} <span className="block text-[12px] text-gypi-dim">OP N° {r.numero}</span></td>
-              <td className="py-1 px-1.5">{r.clase === "cheque" ? "🧾" : "⚡"} {r.medio}</td>
+              <td className="py-1 px-1.5">{r.clase === "cheque" ? "🧾" : "⚡"} {r.medio}{r.plazo && <span className="block text-[12px] text-gypi-dim">{r.plazo.texto} · {plata(r.plazo.importe, "ARS")}</span>}</td>
               <td className="py-1 px-1.5 text-right font-mono whitespace-nowrap">{plata(r.importe, "ARS")}</td>
               <td className="py-1 px-1.5">{r.comprobante ? <a className="font-semibold text-gypi-amber-ink" href={r.comprobante} target="_blank" rel="noopener noreferrer">📎 Ver</a> : ""}</td>
             </tr>
@@ -773,7 +812,7 @@ export default function FinanzasPagos() {
                     <span className="font-mono font-semibold">{plata(t.total, "ARS")}</span>
                   </span>
                   <span className="block text-[12px] text-gypi-dim">
-                    {est.icono} {est.nombre} · {fechaCorta(r.fecha)} · ⚡ {plata(t.inmediato, "ARS")} · 🧾 {plata(t.cheques, "ARS")} · {t.pagadas} de {t.ordenes} pagadas · 👍 {t.vistas} vistas
+                    {est.icono} {est.nombre} · {fechaCorta(r.fecha)} · ⚡ {plata(t.inmediato, "ARS")} · 🧾 {plata(t.cheques, "ARS")}{t.rescatar > 0 ? ` · 💰 FCI ${plata(t.rescatar, "ARS")}` : ""} · {t.pagadas} de {t.ordenes} pagadas · 👍 {t.vistas} vistas
                   </span>
                 </button>
               </li>

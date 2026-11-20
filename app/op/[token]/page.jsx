@@ -8,6 +8,7 @@ import { datosOrdenCfo } from "../../lib/ordenPagoCfo";
 import { fechaCorta } from "../../lib/finanzasPagos";
 import { plata } from "../../lib/finanzasOperaciones";
 import VistoCfo from "../../components/VistoCfo";
+import RescateFci from "../../components/RescateFci";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ export default async function PaginaOrdenPago({ params }) {
   const { token } = await params;
   const datos = await datosOrdenCfo(decodeURIComponent(String(token || ""))).catch(() => null);
   if (!datos) return <NoEncontrada />;
-  const { empresa, numero, fecha, proveedor, total, notas, cargada_por, facturas, formas, pagada, pagada_fecha, visto, cfo, adjuntos = [] } = datos;
+  const { empresa, numero, fecha, proveedor, total, notas, cargada_por, facturas, formas, pagada, pagada_fecha, visto, cfo, adjuntos = [], rescate = null } = datos;
 
   return (
     <main className="min-h-dvh bg-gypi-bg text-gypi-text font-body overflow-y-auto">
@@ -60,13 +61,23 @@ export default async function PaginaOrdenPago({ params }) {
           <h2 className="m-0 mb-2 text-[15px] font-bold">Con qué se paga</h2>
           <ul className="list-none m-0 p-0 flex flex-col gap-2">
             {formas.map((f, i) => (
-              <li key={i} className="flex items-baseline gap-2 text-[14px]">
-                <span className="flex-1 min-w-0">{f.texto}</span>
-                <span className="font-mono font-semibold">{plata(f.importe, "ARS")}</span>
+              <li key={i} className="flex flex-col gap-0.5 text-[14px]">
+                <div className="flex items-baseline gap-2">
+                  <span className="flex-1 min-w-0">{f.texto}</span>
+                  <span className="font-mono font-semibold">{plata(f.importe, "ARS")}</span>
+                </div>
+                {f.plazo && (
+                  <div className="flex items-baseline gap-2 pl-4 text-[13px] text-gypi-dim">
+                    <span className="flex-1 min-w-0">{f.plazo.texto}</span>
+                    <span className="font-mono">{plata(f.plazo.importe, "ARS")}</span>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
         </section>
+
+        {rescate?.plazos > 0 && <RescateFci {...rescate} />}
 
         {facturas.length > 0 && (
           <section aria-label="Qué se paga" className="rounded-[18px] border border-gypi-border bg-gypi-surface p-4">
