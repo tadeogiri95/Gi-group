@@ -385,6 +385,17 @@ export function vencidosPendientes(guardados = [], ops = [], cuentasPf = [], hoy
   });
 }
 
+/**
+ * 20/11: de los vencidos que faltan, cuántos no tienen el interés registrado
+ * y cuánto suma (para el aviso de Resultados y del flujo de fondos).
+ * @returns {{ cantidad: number, importe: number, certificados: string[] }}
+ */
+export function interesesSinRegistrar(pendientes = []) {
+  const sin = pendientes.filter((p) => p?.falta?.i || p?.falta?.interes_junto > 0);
+  const importe = sin.reduce((s, p) => s + (p.falta.i ? Number(p.interes) || 0 : Number(p.falta.interes_junto) || 0), 0);
+  return { cantidad: sin.length, importe: centavos(importe), certificados: sin.map((p) => String(p.certificado)) };
+}
+
 /** Cómo está cada plazo guardado, para la lista: vigente, vencido sin registrar o terminado. */
 export function listaPlazos(guardados = [], ops = [], cuentasPf = [], hoy, opts = {}) {
   const estado = estadoDePlazos(guardados, ops, cuentasPf, opts);

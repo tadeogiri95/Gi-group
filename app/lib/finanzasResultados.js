@@ -40,6 +40,9 @@
 //     tasas) → otros ingresos y gastos (alquileres, multas) → resultado
 //     operativo → resultados financieros → resultado antes del impuesto a las
 //     ganancias → impuesto a las ganancias → resultado del período.
+//   - Intereses ganados (20/11): la cuenta Intereses Ganados (plazos fijos y
+//     FCI) va siempre en Resultados financieros, en su propio grupo, aunque el
+//     plan de cuentas la tenga en otro renglón o sin renglón.
 //   - Las operaciones anuladas no cuentan; las "para revisar" tampoco (se
 //     avisa cuántas hay).
 //   - Por división: cada operación es de la división de su OT o, si no tiene,
@@ -67,7 +70,7 @@ export const SECCIONES = [
     ADM: "Administración", DIS: "Diseño y arquitectura", LOG: "Logística", REM: "Remuneraciones adicionales", SER: "Servicios", SEG: "Seguros",
     MAN: "Mantenimiento", LEA: "Leasing", HON: "Honorarios profesionales", COM: "Comercialización y representación", MUL: "Multas",
   } },
-  { id: "FIN", nombre: "Resultado financiero", grupos: { COM: "Comisiones y gastos bancarios", INT: "Intereses y gastos financieros", DIF: "Diferencia de cambio" } },
+  { id: "FIN", nombre: "Resultado financiero", grupos: { RENTA: "Intereses ganados (plazos fijos y FCI)", COM: "Comisiones y gastos bancarios", INT: "Intereses y gastos financieros", DIF: "Diferencia de cambio" } },
   { id: "IMP", nombre: "Impuestos", grupos: {
     CI: "Comercio e industria", INM: "Inmobiliario", AUT: "Automotor", DEB: "Débitos y créditos", IIBB: "Ingresos brutos", GAN: "Ganancias", OTR: "Otros impuestos",
   } },
@@ -116,7 +119,7 @@ const ORDEN_GRUPOS = [
   "ING_ENT", "ING_NC", "CMV_MAT", "CMV_TER", "CMV_MOD", "CMV_CIF",
   "GO_COM", "GO_LOG", "GO_DIS", "IMP_IIBB", "IMP_CI",
   "GO_ADM", "GO_REM", "GO_HON", "GO_SER", "GO_SEG", "GO_MAN", "GO_LEA", "IMP_DEB", "IMP_INM", "IMP_AUT", "IMP_OTR",
-  "ING_ALQ", "GO_MUL", "FIN_COM", "FIN_INT", "FIN_DIF", "IMP_GAN", "ING_VTA",
+  "ING_ALQ", "GO_MUL", "FIN_RENTA", "FIN_COM", "FIN_INT", "FIN_DIF", "IMP_GAN", "ING_VTA",
 ];
 
 /** "2026-10" → los 12 meses que terminan ahí, del más viejo al más nuevo. */
@@ -174,6 +177,19 @@ export function divisionDeOp(op, { divisionOt = new Map(), divisionCentro = new 
   return deCc || "";
 }
 
+/**
+ * 20/11: los intereses ganados (plazos fijos, FCI) van siempre en Resultados
+ * financieros, aunque en el plan de cuentas estén en otro renglón de ingresos
+ * (como ING_RENTA_FIN, que caía en "Otros ingresos y gastos") o sin renglón.
+ */
+const INTERESES_GANADOS = /^intereses ganados$/i;
+const LINEA_RENTA = /^ING_(RENTA|FIN|INT)/i;
+export function ubicacionDeCuenta(c) {
+  const ganados = INTERESES_GANADOS.test(String(c?.nombre || "").replace(/\s+/g, " ").trim()) || LINEA_RENTA.test(String(c?.linea_eerr || ""));
+  if (ganados) return { seccion: SECCIONES.find((x) => x.id === "FIN"), grupo: "RENTA" };
+  return c?.linea_eerr ? seccionDe(c.linea_eerr) : null;
+}
+
 /** ¿Es una cuenta de resultado? (rubro RESULTADO o código 04/05). */
 const esDeResultado = (c) => /resultado/i.test(String(c.rubro || "")) || /^0[45]\./.test(String(c.codigo || ""));
 
@@ -209,7 +225,7 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
     if (!c) return;
     const i = idx.get(String(op.fecha).slice(0, 7));
     const v = importeResultado(op) * signo * f;
-    const ubic = c.linea_eerr ? seccionDe(c.linea_eerr) : null;
+    const ubic = ubicacionDeCuenta(c);
     if (!ubic) {
       if (esDeResultado(c)) {
         const s = sinLinea.get(codigo) || { codigo, nombre: c.nombre, total: 0 };
@@ -224,7 +240,7 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
     const k = `${codigo}|${div}`;
     let l = lineas.get(k);
     if (!l) {
-      l = { cuenta: codigo, linea: c.linea_eerr, division: div, nombre: div ? `${c.nombre} · ${div}` : c.nombre, seccion: niif, origen: ubic.seccion.id, grupo: ubic.grupo, valores: cero() };
+      l = { cuenta: codigo, linea: c.linea_eerr || `${ubic.seccion.id}_${ubic.grupo}`, division: div, nombre: div ? `${c.nombre} · ${div}` : c.nombre, seccion: niif, origen: ubic.seccion.id, grupo: ubic.grupo, valores: cero() };
       lineas.set(k, l);
     }
     // Ingresos: haber − debe; el resto: debe − haber

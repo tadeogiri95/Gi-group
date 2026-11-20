@@ -11,7 +11,7 @@ import { fechaDeSerie, hojasXls, leerHojaXls } from "../app/lib/leerXls.js";
 import { grillaDeArchivo } from "../app/lib/finanzasExtracto.js";
 import {
   contextoPlazos, cuentasPorDefecto, estadoDePlazos, interesesPorCobrar, leerPlazosFijos, listaPlazos,
-  planPlazosFijos, unirPlazos, vencidosPendientes, lineasDelBanco, repetidosConElBanco, arreglosDelBanco,
+  planPlazosFijos, unirPlazos, vencidosPendientes, lineasDelBanco, repetidosConElBanco, arreglosDelBanco, interesesSinRegistrar,
 } from "../app/lib/finanzasPlazosFijos.js";
 import { flujoPrevisto } from "../app/lib/finanzasFlujo.js";
 
@@ -25,6 +25,8 @@ afterEach(() => cleanup());
 const { signAccessToken } = await import("../app/lib/jwt.ts");
 const api = await import("../app/api/finanzas/plazos-fijos/route.js");
 const { default: FinanzasPlazosFijos } = await import("../app/components/FinanzasPlazosFijos.jsx");
+const { registrarInteresesDelBanco, plazosSinInteres } = await import("../app/lib/finanzasPlazosFijosServidor.js");
+const { default: AvisoPlazosSinInteres } = await import("../app/components/AvisoPlazosSinInteres.jsx");
 
 const E = "11111111-1111-1111-1111-111111111111";
 const EMP = "22222222-2222-2222-2222-222222222222";
@@ -345,6 +347,36 @@ test("/api/finanzas/plazos-fijos — el rescate del extracto (capital e interés
   assert.deepEqual(parches.map((x) => [x.id, x.cuenta_haber]), [[70, PF]]);
   const otra = await (await pedir("gerencial", "POST", { accion: "ver", plazos: [P2], banco: BANCO, cuenta_pf: PF, exportado: "2026-10-29" })).json();
   assert.equal(otra.filas[0].ops.length, 0, "la segunda vez no hay nada para cargar");
+});
+
+test("20/11 — al subir el extracto, el interés que vino con el capital se registra solo (sin botón) y una sola vez", async () => {
+  const rescate = { id: 71, fecha: "2026-11-03", tipo: "PLAZO FIJO", total: 2080000, total_ars: 2080000, cuenta_debe: BANCO, cuenta_haber: PF, descripcion: "RESCATE PF", origen: "banco" };
+  const constitucion = { id: 72, fecha: "2026-10-04", tipo: "PLAZO FIJO", total: 2000000, cuenta_debe: PF, cuenta_haber: BANCO, descripcion: "Constitución · Operacion: 10000002", origen: "plazo_fijo", origen_id: "pf10000002:c" };
+  const { insertado, config } = mockApi([rescate, constitucion]);
+  config.filas = [{ valor: { plazos: [{ ...P2, banco: BANCO, cuenta_pf: PF }] } }];
+  const sesion = { empresa_id: E, empleado_id: EMP, rol: "gerencial" };
+  const antes = await plazosSinInteres(sesion);
+  assert.deepEqual([antes.cantidad, antes.importe], [1, 80000], "el aviso: falta el interés");
+  const r = await registrarInteresesDelBanco(sesion, { quien: "Tadeo" });
+  assert.deepEqual([r.cargadas, r.interes], [1, 80000]);
+  const ij = insertado.find((o) => String(o.origen_id) === "pf10000002:ij");
+  assert.deepEqual([ij.cuenta_debe, ij.cuenta_haber, ij.total, ij.fecha], [PF, INTERESES, 80000, P2.vencimiento], "Debe el plazo fijo / Haber Intereses Ganados: el banco no cambia");
+  assert.ok(!insertado.some((o) => o.cuenta_debe === BANCO || o.cuenta_haber === BANCO), "no toca la cuenta del banco");
+  const otra = await registrarInteresesDelBanco(sesion, { quien: "Tadeo" });
+  assert.equal(otra.cargadas, 0, "la segunda vez no repite");
+  assert.equal((await plazosSinInteres(sesion)).cantidad, 0, "ya no hay aviso");
+});
+
+test("20/11 — aviso de plazos vencidos sin interés registrado", () => {
+  assert.deepEqual(interesesSinRegistrar([
+    { certificado: "1", interes: 100, falta: { r: true, i: true, ajustes: [], interes_junto: null } },
+    { certificado: "2", interes: 50, falta: { r: false, i: false, ajustes: [], interes_junto: 40 } },
+    { certificado: "3", interes: 70, falta: { r: true, i: false, ajustes: [], interes_junto: null } },
+  ]), { cantidad: 2, importe: 140, certificados: ["1", "2"] });
+  const { container, rerender } = render(<AvisoPlazosSinInteres datos={{ cantidad: 0, importe: 0 }} />);
+  assert.equal(container.textContent, "");
+  rerender(<AvisoPlazosSinInteres datos={{ cantidad: 2, importe: 140 }} />);
+  assert.match(screen.getByRole("status").textContent, /2 plazos fijos vencieron.*\$ 140,00.*Subí el extracto/);
 });
 
 // 16/11: el interés que trajo el extracto con otro tipo, y el renglón con capital e interés juntos

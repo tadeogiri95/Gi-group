@@ -432,6 +432,8 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
       });
       toast.success(`Se cargaron ${d.cargadas} movimientos${d.repetidas ? ` (${d.repetidas} ya estaban)` : ""}`);
       if (d.aviso) toast.error(d.aviso);
+      // 20/11: el interés de los plazos fijos que volvieron con el capital se registra solo
+      if (d.plazos?.intereses) toast.success(`Plazos fijos: se registró aparte el interés ganado ($ ${Number(d.plazos.interes || 0).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}), así cuenta en Resultados y en el flujo`);
       onCargado();
     } catch (e) {
       // 13/11: el servidor encontró algo igual que la pantalla no vio (se cargó recién): esos quedan sospechosos y sin tildar

@@ -277,7 +277,7 @@ test("/api/finanzas/banco — confirmar: una operación por renglón, sin repeti
   const fila = { fecha: "2026-09-01", descripcion: "Algo nuevo del banco", comprobante: null, importe: -95.5, marca: "abc123:1", tipo: "PAGO IMPUESTO", contra: IMP };
   const r = await pedir("gerencial", { accion: "confirmar", cuenta: BANCO, filas: [fila, { ...fila, marca: "abc123:2" }] });
   assert.equal(r.status, 200);
-  assert.deepEqual(await r.json(), { ok: true, cargadas: 1, repetidas: 1, carga: 5, aviso: null });
+  assert.deepEqual(await r.json(), { ok: true, cargadas: 1, repetidas: 1, carga: 5, aviso: null, plazos: null }, "sin plazos fijos que ordenar");
   const carga = escrito.find((x) => x.tabla === "fin_cargas_banco").body;
   assert.deepEqual([carga.cuenta, carga.cargadas, carga.movimientos, carga.cargada_por_nombre], [BANCO, 1, 2, "Tadeo"], "la carga queda registrada");
   const ops = escrito.find((x) => x.tabla === "fin_operaciones").body;

@@ -15,6 +15,7 @@ import { nombreMes } from "../lib/finanzasResultados";
 import { Chip, Modal, Spinner } from "./ui";
 import BotonesExportar from "./FinanzasExportar";
 import { informeFlujo } from "../lib/finanzasInformesSueltos";
+import AvisoPlazosSinInteres from "./AvisoPlazosSinInteres";
 
 const miles = (n) => Math.round(Number(n) || 0).toLocaleString("es-AR");
 const rojo = (n) => (n < 0 ? "text-gypi-red" : "");
@@ -132,6 +133,7 @@ export default function FinanzasFlujo() {
           <div className="ml-auto"><BotonesExportar nombre="el Flujo de caja" disabled={!m.hay} informe={() => informeFlujo(datos, moneda)} /></div>
           {cargando && <Spinner size={16} />}
         </div>
+        <AvisoPlazosSinInteres datos={datos.plazos_sin_interes} />
         {datos.tipos_sin_linea.length > 0 && (
           <p className="m-0 mb-2 text-[13px] text-gypi-amber-ink">⚠ Tipos que mueven plata y no tienen línea en dim_flujo: {datos.tipos_sin_linea.join(", ")}.</p>
         )}
