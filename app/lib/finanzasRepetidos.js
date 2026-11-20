@@ -30,10 +30,10 @@ export function cajasDeOperacion(op, cajas) {
  * @param {object} o operación de la base
  * @param {string} cuenta la caja
  */
-export function resumenParecida(o, cuenta) {
+export function resumenParecida(o, cuenta, usd = false) {
   return {
     id: o.id, fecha: o.fecha, tipo: o.tipo || "", descripcion: o.descripcion || "", entidad: o.entidad || "",
-    origen: o.origen || "manual", importe: movimientoEnCuenta(o, cuenta), cuenta,
+    origen: o.origen || "manual", importe: movimientoEnCuenta(o, cuenta, usd), cuenta,
   };
 }
 
@@ -43,25 +43,27 @@ export function resumenParecida(o, cuenta) {
  * @param {object[]} nuevas las que se van a guardar
  * @param {object[]} existentes las de la base (de esas cajas y fechas)
  * @param {Iterable<string>} cajas cuentas de fin_tesoreria
- * @param {{ excluir?: Iterable<number>, diasMax?: number }} [opts] excluir = ids que no cuentan (la que se corrige)
+ * @param {{ excluir?: Iterable<number>, diasMax?: number, usd?: Iterable<string> }} [opts] excluir = ids que no cuentan (la que se corrige); usd = cajas en dólares (se comparan en dólares)
  * @returns {{ i: number, nivel: "rojo"|"amarillo", cuenta: string, importe: number, fecha: string, parecidas: object[] }[]}
  */
-export function buscarRepetidos(nuevas = [], existentes = [], cajas = [], { excluir = [], diasMax = DIAS_REPETIDO } = {}) {
+export function buscarRepetidos(nuevas = [], existentes = [], cajas = [], { excluir = [], diasMax = DIAS_REPETIDO, usd = [] } = {}) {
   const enCaja = new Set(cajas);
+  const enDolares = new Set(usd);
   const fuera = new Set([...excluir].map(Number));
   const vivas = existentes.filter((o) => !o.anulada_at && !fuera.has(Number(o.id)));
   const salida = [];
   nuevas.forEach((n, i) => {
     if (!n || !/^\d{4}-\d{2}-\d{2}$/.test(String(n.fecha || ""))) return;
     for (const cuenta of cajasDeOperacion(n, enCaja)) {
-      const importe = movimientoEnCuenta(n, cuenta);
+      const u = enDolares.has(cuenta);
+      const importe = movimientoEnCuenta(n, cuenta, u);
       if (!importe) continue;
       const parecidas = vivas
-        .filter((o) => Math.abs(movimientoEnCuenta(o, cuenta) - importe) < 0.01 && dias(o.fecha, n.fecha) <= diasMax)
+        .filter((o) => Math.abs(movimientoEnCuenta(o, cuenta, u) - importe) < 0.01 && dias(o.fecha, n.fecha) <= diasMax)
         .sort((a, b) => dias(a.fecha, n.fecha) - dias(b.fecha, n.fecha) || a.id - b.id);
       if (!parecidas.length) continue;
       const nivel = parecidas.some((o) => o.fecha === n.fecha) ? "rojo" : "amarillo";
-      salida.push({ i, nivel, cuenta, importe, fecha: n.fecha, parecidas: parecidas.slice(0, MAX_PARECIDAS).map((o) => resumenParecida(o, cuenta)) });
+      salida.push({ i, nivel, cuenta, importe, fecha: n.fecha, parecidas: parecidas.slice(0, MAX_PARECIDAS).map((o) => resumenParecida(o, cuenta, u)) });
       break;
     }
   });

@@ -201,9 +201,13 @@ export function marcasExtracto(movimientos = [], cuenta) {
   });
 }
 
-/** Cuánto movió una operación la cuenta: + si la cuenta está al debe, - al haber (en pesos). */
-export function movimientoEnCuenta(op, cuenta) {
-  const t = Number(op.total_ars ?? op.total) || 0;
+/**
+ * Cuánto movió una operación la cuenta: + si la cuenta está al debe, - al
+ * haber. En pesos; 20/11: en dólares si la cuenta es en dólares (usd), porque
+ * el extracto de esa cuenta viene en dólares.
+ */
+export function movimientoEnCuenta(op, cuenta, usd = false) {
+  const t = Number(usd ? op.total : op.total_ars ?? op.total) || 0;
   if (op.cuenta_debe === cuenta) return centavos(t);
   if (op.cuenta_haber === cuenta) return centavos(-t);
   return 0;
@@ -214,10 +218,10 @@ export function movimientoEnCuenta(op, cuenta) {
  * de la cuenta: mismo importe el mismo día (rojo) o hasta 3 días (amarillo).
  * @returns {{ nivel: "rojo"|"amarillo", motivo: "gypi", parecida: object } | null}
  */
-export function sospechaDeRenglon(f, operaciones = [], cuenta) {
+export function sospechaDeRenglon(f, operaciones = [], cuenta, usd = false) {
   let mejor = null;
   for (const o of operaciones) {
-    if (o.anulada_at || Math.abs(movimientoEnCuenta(o, cuenta) - f.importe) >= 0.01) continue;
+    if (o.anulada_at || Math.abs(movimientoEnCuenta(o, cuenta, usd) - f.importe) >= 0.01) continue;
     const d = dias(o.fecha, f.fecha);
     if (d > DIAS_SOSPECHA) continue;
     if (!mejor || d < mejor.d) mejor = { o, d };
@@ -230,14 +234,14 @@ export function sospechaDeRenglon(f, operaciones = [], cuenta) {
  * @param {object[]} movimientos del extracto
  * @param {object[]} operaciones de Gypi (vivas)
  * @param {string} cuenta código de la cuenta del banco
- * @returns {{ filas: object[], sin_banco: object[] }} cada fila = movimiento + { marca, op?: operación de Gypi, ya: true si vino de un extracto anterior, sospecha?: sospechaDeRenglon }
+ * @returns {{ filas: object[], sin_banco: object[] }} cada fila = movimiento + { marca, op?: operación de Gypi, ya: true si vino de un extracto anterior, reemplaza?: la de un extracto anterior que este renglón corrige, sospecha?: sospechaDeRenglon }. En sin_banco, del_banco: true si vino de un extracto anterior y el banco ya no la muestra (sobra).
  */
-export function emparejarExtracto(movimientos = [], operaciones = [], cuenta) {
+export function emparejarExtracto(movimientos = [], operaciones = [], cuenta, { usd = false } = {}) {
   const marcas = marcasExtracto(movimientos, cuenta);
   const deCuenta = operaciones.filter((o) => !o.anulada_at && (o.cuenta_debe === cuenta || o.cuenta_haber === cuenta));
   const usadas = new Set();
   const porMarca = new Map(deCuenta.filter((o) => o.origen === ORIGEN_BANCO && o.origen_id).map((o) => [o.origen_id, o]));
-  const filas = movimientos.map((m, i) => ({ ...m, marca: marcas[i], op: null, ya: false, sospecha: null }));
+  const filas = movimientos.map((m, i) => ({ ...m, marca: marcas[i], op: null, ya: false, reemplaza: null, sospecha: null }));
   // Primero lo que ya se cargó desde un extracto
   for (const f of filas) {
     const o = porMarca.get(f.marca);
@@ -252,7 +256,7 @@ export function emparejarExtracto(movimientos = [], operaciones = [], cuenta) {
     if (f.op) continue;
     for (const o of deCuenta) {
       if (usadas.has(o.id)) continue;
-      if (Math.abs(movimientoEnCuenta(o, cuenta) - f.importe) >= 0.01) continue;
+      if (Math.abs(movimientoEnCuenta(o, cuenta, usd) - f.importe) >= 0.01) continue;
       const d = dias(o.fecha, f.fecha);
       if (d > (o.origen === ORIGEN_BANCO ? DIAS_SOSPECHA : DIAS_EMPAREJAR)) continue;
       parejas.push({ fi, o, d });
@@ -265,17 +269,28 @@ export function emparejarExtracto(movimientos = [], operaciones = [], cuenta) {
     f.op = o;
     usadas.add(o.id);
   }
-  // 13/11: lo que queda sin pareja pero se parece a algo que ya está (otra del
-  // mismo importe en la cuenta, aunque ya tenga su renglón, o un renglón igual
-  // de este mismo extracto) es sospechoso: no se tilda solo y se carga solo
-  // con "es otro distinto"
-  const vistos = new Map();
+  // 20/11: manda el banco. Lo cargado de un extracto anterior el mismo día y
+  // con el mismo texto pero otro importe es el mismo renglón que el banco fue
+  // cambiando (el impuesto a los débitos y créditos y el IVA se van sumando
+  // en el día): el renglón nuevo lo reemplaza, uno por uno y en orden (si el
+  // banco muestra dos, quedan dos).
   for (const f of filas) {
     if (f.op) continue;
-    f.sospecha = sospechaDeRenglon(f, deCuenta, cuenta);
-    const k = `${f.fecha}:${Math.round(f.importe * 100)}`;
-    if (!f.sospecha && vistos.has(k)) f.sospecha = { nivel: "amarillo", motivo: "extracto", parecida: null };
-    vistos.set(k, true);
+    const clave = claveTexto(f.descripcion);
+    const viejo = deCuenta.find((o) => !usadas.has(o.id) && o.origen === ORIGEN_BANCO && o.fecha === f.fecha
+      && Math.sign(movimientoEnCuenta(o, cuenta, usd)) === Math.sign(f.importe) && claveTexto(o.descripcion) === clave);
+    if (viejo) { f.reemplaza = viejo; usadas.add(viejo.id); }
+  }
+  // Lo que queda sin pareja y se parece a algo de Gypi que no tiene su renglón
+  // (mismo importe, hasta 3 días) es sospechoso: no se tilda solo y se carga
+  // solo con "es otro distinto". 20/11: renglones iguales del mismo extracto
+  // (comisiones de $600 el mismo día) no: el banco los cobró todos.
+  const fechasExt = movimientos.map((m) => m.fecha).sort();
+  const sobraDelBanco = (o) => o.origen === ORIGEN_BANCO && o.fecha >= fechasExt[0] && o.fecha <= fechasExt[fechasExt.length - 1];
+  const libres = deCuenta.filter((o) => !usadas.has(o.id) && !sobraDelBanco(o));
+  for (const f of filas) {
+    if (f.op || f.reemplaza) continue;
+    f.sospecha = sospechaDeRenglon(f, libres, cuenta, usd);
   }
   // Lo de Gypi del mismo período que no apareció en el banco
   const fechas = movimientos.map((m) => m.fecha).sort();
@@ -283,6 +298,7 @@ export function emparejarExtracto(movimientos = [], operaciones = [], cuenta) {
   const hasta = fechas[fechas.length - 1];
   const sinBanco = desde
     ? deCuenta.filter((o) => !usadas.has(o.id) && o.fecha >= desde && o.fecha <= hasta && o.origen !== "saldo_inicial")
+      .map((o) => (o.origen === ORIGEN_BANCO ? { ...o, del_banco: true } : o))
     : [];
   return { filas, sin_banco: sinBanco };
 }
@@ -290,16 +306,18 @@ export function emparejarExtracto(movimientos = [], operaciones = [], cuenta) {
 /**
  * La operación de un renglón confirmado.
  * @param {{ fecha, descripcion, comprobante, importe, marca, tipo, contra, entidad?, proveedor_id?, cliente_id? }} f
+ * @param {{ tipo_cambio?: number }} [dolares] 20/11: en una cuenta en dólares, el importe es en dólares y total_ars sale del tipo de cambio
  */
-export function operacionDeMovimiento(f, cuenta) {
+export function operacionDeMovimiento(f, cuenta, dolares = null) {
   const total = centavos(Math.abs(f.importe));
   const entra = f.importe > 0;
+  const tc = dolares && Number(dolares.tipo_cambio) > 0 ? Number(dolares.tipo_cambio) : null;
   return {
     fecha: f.fecha, tipo: txt(f.tipo, 80),
     proveedor_id: f.proveedor_id ? Number(f.proveedor_id) : null,
     cliente_id: f.cliente_id ? Number(f.cliente_id) : null,
     entidad: txt(f.entidad, 120) || null,
-    neto: total, iva: 0, otros_impuestos: 0, total, moneda: "ARS", tipo_cambio: null, total_ars: total,
+    neto: total, iva: 0, otros_impuestos: 0, total, moneda: tc ? "USD" : "ARS", tipo_cambio: tc, total_ars: tc ? centavos(total * tc) : total,
     cuenta_debe: entra ? cuenta : f.contra,
     cuenta_haber: entra ? f.contra : cuenta,
     descripcion: txt(f.descripcion, 500) || null,
@@ -340,12 +358,12 @@ export const NOMBRE_ORIGEN = {
  * suma cada origen (apertura, histórico del libro, extracto, a mano…).
  * @returns {{ saldo: number, origenes: { origen: string, nombre: string, n: number, saldo: number }[] }}
  */
-export function saldoPorOrigen(ops = [], cuenta, hasta) {
+export function saldoPorOrigen(ops = [], cuenta, hasta, usd = false) {
   const por = new Map();
   let saldo = 0;
   for (const o of ops) {
     if (o.anulada_at || (hasta && o.fecha > hasta)) continue;
-    const m = movimientoEnCuenta(o, cuenta);
+    const m = movimientoEnCuenta(o, cuenta, usd);
     if (!m) continue;
     saldo += m;
     const k = o.origen || "manual";
@@ -374,11 +392,11 @@ const PREFERIDO = { libro: 0, banco: 1, saldo_inicial: 9 };
  * las otras; el Dueño elige.
  * @returns {{ importe: number, ops: object[], queda: number }[]}
  */
-export function repetidosEnCuenta(ops = [], cuenta, { diasMax = 3, max = 150 } = {}) {
+export function repetidosEnCuenta(ops = [], cuenta, { diasMax = 3, max = 150, usd = false } = {}) {
   const porImporte = new Map();
   for (const o of ops) {
     if (o.anulada_at || o.origen === "saldo_inicial") continue;
-    const m = movimientoEnCuenta(o, cuenta);
+    const m = movimientoEnCuenta(o, cuenta, usd);
     if (!m) continue;
     const k = Math.round(m * 100);
     if (!porImporte.has(k)) porImporte.set(k, []);
@@ -410,15 +428,15 @@ export function repetidosEnCuenta(ops = [], cuenta, { diasMax = 3, max = 150 } =
  * diferencia en el importe. Suele ser la misma cargada con otra fecha o mal
  * el importe: "Dejar como dice el banco" la corrige. Cada una se usa una vez.
  */
-export function parecidosEnGypi(filas = [], sinBanco = [], cuenta) {
+export function parecidosEnGypi(filas = [], sinBanco = [], cuenta, usd = false) {
   const usadas = new Set();
   const salida = new Map();
   for (const [i, f] of filas.entries()) {
-    if (f.op) continue;
+    if (f.op || f.reemplaza) continue;
     let mejor = null;
     for (const o of sinBanco) {
-      if (usadas.has(o.id)) continue;
-      const m = movimientoEnCuenta(o, cuenta);
+      if (usadas.has(o.id) || o.del_banco) continue;
+      const m = movimientoEnCuenta(o, cuenta, usd);
       if (!m || Math.sign(m) !== Math.sign(f.importe)) continue;
       const dif = Math.abs(Math.abs(m) - Math.abs(f.importe));
       if (dif > Math.abs(f.importe) * 0.2) continue;

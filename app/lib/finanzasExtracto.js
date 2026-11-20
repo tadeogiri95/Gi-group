@@ -97,7 +97,8 @@ export function movimientosDePdf(paginas = []) {
       const linea = txt(r.textos.map((t) => t.str).join(" "));
       const c = linea.match(/Cta\.?\s*([\d.]+-?\d*)/i);
       if (c && !cuenta) cuenta = c[1];
-      const p = linea.match(/del:\s*(\d{2}\/\d{2}\/\d{4})\s*al:\s*(\d{2}\/\d{2}\/\d{4})/i);
+      // Credicoop: "del: 01/09/2026 al: 30/09/2026"; Nación: "PERIODO: 30/09/2026 AL 30/10/2026"
+      const p = linea.match(/(?:del:|PERIODO:?)\s*(\d{2}\/\d{2}\/\d{4})\s*al:?\s*(\d{2}\/\d{2}\/\d{4})/i);
       if (p && !desde) { desde = fechaExtracto(p[1]); hasta = fechaExtracto(p[2]); }
     }
     if (iTitulo < 0) continue;
@@ -107,23 +108,29 @@ export function movimientosDePdf(paginas = []) {
     const cre = col(/^CREDITO/);
     const sal = col(/^SALDO/);
     const colFecha = col(/^FECHA/);
+    // 20/11 (Nación): el comprobante va en su columna, después de la descripción
+    const colComp = col(/^(COMPROB|COMBTE|COMPROBANTE|NRO\.? ?(DE )?COMPROBANTE)/);
     if (!deb || !cre) continue;
     // A qué columna va un importe: la del título con el borde derecho más cerca
     const columnas = [["debito", deb], ["credito", cre], ...(sal ? [["saldo", sal]] : [])];
     const columnaDe = (t) => columnas.reduce((mejor, [n, c]) => (Math.abs(c.fin - t.fin) < Math.abs(mejor[1].fin - t.fin) ? [n, c] : mejor))[0];
 
     for (const r of renglones.slice(iTitulo + 1)) {
-      const textos = r.textos;
+      // 20/11 (Nación): la fecha viene pegada a la descripción en el mismo texto ("08/10/26 COMISION PAQUETES")
+      let textos = r.textos;
+      const pegada = textos[0] && String(textos[0].str).match(/^\s*(\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4}))\s+(\S.*)$/);
+      if (pegada) textos = [{ ...textos[0], str: pegada[1] }, { ...textos[0], str: pegada[2] }, ...textos.slice(1)];
       const linea = txt(textos.map((t) => t.str).join(" "));
       const lineaSin = sinAcentos(linea).toUpperCase();
       // Pie y encabezado de página: no son movimientos
-      if (/CONTINUA EN PAGINA|VIENE DE PAGINA|BANCO CREDICOOP COOPERATIVO|CREDICOOP RESPONDE|CALIDAD DE SERVICIOS/.test(lineaSin)) continue;
+      if (/CONTINUA EN PAGINA|VIENE DE PAGINA|BANCO CREDICOOP COOPERATIVO|CREDICOOP RESPONDE|CALIDAD DE SERVICIOS|^PAGINA:?\s*\d|^(SALDO )?(A |DE )?TRANSPORTE\b/.test(lineaSin)) continue;
       if (/^SALDO ANTERIOR/.test(lineaSin)) {
         const imp = textos.filter((t) => IMPORTE.test(t.str.trim())).pop();
-        if (imp) saldoAnterior = importeAr(imp.str);
+        // Solo el primero: algunas páginas lo repiten
+        if (imp && saldoAnterior == null) saldoAnterior = importeAr(imp.str);
         continue;
       }
-      if (/^SALDO AL\b/.test(lineaSin)) {
+      if (/^SALDO (AL|FINAL)\b/.test(lineaSin)) {
         const imp = textos.filter((t) => IMPORTE.test(t.str.trim())).pop();
         if (imp) saldoFinal = importeAr(imp.str);
         terminado = true;
@@ -135,7 +142,13 @@ export function movimientosDePdf(paginas = []) {
       if (fecha) {
         let resto = textos.slice(1).filter((t) => !importes.includes(t));
         let comprobante = null;
-        if (resto[0] && COMPROBANTE.test(resto[0].str.trim()) && resto.length > 1) {
+        const enColComp = colComp && colComp.x > (colFecha?.fin ?? 0) + 60
+          ? resto.find((t) => COMPROBANTE.test(t.str.trim()) && t.fin >= colComp.x - 10 && t.x <= colComp.fin + 10)
+          : null;
+        if (enColComp) {
+          comprobante = enColComp.str.trim();
+          resto = resto.filter((t) => t !== enColComp);
+        } else if (resto[0] && COMPROBANTE.test(resto[0].str.trim()) && resto.length > 1) {
           comprobante = resto[0].str.trim();
           resto = resto.slice(1);
         }
@@ -209,7 +222,12 @@ export function movimientosDeGrilla(grilla = []) {
     }
     // Con la columna SALDO: el saldo de antes y el final salen del primer y el
     // último renglón en el tiempo (el CSV de Credicoop viene del más nuevo al más viejo)
-    const crono = movimientos.length && movimientos[0].fecha > movimientos[movimientos.length - 1].fecha ? [...movimientos].reverse() : movimientos;
+    // 20/11: si todos traen saldo, el orden sale del saldo (un extracto de un solo día no tiene fechas distintas)
+    const cuadra = (ms) => ms.every((m, i) => i === 0 || Math.abs(ms[i - 1].saldo + m.importe - m.saldo) < 0.01);
+    const todosConSaldo = movimientos.length > 1 && movimientos.every((m) => m.saldo != null);
+    const porSaldo = todosConSaldo && cuadra(movimientos) ? false : todosConSaldo && cuadra([...movimientos].reverse()) ? true : null;
+    const alReves = porSaldo ?? (movimientos.length > 0 && movimientos[0].fecha > movimientos[movimientos.length - 1].fecha);
+    const crono = alReves ? [...movimientos].reverse() : movimientos;
     const conSaldo = crono.length && crono.every((m) => m.saldo != null);
     return {
       movimientos: crono,

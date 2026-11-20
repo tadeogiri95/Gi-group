@@ -16,7 +16,7 @@ const lista = (cuentas) => encodeURIComponent(cuentas.map((c) => `"${String(c).r
  */
 export async function repetidosEnBase(sesion, nuevas = [], { tesoreria = null, excluir = [] } = {}) {
   const e = sesion.empresa_id;
-  const cajas = tesoreria || (await sbGetAll(`fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre`, { sesion, maxFilas: 1000 })).data || [];
+  const cajas = tesoreria || (await sbGetAll(`fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,moneda`, { sesion, maxFilas: 1000 })).data || [];
   const enCaja = new Set(cajas.map((t) => t.cuenta));
   const nombres = Object.fromEntries(cajas.map((t) => [t.cuenta, t.nombre]));
   const cuentas = [...new Set(nuevas.flatMap((n) => cajasDeOperacion(n, enCaja)))];
@@ -32,7 +32,8 @@ export async function repetidosEnBase(sesion, nuevas = [], { tesoreria = null, e
     existentes.push(...(r.data || []));
   }
   const unicas = [...new Map(existentes.map((o) => [o.id, o])).values()];
-  return { repetidos: buscarRepetidos(nuevas, unicas, enCaja, { excluir }), nombres };
+  const usd = cajas.filter((t) => t.moneda === "USD").map((t) => t.cuenta);
+  return { repetidos: buscarRepetidos(nuevas, unicas, enCaja, { excluir, usd }), nombres };
 }
 
 /** La respuesta 409 con los repetidos, o null si no hay. */
