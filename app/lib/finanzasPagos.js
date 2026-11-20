@@ -24,6 +24,11 @@
 //     caja o banco por el mismo importe y con fecha cerca, la orden se une a
 //     ese movimiento en vez de cargar otro. Uno solo → se une solo; varios →
 //     se pregunta cuál. Al anular la orden, el movimiento vuelve a como estaba.
+//   - 20/11 (Tadeo): cada e-cheq puede llevar el plazo fijo NUEVO que lo calza
+//     (monto a depositar y vencimiento, que no puede ser después del cheque).
+//     Es solo informativo, no carga el plazo fijo (entra con la planilla del
+//     banco). Para el CFO: "A rescatar del FCI" = transferencias + plazos
+//     fijos a constituir (sumasPagos), en la orden y en el resumen.
 import { BANCO_ECHEQ, cuentaBancoDe, cuentasCheques } from "./finanzasCheques";
 import { plata } from "./finanzasOperaciones";
 
@@ -102,7 +107,10 @@ export function validarOrden(f = {}, { proveedores = [], tesoreria = [], cheques
     if (!(importe > 0) || importe >= 1e13) { errores.push(`${n}: revisá el importe`); continue; }
     if (forma === "echeq") {
       if (!FECHA.test(String(x.fecha_pago || ""))) { errores.push(`${n}: falta la fecha de pago del e-cheq`); continue; }
-      formas.push({ forma, importe, fecha_pago: x.fecha_pago, numero: txt(x.numero, 40) || null, cuenta: cuentaBancoDe(BANCO_ECHEQ, tesoreria) });
+      const pf = plazoDeForma(x.plazo_fijo);
+      if (pf?.error) { errores.push(`${n}: ${pf.error}`); continue; }
+      if (pf && pf.vencimiento > x.fecha_pago) { errores.push(`${n}: el plazo fijo tiene que vencer antes o el mismo día que el e-cheq`); continue; }
+      formas.push({ forma, importe, fecha_pago: x.fecha_pago, numero: txt(x.numero, 40) || null, cuenta: cuentaBancoDe(BANCO_ECHEQ, tesoreria), ...(pf ? { plazo_fijo: pf } : {}) });
       continue;
     }
     const caja = cajaValida(tesoreria, String(x.cuenta || ""), forma === "efectivo" ? "caja" : "banco");
@@ -120,6 +128,76 @@ export function validarOrden(f = {}, { proveedores = [], tesoreria = [], cheques
     },
   };
 }
+
+/**
+ * El plazo fijo nuevo que calza un e-cheq (20/11), como llega del navegador.
+ * Vacío (sin importe) → null: el e-cheq va sin plazo fijo.
+ * @returns {null | { importe: number, vencimiento: string } | { error: string }}
+ */
+export function plazoDeForma(p) {
+  if (!p || typeof p !== "object") return null;
+  const vacio = p.importe == null || String(p.importe).trim() === "";
+  if (vacio && !p.vencimiento) return null;
+  const importe = centavos(p.importe);
+  if (!(importe > 0) || importe >= 1e13) return { error: "revisá el monto del plazo fijo" };
+  if (!FECHA.test(String(p.vencimiento || ""))) return { error: "falta cuándo vence el plazo fijo" };
+  return { importe, vencimiento: p.vencimiento };
+}
+
+/** "Plazo fijo a constituir · vence el 09/12/26" (o "" si el e-cheq no lleva). */
+export const textoPlazo = (x) => (x?.plazo_fijo ? `🏦 Plazo fijo a constituir · vence el ${fechaCorta(x.plazo_fijo.vencimiento)}` : "");
+
+/**
+ * Lo que hace falta para hacer todas las operaciones (20/11), sin las
+ * anuladas: transferencias, plazos fijos a constituir y lo que hay que
+ * rescatar del FCI (transferencias + plazos fijos). Efectivo y cheques van
+ * aparte: no salen del FCI.
+ */
+export function sumasPagos(ordenes = []) {
+  const s = { transferencia: 0, efectivo: 0, cheques: 0, plazos: 0, cantidadPlazos: 0 };
+  for (const o of ordenes) {
+    if (!o || o.estado === "anulada") continue;
+    for (const x of o.formas || []) {
+      const imp = centavos(x.importe);
+      if (x.forma === "transferencia") s.transferencia = centavos(s.transferencia + imp);
+      else if (x.forma === "efectivo") s.efectivo = centavos(s.efectivo + imp);
+      else if (x.forma === "echeq" || x.forma === "cheque_tercero") s.cheques = centavos(s.cheques + imp);
+      if (x.forma === "echeq" && x.plazo_fijo && centavos(x.plazo_fijo.importe) > 0) {
+        s.plazos = centavos(s.plazos + centavos(x.plazo_fijo.importe));
+        s.cantidadPlazos += 1;
+      }
+    }
+  }
+  return { ...s, rescatar: centavos(s.transferencia + s.plazos) };
+}
+
+/** Las líneas de "A rescatar del FCI" para WhatsApp (vacío si no hay transferencias ni plazos fijos). */
+export function lineasRescate(ordenes = []) {
+  const t = sumasPagos(ordenes);
+  if (!(t.rescatar > 0)) return [];
+  return [
+    `A rescatar del FCI: ${plata(t.rescatar, "ARS")}`,
+    `  (transferencias ${plata(t.transferencia, "ARS")} + plazos fijos a constituir ${plata(t.plazos, "ARS")})`,
+  ];
+}
+
+/** Las filas HTML de "A rescatar del FCI" para los PDF (vacío si no hay nada). */
+export function htmlRescate(ordenes = []) {
+  const t = sumasPagos(ordenes);
+  if (!(t.rescatar > 0)) return "";
+  return `<table class="rescate"><tbody>
+    <tr><td colspan="2"><b>Plata para hacer todas las operaciones</b></td></tr>
+    <tr><td>Transferencias</td><td class="n">${esc(plata(t.transferencia))}</td></tr>
+    <tr><td>Plazos fijos a constituir${t.cantidadPlazos ? ` (${t.cantidadPlazos})` : ""}</td><td class="n">${esc(plata(t.plazos))}</td></tr>
+    <tr class="tot"><td>A rescatar del FCI</td><td class="n">${esc(plata(t.rescatar))}</td></tr>
+  </tbody></table>`;
+}
+
+/** Estilo de esa tabla, para pegar en el <style> de cada PDF. */
+export const CSS_RESCATE = `.rescate { margin-top: 5mm; margin-left: auto; width: 115mm; border: .4mm solid #000; break-inside: avoid; }
+  .rescate td { border: none; padding: 1mm 2mm; }
+  .rescate .tot td { border-top: .3mm solid #000; font-size: 12pt; font-weight: 800; }
+  .pf td { border-bottom: .2mm solid #999; color: #333; font-size: 9pt; padding-left: 5mm; }`;
 
 /** "Efectivo · Caja Principal", "E-cheq Credicoop · vence el 10/12/26"… */
 export function textoForma(x) {
@@ -199,7 +277,8 @@ export function datosParaCfo(orden, empresa = {}) {
     numero: orden.numero, fecha: orden.fecha, proveedor: orden.proveedor_nombre, total: Number(orden.total) || 0,
     estado: orden.estado, notas: orden.notas || null, cargada_por: orden.cargada_por_nombre || null,
     facturas: (orden.facturas || []).map((f) => ({ fecha: f.fecha, detalle: f.detalle, importe: f.importe })),
-    formas: (orden.formas || []).map((x) => ({ texto: textoForma(x), importe: x.importe })),
+    formas: (orden.formas || []).map((x) => ({ texto: textoForma(x), importe: x.importe, ...(x.plazo_fijo ? { plazo: { texto: textoPlazo(x), importe: x.plazo_fijo.importe } } : {}) })),
+    rescate: sumasPagos([orden]),
     pagada: orden.estado === "pagada", pagada_fecha: orden.pagada_fecha || null,
     visto: vistaPorCfo(orden) ? { por: orden.decidida_por_nombre || null, at: orden.decidida_at } : null,
     adjuntos: adjuntosDe(orden),
@@ -226,7 +305,8 @@ export function textoWhatsappCfo(orden, url, { empresa = "", cfo = "" } = {}) {
     `${cfo ? `Hola ${cfo}, ` : ""}te paso la orden de pago N° ${orden.numero}${empresa ? ` de ${empresa}` : ""} para que sepas lo que hay para firmar en el banco.`,
     `Proveedor: ${orden.proveedor_nombre}`,
     `Total: ${plata(orden.total, "ARS")}`,
-    ...(orden.formas || []).map((x) => `• ${textoForma(x)}: ${plata(x.importe, "ARS")}`),
+    ...(orden.formas || []).flatMap((x) => [`• ${textoForma(x)}: ${plata(x.importe, "ARS")}`, ...(x.plazo_fijo ? [`   ${textoPlazo(x)}: ${plata(x.plazo_fijo.importe, "ARS")}`] : [])]),
+    ...(sumasPagos([orden]).plazos > 0 ? ["", ...lineasRescate([orden])] : []),
     "",
     `Para verla abrí este link: ${url}`,
   ].join("\n");
@@ -241,7 +321,7 @@ export function htmlOrdenPago({ empresa = {}, orden }) {
   const nombre = empresa?.razon_social || empresa?.nombre || "";
   const est = ESTADOS_ORDEN[orden.estado];
   const facturas = (orden.facturas || []).map((f) => `<tr><td>${esc(fechaCorta(f.fecha))}</td><td>${esc(f.detalle)}</td><td class="n">${esc(plata(f.importe))}</td></tr>`).join("");
-  const formas = (orden.formas || []).map((x) => `<tr><td>${esc(textoForma(x))}</td><td class="n">${esc(plata(x.importe))}</td></tr>`).join("");
+  const formas = (orden.formas || []).map((x) => `<tr><td>${esc(textoForma(x))}</td><td class="n">${esc(plata(x.importe))}</td></tr>${x.plazo_fijo ? `<tr class="pf"><td>${esc(textoPlazo(x))}</td><td class="n">${esc(plata(x.plazo_fijo.importe))}</td></tr>` : ""}`).join("");
   const adjuntos = adjuntosDe(orden).map((a) => `<li><a href="${esc(a.url)}">${esc(a.nombre)}</a></li>`).join("");
   const decision = vistaPorCfo(orden)
     ? `<p class="nota"><b>Vista por el CFO</b>${orden.decidida_por_nombre ? ` (${esc(orden.decidida_por_nombre)})` : ""} el ${esc(fechaCorta(String(orden.decidida_at).slice(0, 10)))}.</p>`
@@ -263,6 +343,7 @@ export function htmlOrdenPago({ empresa = {}, orden }) {
   .n { text-align: right; white-space: nowrap; }
   .total { margin-top: 4mm; text-align: right; font-size: 13pt; font-weight: 800; }
   .nota { margin-top: 5mm; font-size: 9.5pt; }
+  ${CSS_RESCATE}
   .firmas { display: flex; gap: 20mm; margin-top: 25mm; }
   .firmas div { flex: 1; border-top: .3mm solid #000; padding-top: 1.5mm; text-align: center; font-size: 9pt; }
 </style></head><body>
@@ -279,6 +360,7 @@ export function htmlOrdenPago({ empresa = {}, orden }) {
   <h2>Con qué se paga</h2>
   <table><thead><tr><th>Forma</th><th class="n">Importe</th></tr></thead><tbody>${formas}</tbody></table>
   <div class="total">Total: ${esc(plata(orden.total))}</div>
+  ${sumasPagos([orden]).plazos > 0 ? htmlRescate([orden]) : ""}
   ${orden.notas ? `<p class="nota">${esc(orden.notas)}</p>` : ""}
   ${adjuntos ? `<h2>Facturas y presupuestos adjuntos</h2><ul class="chico">${adjuntos}</ul>` : ""}
   ${decision}

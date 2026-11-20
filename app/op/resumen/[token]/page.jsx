@@ -9,6 +9,7 @@ import { datosResumenCfo } from "../../../lib/resumenPagoCfo";
 import { ESTADOS_ORDEN, fechaCorta } from "../../../lib/finanzasPagos";
 import { plata } from "../../../lib/finanzasOperaciones";
 import VistoCfo from "../../../components/VistoCfo";
+import RescateFci from "../../../components/RescateFci";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,8 @@ export default async function PaginaResumenPago({ params }) {
           {cargado_por && <div className="text-[13px] text-gypi-dim">Preparó: {cargado_por}</div>}
         </section>
 
+        <RescateFci transferencia={totales.porForma?.transferencia} plazos={totales.plazos} cantidadPlazos={totales.cantidadPlazos} rescatar={totales.rescatar} />
+
         {notas && <p className="m-0 text-[14px] rounded-[14px] border border-gypi-border bg-gypi-surface p-3">📝 {notas}</p>}
 
         <ul aria-label="Órdenes de pago" className="list-none m-0 p-0 flex flex-col gap-2">
@@ -81,9 +84,17 @@ export default async function PaginaResumenPago({ params }) {
                 </div>
                 <ul className="list-none m-0 p-0 flex flex-col gap-0.5">
                   {o.formas.map((f, i) => (
-                    <li key={i} className="flex items-baseline gap-2 text-[13px]">
-                      <span className="flex-1 min-w-0">{f.clase === "cheque" ? "🧾" : "⚡"} {f.texto}</span>
-                      <span className="font-mono">{plata(f.importe, "ARS")}</span>
+                    <li key={i} className="flex flex-col text-[13px]">
+                      <div className="flex items-baseline gap-2">
+                        <span className="flex-1 min-w-0">{f.clase === "cheque" ? "🧾" : "⚡"} {f.texto}</span>
+                        <span className="font-mono">{plata(f.importe, "ARS")}</span>
+                      </div>
+                      {f.plazo && (
+                        <div className="flex items-baseline gap-2 pl-5 text-gypi-dim">
+                          <span className="flex-1 min-w-0">{f.plazo.texto}</span>
+                          <span className="font-mono">{plata(f.plazo.importe, "ARS")}</span>
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>

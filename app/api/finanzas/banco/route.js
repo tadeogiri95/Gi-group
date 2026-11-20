@@ -29,6 +29,9 @@
 //       "anular: [id]". Renglones iguales del mismo extracto (comisiones) no
 //       son sospechosos, y "emparejadas: [id]" (lo que ya tiene su renglón)
 //       no cuenta como repetido. Deshacer la carga entera devuelve lo anulado.
+//   20/11: después de "confirmar", si entró la devolución de un plazo fijo
+//       con el interés junto, Gypi registra el interés aparte (del registro
+//       de plazos fijos) y responde plazos: { intereses, corregidas, interes }.
 //   GET ?cuenta=X → las últimas cargas de esa cuenta. GET ?carga=id → la
 //       carga con sus operaciones.
 //   POST { accion: "deshacer", id, ops?: [id] } → anula las operaciones de
@@ -48,6 +51,7 @@ import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { FECHA, hoyAr } from "../../../lib/finanzasOperaciones";
 import { idsAnuladosPorCarga, idsParaDeshacer, pendientesDelExtracto } from "../../../lib/finanzasExtractoPendientes";
 import { CLAVE_PLAZOS_FIJOS, leerGuardados, leerOpsPlazos, vencidosPendientes } from "../../../lib/finanzasPlazosFijos";
+import { registrarInteresesDelBanco } from "../../../lib/finanzasPlazosFijosServidor";
 import { claseDeArchivo, grillaDeArchivo, movimientosDeGrilla, movimientosDePdf } from "../../../lib/finanzasExtracto";
 import {
   CLAVE_REGLAS_BANCO, DIAS_EMPAREJAR, DIAS_SOSPECHA, MAX_MOVIMIENTOS, ORIGEN_BANCO, controlSaldo, emparejarExtracto, entidadDe, juntarReglas,
@@ -324,7 +328,20 @@ async function confirmar(sesion, d) {
     // Las reglas son una ayuda: si no se guardan, las operaciones ya están
   }
   if (nuevas.length || anuladas) broadcastRefresh(e, "fin_operaciones");
-  return NextResponse.json({ ok: true, cargadas: nuevas.length, repetidas: ops.length - nuevas.length, anuladas, carga, aviso });
+  // 20/11: si vino la devolución de un plazo fijo (capital e interés juntos),
+  // el interés se registra solo, aparte, con el importe del registro de
+  // plazos fijos. El saldo del banco no cambia. Si falla, lo cargado ya está.
+  // En dólares no: el registro de plazos fijos compara en pesos.
+  let plazos = null;
+  if (nuevas.length && banco.tipo === "banco" && !usd) {
+    try {
+      const r = await registrarInteresesDelBanco(sesion, { quien });
+      if (r.cargadas || r.corregidas) plazos = { intereses: r.cargadas, corregidas: r.corregidas, interes: r.interes };
+    } catch {
+      // Queda el botón "Registrar" de Finanzas → Plazos fijos
+    }
+  }
+  return NextResponse.json({ ok: true, cargadas: nuevas.length, repetidas: ops.length - nuevas.length, anuladas, carga, aviso, plazos });
 }
 
 async function deshacer(sesion, d) {

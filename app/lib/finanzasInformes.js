@@ -69,14 +69,14 @@ export function bajarArchivo(bytes, nombre, tipo) {
 
 /**
  * Baja un informe en PDF o en Excel.
- * @param {{ titulo: string, html: () => string, hojas: () => { nombre: string, filas: any[][], anchos?: number[] }[], apaisado?: boolean }} inf
+ * @param {{ titulo: string, html: () => string, hojas: () => { nombre: string, filas: any[][], anchos?: number[] }[], apaisado?: boolean, bloques?: string }} inf
  * @param {"pdf"|"xlsx"} formato
  */
 export async function descargarInforme(inf, formato) {
   const nombre = nombreArchivo(inf.titulo);
   if (formato === "pdf") {
     const { descargarPdfDeHtml } = await import("./pdfDeHtml");
-    return descargarPdfDeHtml(inf.html(), { archivo: `${nombre}.pdf`, bloques: ".cabecera, h2, .kpis, tr", apaisado: !!inf.apaisado });
+    return descargarPdfDeHtml(inf.html(), { archivo: `${nombre}.pdf`, bloques: inf.bloques || ".cabecera, h2, .kpis, tr", apaisado: !!inf.apaisado });
   }
   return bajarArchivo(armarXlsx(inf.hojas()), `${nombre}.xlsx`, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 }

@@ -21,6 +21,7 @@ import { CLAVE_PLANIFICACION } from "../../../lib/planificacion";
 import { CLAVE_FLUJO, flujoPrevisto, flujoReal, saldoCajas, validarLineasFlujo } from "../../../lib/finanzasFlujo";
 import { cobrosDeOts, pagosAProveedores, pagosDeOcAbiertas } from "../../../lib/finanzasFlujoAdelante";
 import { CLAVE_PLAZOS_FIJOS, interesesPorCobrar, leerGuardados, leerOpsPlazos, listaPlazos } from "../../../lib/finanzasPlazosFijos";
+import { plazosSinInteres } from "../../../lib/finanzasPlazosFijosServidor";
 import { CLAVE_SUELDOS, ORIGEN_PAGO_SUELDO, leerConfigSueldos, pagadoPorEmpleado, totalesLiquidacion } from "../../../lib/finanzasSueldos";
 
 const COLUMNAS = "id,fecha,tipo,centro_costo,total,total_ars,cuenta_debe,cuenta_haber,estado,anulada_at,origen,origen_id,proveedor_id,cliente_id,entidad,proyecto_id,referencia";
@@ -70,13 +71,18 @@ export async function GET(request) {
     ]);
     const lin = validarLineasFlujo(lineas || {});
     const real = flujoReal({ ops, tesoreria, cuentas, lineas: lin, meses: mesesHasta(hasta) });
-    const [sueldos, intereses] = await Promise.all([sueldosPorPagar(sesion, ops, cuentas), interesesPlazos(sesion, tesoreria, hoy).catch(() => [])]);
+    const [sueldos, intereses, plazos_sin_interes] = await Promise.all([
+      sueldosPorPagar(sesion, ops, cuentas),
+      interesesPlazos(sesion, tesoreria, hoy).catch(() => []),
+      // 20/11: plazos fijos vencidos sin el interés registrado (aviso)
+      plazosSinInteres(sesion).catch(() => null),
+    ]);
     const adelante = await loQueSeSabe(sesion, { ops, cuentas, ordenes, hoy });
     const previsto = {
       ...flujoPrevisto({ hoy, saldoHoy: saldoCajas(ops, tesoreria, "ARS"), cheques, ordenes, sueldos, intereses, ...adelante, feriados: feriadosFinanzas(planificacion) }),
       avisos: adelante.avisos,
     };
-    return NextResponse.json({ hasta, hoy, ...real, previsto, lineas_cargadas: Object.keys(lin.tipos).length });
+    return NextResponse.json({ hasta, hoy, ...real, previsto, plazos_sin_interes, lineas_cargadas: Object.keys(lin.tipos).length });
   } catch (err) {
     return errorFinanzas(err, "flujo GET");
   }

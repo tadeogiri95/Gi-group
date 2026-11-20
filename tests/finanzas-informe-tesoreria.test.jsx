@@ -6,7 +6,7 @@ import { test, afterEach } from "node:test";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { compacto, informeTesoreria, exportarInformeTesoreria, periodosDias, periodosSemanas, repartoFondos, serieCobrar, serieCalce, geometriaColumnas } from "../app/lib/finanzasInformeTesoreria.js";
+import { compacto, panoramaTexto, MAX_COBROS, informeTesoreria, exportarInformeTesoreria, periodosDias, periodosSemanas, repartoFondos, serieCobrar, serieCalce, geometriaColumnas } from "../app/lib/finanzasInformeTesoreria.js";
 import { armarXlsx } from "../app/lib/xlsxSimple.js";
 import { opcionesBoton } from "../app/lib/menuGestion.js";
 import { GRUPOS_FINANZAS, DETALLE_FINANZAS } from "../app/lib/finanzasInicio.js";
@@ -97,7 +97,9 @@ test("PDF y Excel: las 4 secciones y el Excel abre", () => {
   const inf = exportarInformeTesoreria(r, { empresa: "Gi Group" });
   assert.equal(inf.titulo, "Informe de tesorería al 19/11/2026");
   const h = inf.html();
-  for (const t of ["1. Posición de fondos e inversiones", "2. Calce de cheques a pagar y plazos fijos", "3. Calce por día · próximos 15 días", "4. Cheques a cobrar"]) assert.ok(h.includes(t), t);
+  for (const t of ["Panorama de hoy", "1. Posición de fondos e inversiones", "2. Calce de cheques a pagar y plazos fijos", "Por día · próximos 15 días", "3. Cheques a cobrar"]) assert.ok(h.includes(t), t);
+  assert.equal((h.match(/class="pagina"/g) || []).length, 4, "4 páginas fijas (20/11)");
+  assert.equal(inf.bloques, ".pagina", "el PDF corta entre páginas, nunca adentro de una tabla");
   assert.ok(!h.includes("Maderera"), "sin el detalle de cada cheque del calce: conciso (19/11)");
   const hojas = inf.hojas();
   assert.deepEqual(hojas.map((x) => x.nombre), ["Fondos e inversiones", "Calce", "Cheques a cobrar"]);
@@ -178,4 +180,15 @@ test("gráfico del calce con los montos de cada columna y la diferencia (19/11)"
   assert.equal(g.cols.at(-1).dif, null, "sin movimiento no hay diferencia");
   const h = exportarInformeTesoreria(r).html();
   assert.match(h, />\+2 mil</);
+});
+
+test("panorama escrito y tope de renglones para no pasarse de la hoja (20/11)", () => {
+  const [fondos, calce, cobrar] = panoramaTexto(r);
+  assert.match(fondos, /en cajas y bancos en pesos/);
+  assert.match(calce, /faltan|sobran/);
+  assert.match(calce, /cheques vencidos/);
+  assert.match(cobrar, /la semana del 19\/11 al 25\/11/);
+  const muchos = informeTesoreria({ hoy: HOY, tesoreria, operaciones, inversiones, plazos, cheques: Array.from({ length: 60 }, (_, i) => ({ clase: "tercero", estado: "en_cartera", fecha_pago: "2026-12-01", importe: 100 + i, librador: `C${i}` })) });
+  const h = exportarInformeTesoreria(muchos).html();
+  assert.match(h, new RegExp(`y ${60 - MAX_COBROS} cheques más \\(en el Excel\\)`));
 });

@@ -21,6 +21,7 @@ import BotonesExportar from "./FinanzasExportar";
 import { informeResultados } from "../lib/finanzasInformesSueltos";
 import { Chip, Modal, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
+import AvisoPlazosSinInteres from "./AvisoPlazosSinInteres";
 
 const miles = (n) => (n == null ? "" : Math.round(Number(n) || 0).toLocaleString("es-AR"));
 const dma = (f) => (/^\d{4}-\d{2}-\d{2}$/.test(String(f || "")) ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
@@ -258,6 +259,7 @@ export default function FinanzasResultados() {
       {datos.entregas_estimadas > 0 && <EntregasEstimadas ots={datos.estimadas_ot || []} pctMateriales={datos.config?.materiales_pct} />}
       {(datos.no_estimadas_ot || []).length > 0 && <NoEstimadas ots={datos.no_estimadas_ot} />}
 
+      <AvisoPlazosSinInteres datos={datos.plazos_sin_interes} />
       {datos.sin_linea.length > 0 && (
         <details className="mt-3 text-[13px] text-gypi-text">
           <summary className="cursor-pointer font-semibold">⚠ {datos.sin_linea.length} cuentas de resultado con movimientos que no tienen renglón (no entran)</summary>

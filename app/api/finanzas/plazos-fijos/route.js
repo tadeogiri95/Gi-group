@@ -21,18 +21,19 @@
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige).
 import { NextResponse } from "next/server";
-import { sbGet, sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
+import { sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
-import { FECHA, hoyAr } from "../../../lib/finanzasOperaciones";
+import { FECHA } from "../../../lib/finanzasOperaciones";
 import {
-  CLAVE_PLAZOS_FIJOS, MAX_PLAZOS, contextoPlazos, cuentasPorDefecto, leerGuardados, listaPlazos, operacionPlazo,
-  leerOpsPlazos, planPlazosFijos, plazoValido, unirPlazos, vencidosPendientes, repetidosConElBanco, arreglosDelBanco,
+  CLAVE_PLAZOS_FIJOS, MAX_PLAZOS, contextoPlazos, cuentasPorDefecto, listaPlazos, operacionPlazo,
+  planPlazosFijos, plazoValido, unirPlazos, vencidosPendientes, repetidosConElBanco, arreglosDelBanco,
 } from "../../../lib/finanzasPlazosFijos";
 import { plazosRepetidos } from "../../../lib/finanzasCorregir";
 import { textoRepetido } from "../../../lib/finanzasRepetidos";
 import { repetidosEnBase } from "../../../lib/finanzasRepetidosServidor";
+import { aplicarCambiosPlazos, insertarOpsPlazos, leerTodoPlazos, registrarInteresesDelBanco } from "../../../lib/finanzasPlazosFijosServidor";
 
 const CUENTA_ORIGEN = { libro: "copiada del libro", manual: "cargada a mano", banco: "del extracto del banco" };
 /** Lo que se muestra de cada par repetido. */
@@ -42,18 +43,6 @@ const parRepetido = ({ gypi, otra }) => ({
 });
 
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data || []);
-
-async function leerTodo(sesion) {
-  const e = sesion.empresa_id;
-  const hoy = hoyAr();
-  const [tesoreria, cfg] = await Promise.all([
-    leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,activa&order=nombre.asc`),
-    sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_PLAZOS_FIJOS}&select=valor&limit=1`, { silent: true, fallback: [] }),
-  ]);
-  const cuentasPf = tesoreria.filter((t) => t.tipo === "plazo_fijo").map((t) => t.cuenta);
-  const { ops, cuentasInteres } = await leerOpsPlazos((path) => leer(sesion, path, 20000), e, cuentasPf, hoy);
-  return { hoy, tesoreria, cuentasPf, cuentasInteres, ops, guardados: leerGuardados(cfg?.[0]?.valor), hay: Boolean(cfg?.length) };
-}
 
 async function guardar(sesion, plazos, hay) {
   const e = sesion.empresa_id;
@@ -78,24 +67,11 @@ function todosLosRepetidos(base) {
   ].filter((x) => !vistos.has(x.gypi.id) && vistos.add(x.gypi.id));
 }
 
-/**
- * Pasa los renglones del extracto a la cuenta que corresponde (la del plazo
- * fijo o Intereses Ganados). Solo toca renglones que vinieron del banco.
- */
-async function aplicarCambios(sesion, cambios = []) {
-  const ahora = new Date().toISOString();
-  for (const c of cambios) {
-    await sbPatch(`fin_operaciones?id=eq.${Number(c.id)}&empresa_id=eq.${sesion.empresa_id}&origen=eq.banco&anulada_at=is.null`, { cuenta_haber: c.cuenta_haber, updated_at: ahora }, { sesion });
-  }
-  if (cambios.length) broadcastRefresh(sesion.empresa_id, "fin_operaciones");
-}
-
+const leerTodo = leerTodoPlazos;
+const aplicarCambios = aplicarCambiosPlazos;
 async function insertar(sesion, ops) {
   if (!ops.length) return;
-  const ahora = new Date().toISOString();
-  const quien = await nombreEmpleado(sesion);
-  await sbPost("fin_operaciones", ops.map((o) => ({ ...o, empresa_id: sesion.empresa_id, cargada_por_nombre: quien || "Gypi (plazo fijo)", created_at: ahora, updated_at: ahora })), { sesion });
-  broadcastRefresh(sesion.empresa_id, "fin_operaciones");
+  await insertarOpsPlazos(sesion, ops, await nombreEmpleado(sesion));
 }
 
 export async function GET(request) {
@@ -198,7 +174,7 @@ async function cargar(sesion, d) {
   return NextResponse.json({ ok: true, cargadas: plan.ops.length, plazos: nuevos.length });
 }
 
-async function vencidos(sesion, confirmar = false, { soloDelBanco = false } = {}) {
+async function vencidos(sesion, confirmar = false) {
   const e = sesion.empresa_id;
   const [base, tipos, cuentas] = await Promise.all([
     leerTodo(sesion),
@@ -212,8 +188,8 @@ async function vencidos(sesion, confirmar = false, { soloDelBanco = false } = {}
   for (const p of pendientes) {
     const { ctx, errores } = contextoPlazos({ tipos, cuentas, tesoreria: base.tesoreria, banco: p.banco, cuenta_pf: p.cuenta_pf });
     if (errores.length) return NextResponse.json({ error: `Plazo fijo ${p.certificado}: ${errores[0]}`, errores }, { status: 400 });
-    if (p.falta.r && !soloDelBanco) ops.push(operacionPlazo(p, "r", ctx));
-    if (p.falta.i && !soloDelBanco) ops.push(operacionPlazo(p, "i", ctx));
+    if (p.falta.r) ops.push(operacionPlazo(p, "r", ctx));
+    if (p.falta.i) ops.push(operacionPlazo(p, "i", ctx));
     const a = arreglosDelBanco(p, { ajustes: p.falta.ajustes, interesJunto: p.falta.interes_junto }, ctx);
     ops.push(...a.ops);
     cambios.push(...a.cambios);
@@ -248,7 +224,7 @@ async function anularRepetidos(sesion) {
   // Lo que queda es el renglón del banco: se pasa a la cuenta del plazo fijo y
   // el interés que venía junto se registra aparte (sin volver a cargar el resto)
   // Si falla, lo anulado ya quedó anulado: se avisa igual que salió bien
-  const extra = await vencidos(sesion, true, { soloDelBanco: true }).then((r) => r.json()).catch(() => ({}));
+  const extra = await registrarInteresesDelBanco(sesion, { quien }).catch(() => ({}));
   return NextResponse.json({ ok: true, anuladas, corregidas: extra.corregidas || 0, intereses: extra.cargadas || 0 });
 }
 
