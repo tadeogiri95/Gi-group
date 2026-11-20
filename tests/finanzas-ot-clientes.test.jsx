@@ -101,6 +101,26 @@ test("/api/finanzas/ot-clientes — solo el Dueño; materiales solo de las OT si
   assert.match(pedidos[0], /ot=in\.\("7002"\)/, "solo la OT sin presupuesto");
 });
 
+test("Precios del Plan — se leen todas las páginas (más de 1000 OT) y solo las que tienen precio", async () => {
+  const { leerPreciosOt } = await import("../app/lib/finanzasMaterialesOt.js");
+  // 1271 OT con precio, como la planilla del 20/11: Supabase da de a 1000
+  const todas = Array.from({ length: 1271 }, (_, i) => ({ ot: `M-${7000 + i}`, precio: 100 + i }));
+  const urls = [];
+  global.fetch = createFetchMock([
+    { match: (u) => u.includes("/rest/v1/precios_ot"), respond: (u) => {
+      urls.push(decodeURIComponent(u));
+      const q = new URL(u).searchParams;
+      const desde = Number(q.get("offset") || 0);
+      return { status: 200, body: todas.slice(desde, desde + Math.min(Number(q.get("limit") || 1000), 1000)) };
+    } },
+  ]);
+  const precios = await leerPreciosOt(null, E);
+  assert.equal(precios.size, 1271, "no se corta en 1000");
+  assert.equal(precios.get("M-8270"), 1370, "la última OT también tiene su precio");
+  assert.equal(urls.length, 2);
+  assert.ok(urls.every((u) => u.includes("precio=gt.0") && u.includes("order=ot.asc")));
+});
+
 test("Cuenta por OT — saldo por cliente, OT estimada en amarillo, con IVA y lista de OT sin presupuesto", async () => {
   const cs = cuentasPorOt({
     proyectos: PROYECTOS, precios: new Map([["7001", 1000], ["7003", 2000]]), materiales: new Map([["7002", { total: 300, sinPrecio: 2 }]]),

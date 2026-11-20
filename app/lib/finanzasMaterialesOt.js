@@ -9,6 +9,22 @@ import { materialesOt } from "./finanzasOtClientes";
 
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data || []);
 const lista = (xs) => xs.map((s) => `%22${encodeURIComponent(s)}%22`).join(",");
+/**
+ * El PRECIO del Plan (sin IVA) de cada OT que lo tiene: Map ot → precio.
+ * Pagina: Supabase corta cada respuesta en 1000 filas sin avisar, y la
+ * planilla ya tiene más OT que eso (20/11: con un solo pedido, ~270 OT con
+ * precio quedaban afuera y se mostraban estimadas por materiales).
+ * Sin la migración 142 devuelve un Map vacío.
+ */
+export async function leerPreciosOt(sesion, empresaId) {
+  try {
+    const filas = await leer(sesion, `precios_ot?empresa_id=eq.${empresaId}&precio=gt.0&select=ot,precio&order=ot.asc`, 50000);
+    return new Map(filas.map((f) => [String(f.ot), Number(f.precio) || 0]));
+  } catch {
+    return new Map();
+  }
+}
+
 const enTandas = async (xs, n, fn) => {
   const out = [];
   for (let i = 0; i < xs.length; i += n) out.push(...(await fn(xs.slice(i, i + n))));
