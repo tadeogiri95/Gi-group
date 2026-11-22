@@ -95,7 +95,7 @@ test("/api/finanzas/ot-clientes — solo el Dueño; materiales solo de las OT si
   const d = await res.json();
   const hotel = d.clientes.find((c) => c.clave === "c1");
   assert.deepEqual(hotel.ots.find((o) => o.ot === "7002"), {
-    proyecto_id: 102, ot: "7002", obra: "Habitaciones", descripcion: "", estado: "", fecha: "2026-10-05", valor: 1000, estimado: true, materiales: 300, sin_precio_materiales: 0,
+    proyecto_id: 102, ot: "7002", obra: "Habitaciones", descripcion: "", estado: "", entregada: false, entrega: "", fecha: "2026-10-05", valor: 1000, estimado: true, materiales: 300, sin_precio_materiales: 0,
   });
   assert.equal(pedidos.length, 1);
   assert.match(pedidos[0], /ot=in\.\("7002"\)/, "solo la OT sin presupuesto");

@@ -13,9 +13,10 @@ import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { cuentasDeudores } from "../../../lib/finanzasClientes";
 import { cuentasPorOt, factorDePct } from "../../../lib/finanzasOtClientes";
 import { configMateriales } from "../../../lib/finanzasPctMateriales";
-import { materialesDeOts, leerPreciosOt } from "../../../lib/finanzasMaterialesOt";
+import { materialesDeOts, leerEntregasOt, leerPreciosOt } from "../../../lib/finanzasMaterialesOt";
+import { medioDePago } from "../../../lib/finanzasTipos";
 
-const COLUMNAS = "id,fecha,tipo,cliente_id,entidad,proyecto_id,total_ars,cuenta_debe,cuenta_haber,descripcion,anulada_at";
+const COLUMNAS = "id,fecha,tipo,cliente_id,entidad,proyecto_id,total_ars,cuenta_debe,cuenta_haber,descripcion,origen,anulada_at";
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data || []);
 
 export async function GET(request) {
@@ -23,13 +24,15 @@ export async function GET(request) {
   if (response) return response;
   const e = sesion.empresa_id;
   try {
-    const [cuentas, clientes, proyectos, precios] = await Promise.all([
+    const [cuentas, clientes, proyectos, precios, entregas, tesoreria] = await Promise.all([
       leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre`),
       leer(sesion, `fin_clientes?empresa_id=eq.${e}&select=id,nombre,alias,activo,unido_a&order=id.asc`, 10000),
       // Con el cliente unido a la OT (184); sin la migración, solo el nombre
       leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,cliente_id,obra,descripcion,estado,created_at&order=id.desc`, 20000)
         .catch(() => leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,obra,descripcion,estado,created_at&order=id.desc`, 20000)),
       leerPreciosOt(sesion, e),
+      leerEntregasOt(sesion, e),
+      leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda`).catch(() => []),
     ]);
     const cuentasDeu = cuentasDeudores(cuentas);
     const deu = [...cuentasDeu];
@@ -39,7 +42,9 @@ export async function GET(request) {
     const sinPresupuesto = proyectos.filter((p) => !(precios.get(String(p.ot)) > 0) && (String(p.cliente || "").trim() || p.cliente_id));
     const [materiales, config] = await Promise.all([materialesDeOts(sesion, sinPresupuesto), configMateriales(e)]);
     const factor = factorDePct(config.materiales_pct);
-    const clientesOt = cuentasPorOt({ proyectos, precios, materiales, ops, cuentasDeu, clientes, factor });
+    const clientesOt = cuentasPorOt({
+      proyectos, precios, materiales, ops, cuentasDeu, clientes, factor, entregas, medioDe: (op) => medioDePago(op, { tesoreria, cuentas }),
+    });
     return NextResponse.json({ clientes: clientesOt, sin_deudores: !deu.length, materiales_pct: Math.round(factor * 1000) / 10 });
   } catch (err) {
     return errorFinanzas(err, "ot-clientes GET");

@@ -8,6 +8,8 @@
 // "⚠ Estimado"), lo cobrado y el saldo; los cobros sin OT restan del total.
 // Con IVA o sin IVA, todas las OT o desde una fecha, y la lista de OT
 // estimadas para salir a buscar el presupuesto.
+// 22/11: las OT se separan en pendientes de entrega y entregadas (terminadas
+// en el Plan), con su subtotal y cuánto del saldo es de cada grupo.
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { plata } from "../lib/finanzasOperaciones";
@@ -18,7 +20,38 @@ const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 
 const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 const MAX = 200;
 
+function FilaOt({ o, pct }) {
+  return (
+    <tr className={`border-t border-gypi-border align-top ${o.estimado ? "bg-gypi-amber/15" : ""}`}>
+      <td className="py-1">
+        <span className="font-semibold">{o.ot}</span> {o.obra}
+        <span className="block text-[12px] text-gypi-dim">{[fechaCorta(o.fecha), o.descripcion].filter(Boolean).join(" · ")}</span>
+        {o.entregada && o.entrega && <span className="block text-[12px] text-gypi-dim">Entregada el {fechaCorta(o.entrega)}</span>}
+        {o.estimado && <span className="block text-[12px] font-semibold text-gypi-amber-ink">⚠ Estimado: falta el presupuesto (materiales {plata(o.materiales, "ARS")} ÷ {textoPctEstimado(pct)}{o.sin_precio_materiales ? `; ${o.sin_precio_materiales} artículos sin precio` : ""})</span>}
+        {o.sin_valor && <span className="block text-[12px] text-gypi-red">Sin presupuesto ni materiales con precio</span>}
+      </td>
+      <td className="py-1 text-right font-mono">{plata(o.valor, "ARS")}</td>
+      <td className="py-1 text-right font-mono">{o.cobrado ? plata(o.cobrado, "ARS") : ""}</td>
+      <td className="py-1 text-right font-mono font-semibold">{plata(o.saldo, "ARS")}</td>
+    </tr>
+  );
+}
+
+/** Título de cada grupo (22/11): entregadas y pendientes de entrega, con su subtotal. */
+function GrupoOt({ titulo, g }) {
+  return (
+    <tr className="border-t-2 border-gypi-border bg-gypi-surf-lo">
+      <td className="py-1 font-semibold">{titulo} ({g.n})</td>
+      <td className="py-1 text-right font-mono font-semibold">{plata(g.valor, "ARS")}</td>
+      <td className="py-1 text-right font-mono font-semibold">{g.cobrado ? plata(g.cobrado, "ARS") : ""}</td>
+      <td className="py-1 text-right font-mono font-semibold">{plata(g.valor - g.cobrado, "ARS")}</td>
+    </tr>
+  );
+}
+
 function TablaOt({ r, pct }) {
+  const entregadas = r.ots.filter((o) => o.entregada);
+  const pendientes = r.ots.filter((o) => !o.entregada);
   return (
     <table className="w-full border-collapse text-[13px] mt-1" aria-label="OT del cliente">
       <thead>
@@ -30,19 +63,10 @@ function TablaOt({ r, pct }) {
         </tr>
       </thead>
       <tbody>
-        {r.ots.map((o) => (
-          <tr key={o.proyecto_id} className={`border-t border-gypi-border align-top ${o.estimado ? "bg-gypi-amber/15" : ""}`}>
-            <td className="py-1">
-              <span className="font-semibold">{o.ot}</span> {o.obra}
-              <span className="block text-[12px] text-gypi-dim">{[fechaCorta(o.fecha), o.descripcion].filter(Boolean).join(" · ")}</span>
-              {o.estimado && <span className="block text-[12px] font-semibold text-gypi-amber-ink">⚠ Estimado: falta el presupuesto (materiales {plata(o.materiales, "ARS")} ÷ {textoPctEstimado(pct)}{o.sin_precio_materiales ? `; ${o.sin_precio_materiales} artículos sin precio` : ""})</span>}
-              {o.sin_valor && <span className="block text-[12px] text-gypi-red">Sin presupuesto ni materiales con precio</span>}
-            </td>
-            <td className="py-1 text-right font-mono">{plata(o.valor, "ARS")}</td>
-            <td className="py-1 text-right font-mono">{o.cobrado ? plata(o.cobrado, "ARS") : ""}</td>
-            <td className="py-1 text-right font-mono font-semibold">{plata(o.saldo, "ARS")}</td>
-          </tr>
-        ))}
+        {pendientes.length > 0 && <GrupoOt titulo="Pendientes de entrega" g={r.pendientes} />}
+        {pendientes.map((o) => <FilaOt key={o.proyecto_id} o={o} pct={pct} />)}
+        {entregadas.length > 0 && <GrupoOt titulo="Entregadas" g={r.entregadas} />}
+        {entregadas.map((o) => <FilaOt key={o.proyecto_id} o={o} pct={pct} />)}
         {r.sin_ot > 0 && (
           <tr className="border-t border-gypi-border">
             <td className="py-1">Cobros sin OT</td>
@@ -54,6 +78,13 @@ function TablaOt({ r, pct }) {
       </tbody>
     </table>
   );
+}
+
+/** "De eso, $X es de OT entregadas y $Y de OT pendientes de entrega" (22/11). */
+export function textoReparto(r) {
+  if (!r?.entregadas || !r?.pendientes) return "";
+  const partes = [`${plata(r.entregadas.saldo, "ARS")} de OT entregadas`, `${plata(r.pendientes.saldo, "ARS")} de OT pendientes de entrega`];
+  return `De eso: ${partes.join(" y ")}${r.a_favor > 0.009 ? `; y ${plata(r.a_favor, "ARS")} cobrados de más` : ""}.`;
 }
 
 /**
@@ -84,6 +115,7 @@ export function ComposicionOt({ clave }) {
         <p className="m-0">Según sus OT falta cobrar <b>{plata(r.saldo, "ARS")}</b>{conIva ? " (con IVA)" : " (sin IVA)"}</p>
         <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={conIva} onChange={(e) => setConIva(e.target.checked)} /> Con IVA (21 %)</label>
       </div>
+      <p className="m-0 text-[13px]">{textoReparto(r)}</p>
       <p className="m-0 text-[12px] text-gypi-dim">
         {r.ots.length} OT · Valor {plata(r.valor, "ARS")} · Cobrado {plata(r.cobrado, "ARS")}{r.estimadas ? ` · ⚠ ${r.estimadas} estimadas (sin presupuesto: materiales ÷ ${textoPctEstimado(d.materiales_pct)})` : ""}
       </p>
