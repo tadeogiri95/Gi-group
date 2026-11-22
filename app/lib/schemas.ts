@@ -355,7 +355,8 @@ export const pasoPiezaBody = z.discriminatedUnion("accion", [
 ]);
 
 // ── /api/stock/movimientos (107): retiros, ingresos, ajustes y devoluciones ──
-export const MAX_RENGLONES_MOVIMIENTO = 50;
+// 22/11: una tanda entera de un día (carga por tanda)
+export const MAX_RENGLONES_MOVIMIENTO = 200;
 const skuMovimiento = z.string().trim().min(1).max(60).regex(/^[\w.-]+$/, "Código de artículo inválido");
 const fechaMovimiento = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "La fecha no es válida").nullable().optional().transform((v) => v || null);
 const cantidadMovimiento = z.number().finite().refine((n) => n !== 0 && Math.abs(n) < 1e10, { message: "Cantidad inválida" });
@@ -390,17 +391,24 @@ export const movimientoStockBody = z.discriminatedUnion("accion", [
       precio_unitario: z.number().finite().min(0).max(1e11).nullable().optional(),
     }).strict(),
   }).strict(),
-  // 11/11 (parte 5): varios retiros o devoluciones juntos, cada uno con su OT
+  // 11/11 (parte 5): varios retiros o devoluciones juntos, cada uno con su OT.
+  // 22/11 (carga por tanda): también ingresos, cada renglón con su proveedor,
+  // comprobante y precio; el mismo artículo puede ir en más de un renglón.
   z.object({
     accion: z.literal("registrar_varios"),
-    tipo: z.enum(["consumo", "devolucion"]),
+    tipo: z.enum(["consumo", "devolucion", "ingreso"]),
     renglones: z.array(z.object({
       sku: skuMovimiento,
       cantidad: cantidadMovimiento.refine((n) => n > 0, { message: "La cantidad tiene que ser mayor a cero" }),
       ot: otSuelto.nullable().optional().transform((v) => v || null),
+      proveedor: textoSuelto(120),
+      comprobante: textoSuelto(60),
+      precio_unitario: z.number().finite().min(0).max(1e11).nullable().optional().transform((v) => v ?? null),
     }).strict()).min(1, "Agregá al menos un artículo").max(MAX_RENGLONES_MOVIMIENTO, `Son muchos: cargá hasta ${MAX_RENGLONES_MOVIMIENTO} por vez`),
     notas: textoSuelto(300),
     fecha: fechaMovimiento,
+    // Cargar igual los ingresos cuyo comprobante ya entró
+    forzar: z.boolean().optional(),
   }).strict(),
 ]);
 
