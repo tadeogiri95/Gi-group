@@ -34,7 +34,7 @@ const CLI = {
 };
 
 test("cliente — cada OT con su precio (con o sin IVA), los pagos y el saldo renglón por renglón; la OT sin precio va aparte", () => {
-  const s = estadoCliente(CLI, { conIva: false, hoy: HOY });
+  const s = estadoCliente(CLI, { hoy: HOY });
   assert.deepEqual(s.movimientos.map((m) => [m.fecha, m.concepto, m.cargo, m.abono, m.saldo]), [
     ["2026-08-05", "OT 7795", 1000, 0, 1000],
     ["2026-08-12", "Pago recibido", 0, 600, 400],
@@ -47,12 +47,20 @@ test("cliente — cada OT con su precio (con o sin IVA), los pagos y el saldo re
   assert.deepEqual(s.a_confirmar.map((o) => o.concepto), ["OT 7797"], "sin precio: no suma, va a confirmar");
   // Pendiente: la 7795 tiene 400 y el pago suelto la cancela primero; sobran 300 para la 7796
   assert.deepEqual(s.pendientes.map((p) => [p.concepto, p.falta, p.dias]), [["OT 7796 · Edificio Norte · Placares", 200, 79]]);
-  const iva = estadoCliente(CLI, { conIva: true, hoy: HOY });
-  assert.deepEqual([iva.cargos, iva.saldo], [1815, 515]);
+  assert.equal(s.textos.cargos, "Total de OT (sin IVA)");
+  // 201: solo la OT con "Lleva IVA" va × 1,21 y lo dice en el detalle
+  const unaConIva = { ...CLI, ots: CLI.ots.map((o) => (o.ot === "7795" ? { ...o, lleva_iva: true } : o)) };
+  const iva = estadoCliente(unaConIva, { hoy: HOY });
+  assert.deepEqual([iva.cargos, iva.saldo], [1710, 410]);
+  assert.equal(iva.movimientos[0].detalle, "Edificio Norte · Cocina · con IVA");
+  assert.equal(iva.movimientos[2].detalle, "Edificio Norte · Placares");
+  assert.equal(iva.textos.cargos, "Total de OT");
+  const todas = estadoCliente({ ...CLI, ots: CLI.ots.map((o) => ({ ...o, lleva_iva: true })) }, { hoy: HOY });
+  assert.deepEqual([todas.cargos, todas.textos.cargos], [1815, "Total de OT (con IVA)"]);
 });
 
 test("cliente — con fechas: saldo anterior, solo los movimientos del período y corte en hasta", () => {
-  const s = estadoCliente(CLI, { conIva: false, desde: "2026-09-01", hasta: "2026-09-30", hoy: HOY });
+  const s = estadoCliente(CLI, { desde: "2026-09-01", hasta: "2026-09-30", hoy: HOY });
   assert.equal(s.anterior, 400);
   assert.deepEqual(s.movimientos.map((m) => m.saldo), [900]);
   assert.equal(s.saldo, 900);
@@ -105,7 +113,7 @@ test("armarEstadoCuenta — junta lo que trae la API", () => {
   const d = armarEstadoCuenta({ empresa: { nombre: "X" }, cliente: CLI, proveedor: { nombre: "P", cuit: "", movimientos: MOVS } }, { hoy: HOY });
   assert.equal(d.nombre, "Constructora Ejemplo");
   assert.equal(d.cuit, "30-11111111-1");
-  assert.equal(d.cliente.saldo, 515);
+  assert.equal(d.cliente.saldo, 200, "sin IVA salvo las OT marcadas (201)");
   assert.equal(d.proveedor.saldo, 1680);
 });
 
@@ -162,11 +170,11 @@ test("botón — abre la ventanita con todo el historial por defecto, fechas a e
   assert.equal(screen.queryByLabelText("Desde"), null);
   fireEvent.click(screen.getByText("Elegir fechas"));
   assert.ok(screen.getByLabelText("Desde"));
-  assert.ok(screen.getByLabelText(/con IVA/));
+  assert.ok(screen.getByText(/Las OT van sin IVA, salvo/));
   cleanup();
   render(<BotonEstadoCuenta proveedor="p5" nombre="Maderas" />);
   fireEvent.click(screen.getByRole("button", { name: /Estado de cuenta en PDF/ }));
-  assert.equal(screen.queryByLabelText(/con IVA/), null);
+  assert.equal(screen.queryByText(/Las OT van sin IVA, salvo/), null);
   cleanup();
   const { container } = render(<BotonEstadoCuenta />);
   assert.equal(container.innerHTML, "");
