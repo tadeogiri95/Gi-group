@@ -1,22 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import Image from "next/image";
 import { sb, sbGetAll, apiFetch } from "./lib/supabase";
-import { Tag, Chip, Button, FilaDeslizable } from "./components/ui";
+import { Chip, Button, FilaDeslizable } from "./components/ui";
 import { useToast } from "./components/ui/Toast";
-import FotoViewer from "./components/FotoViewer";
 import Paywall from "./components/Paywall";
 import BillingScreen from "./components/BillingScreen";
 import { hoyArg, ahoraArg } from "./lib/dates";
 import { duracionMinutos } from "./lib/calc";
 import { exportCSV, exportImagen } from "./lib/exportarReporte";
 import Stat from "./components/ui/Stat";
-import Indicadores from "./components/Indicadores";
-import ReporteDiaTab from "./components/ReporteDiaTab";
 import InformeProduccionTab from "./components/InformeProduccionTab";
 import CostoOtTab from "./components/CostoOtTab";
-import LeadTimeTab from "./components/LeadTimeTab";
 import MinutasReporteTab from "./components/MinutasReporteTab";
-import { useCostoHora } from "./hooks/useCostoHora";
 
 /* ═══════════════════════════════════════════════════════
    REPORTES & CUMPLIMIENTO HORARIO
@@ -242,118 +236,6 @@ function ReporteProduccionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId 
   );
 }
 
-/* ─── Tab de Reportes de Obra ─── */
-function ReportesObraTab({ empresaId }) {
-  const [reportesObra, setReportesObra] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [expandedReport, setExpandedReport] = useState(null);
-  const [fotoViewer, setFotoViewer] = useState(null);
-  const [fechaFiltro, setFechaFiltro] = useState(() => hoyArg());
-
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try { const data = await sb.get(`reportes_obra?empresa_id=eq.${empresaId}&fecha=eq.${fechaFiltro}&order=created_at.desc`); setReportesObra(data || []); }
-      catch (e) { console.error(e); }
-      setLoading(false);
-    })();
-  }, [fechaFiltro]);
-
-  const cambiarFecha = (dir) => { const d = new Date(fechaFiltro + "T12:00:00"); d.setDate(d.getDate() + dir); setFechaFiltro(d.toISOString().slice(0, 10)); };
-
-  return (
-    <>
-      <div className="flex items-center justify-between mb-3.5 bg-gypi-surface rounded-[14px] py-2.5 px-4 border border-gypi-border">
-        <button onClick={() => cambiarFecha(-1)} aria-label="Día anterior" className="min-w-[48px] min-h-[48px] flex items-center justify-center bg-transparent border-none text-gypi-text cursor-pointer text-xl">←</button>
-        <span className="font-heading text-sm font-bold text-gypi-text">
-          {new Date(fechaFiltro + "T12:00:00").toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "long", year: "numeric" })}
-        </span>
-        <button onClick={() => cambiarFecha(1)} aria-label="Día siguiente" className="min-w-[48px] min-h-[48px] flex items-center justify-center bg-transparent border-none text-gypi-text cursor-pointer text-xl">→</button>
-      </div>
-
-      {loading ? (
-        <Puntos />
-      ) : reportesObra.length === 0 ? (
-        <div className="bg-gypi-surface rounded-2xl p-8 text-center border border-gypi-border">
-          <div className="text-[32px] mb-2">🏗️</div>
-          <div className="text-sm font-bold text-gypi-text">Sin reportes en esta fecha</div>
-          <div className="text-xs text-gypi-dim mt-1.5">Los reportes de trabajo en campo aparecerán acá.</div>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <div className="self-start mb-1"><Tag color="var(--color-cyan)">{reportesObra.length} reportes</Tag></div>
-          {reportesObra.map(r => {
-            const isExpanded = expandedReport === r.id;
-            const tieneFotos = r.fotos_urls && r.fotos_urls.length > 0;
-            return (
-              <div key={r.id} className={`bg-gypi-surface rounded-xl overflow-hidden transition-all border ${isExpanded ? "border-gypi-cyan/25" : "border-gypi-border"}`}>
-                <button onClick={() => setExpandedReport(isExpanded ? null : r.id)} aria-expanded={isExpanded} className="w-full flex items-center gap-2.5 p-3 cursor-pointer bg-transparent border-none text-left font-body">
-                  <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-base shrink-0 bg-gypi-cyan/10" aria-hidden="true">🏗️</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[13px] font-bold text-gypi-text">{r.nombre}</span>
-                      {tieneFotos && <Tag color="var(--color-cyan)">📷 {r.fotos_urls.length}</Tag>}
-                      {r.faltantes?.length > 0 && <Tag color="var(--color-red)">⚠ {r.faltantes.length}</Tag>}
-                    </div>
-                    <div className="text-xs text-gypi-dim mt-0.5 truncate">{r.progreso?.slice(0, 60)}{r.progreso?.length > 60 ? "..." : ""}</div>
-                  </div>
-                  <div className="flex flex-col items-end gap-0.5">
-                    <span className="text-xs text-gypi-dim">{new Date(r.created_at).toLocaleTimeString("es-AR", { hour: '2-digit', minute: '2-digit' })}</span>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className={`text-gypi-mute transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}><polyline points="6 9 12 15 18 9" /></svg>
-                  </div>
-                </button>
-                {isExpanded && (
-                  <div className="px-3 pb-3.5 border-t border-gypi-border">
-                    <div className="py-3 pb-2">
-                      <div className="text-xs font-bold text-gypi-green-ink uppercase tracking-[0.06em] mb-1.5">✅ Progreso</div>
-                      <div className="text-[13px] text-gypi-text leading-relaxed">{r.progreso || "—"}</div>
-                    </div>
-                    {r.faltantes?.length > 0 && (
-                      <div className="py-2 px-2.5 rounded-[10px] mb-2 bg-gypi-red/[0.06] border border-gypi-red/10">
-                        <div className="text-xs font-bold uppercase tracking-[0.06em] mb-1.5 text-gypi-red-ink">🚫 Faltantes</div>
-                        <div className="flex flex-wrap gap-1">
-                          {r.faltantes.map((f, i) => <span key={i} className="py-1 px-2.5 rounded-lg text-xs font-semibold bg-gypi-red/10 text-gypi-red-ink">{f}</span>)}
-                        </div>
-                      </div>
-                    )}
-                    {r.desvios?.length > 0 && (
-                      <div className="py-2 px-2.5 rounded-[10px] mb-2 bg-gypi-amber/[0.06] border border-gypi-amber/10">
-                        <div className="text-xs font-bold uppercase tracking-[0.06em] mb-1.5 text-gypi-amber-ink">⚠️ Desvíos</div>
-                        <div className="flex flex-wrap gap-1">
-                          {r.desvios.map((d, i) => <span key={i} className="py-1 px-2.5 rounded-lg text-xs font-semibold bg-gypi-amber/10 text-gypi-amber-ink">{d}</span>)}
-                        </div>
-                      </div>
-                    )}
-                    {tieneFotos && (
-                      <div className="py-2">
-                        <div className="text-xs font-bold uppercase tracking-[0.06em] mb-2 text-gypi-cyan-ink">📷 Fotos ({r.fotos_urls.length})</div>
-                        <div className={`gap-2 grid ${r.fotos_urls.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
-                          {r.fotos_urls.map((url, i) => (
-                            <button key={i} onClick={() => setFotoViewer({ fotos: r.fotos_urls, index: i })} aria-label={`Ampliar foto ${i + 1}`} className={`cursor-pointer rounded-[10px] overflow-hidden bg-gypi-surface border border-gypi-border relative p-0 ${r.fotos_urls.length === 1 ? "aspect-video" : "aspect-square"}`}>
-                              <Image src={url} alt={`Foto ${i + 1}`} fill sizes="(max-width: 768px) 50vw, 300px" className="object-cover" />
-                              <div className="absolute bottom-1.5 right-1.5 py-[3px] px-2 rounded-md bg-black/60 text-white text-xs font-semibold" aria-hidden="true">🔍 Ampliar</div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {!tieneFotos && r.fotos > 0 && (
-                      <div className="py-2 px-2.5 rounded-lg text-[12px] text-gypi-dim bg-gypi-surf-hi">
-                        📷 El instalador indicó {r.fotos} foto{r.fotos > 1 ? "s" : ""} pero no se subieron correctamente
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-      {fotoViewer && <FotoViewer fotos={fotoViewer.fotos} index={fotoViewer.index} onClose={() => setFotoViewer(null)} onNav={(i) => setFotoViewer(prev => ({ ...prev, index: i }))} />}
-    </>
-  );
-}
-
 /* ─── Tab de Liquidación de sueldos ─── */
 function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId, empresa }) {
   const [datos, setDatos] = useState([]);
@@ -472,12 +354,14 @@ function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 // grupo: "personal" (en Equipo: Asistencia, Descargar, Liquidación) o
-// "produccion" (en Proyectos: Del día, Producción, Indicadores, Lead time, Obra).
+// "produccion" (en Proyectos: Producción, Costo por OT, Minutas). Del día,
+// Indicadores, Lead time y Obra salieron el 22/11 (Tadeo): el seguimiento de
+// cada OT por etapa está en OT → 🗂️ Etapas y los reportes de obra en
+// Instalaciones; el resumen del día sigue llegando por email.
 // Sin grupo se ven todas (revisión de la interfaz, 2026-10).
 export default function ReportesScreen({ grupo = null }) {
-  const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, defectos, usuario, empresa } = useAuth();
+  const { divisiones: divisionesCtx, usuario, empresa } = useAuth();
   const ver = (g) => !grupo || grupo === g;
-  const conDia = tieneModulo(empresa, "actividad");
   // Informe de producción (146): gerencia, supervisores y administración, con el plan de producción
   const conInforme = tieneModulo(empresa, "proyectos") && (usuario?.rol === "gerencial" || usuario?.rol === "administrativo");
   // Reportes de las minutas de Buenos Días (parte M5): solo gerencia
@@ -485,10 +369,9 @@ export default function ReportesScreen({ grupo = null }) {
   // Costo por OT (costo de OT, parte F): Dueño y Supervisor
   const conCostoOt = tieneModulo(empresa, "proyectos") && comoDueno(usuario);
   const empresaId = usuario?.empresa_id;
-  // Costo de la hora: solo el dueño (OP parte 8)
-  const costoHora = useCostoHora(comoDueno(usuario));
   const DIVISIONES = getDivisionesConTodas(divisionesCtx);
-  const [tab, setTab] = useState(grupo === "produccion" ? (conDia ? "dia" : "indicadores") : "cumplimiento");
+  const primeroProduccion = conInforme ? "informe" : conRegistroTareas(empresa) ? "produccion" : conCostoOt ? "costo" : conMinutas ? "minutas" : "ninguno";
+  const [tab, setTab] = useState(grupo === "produccion" ? primeroProduccion : "cumplimiento");
   const [periodo, setPeriodo] = useState("semana");
   const [weekOffset, setWeekOffset] = useState(0);
   const [mesYear, setMesYear] = useState(() => Number(hoyArg().slice(0, 4)));
@@ -625,20 +508,16 @@ export default function ReportesScreen({ grupo = null }) {
       <FilaDeslizable role="group" aria-label="Reportes" activa={tab} className="gap-1.5 mb-3.5 pb-0.5">
         {/* Solo lo que la empresa tiene y el rol puede usar (R5, U-16) */}
         {ver("personal") && <Chip active={tab === "cumplimiento"} onClick={() => setTab("cumplimiento")} color={MARCA}>📊 Asistencia</Chip>}
-        {ver("produccion") && conDia && <Chip active={tab === "dia"} onClick={() => setTab("dia")} color={MARCA}>🗓️ Del día</Chip>}
         {ver("produccion") && conInforme && <Chip active={tab === "informe"} onClick={() => setTab("informe")} color={MARCA}>🏭 Producción</Chip>}
         {ver("produccion") && conRegistroTareas(empresa) && <Chip active={tab === "produccion"} onClick={() => setTab("produccion")} color={MARCA}>⚙️ Producción</Chip>}
-        {ver("produccion") && tieneModulo(empresa, "actividad") && <Chip active={tab === "indicadores"} onClick={() => setTab("indicadores")} color={MARCA}>📈 Indicadores</Chip>}
-        {ver("produccion") && tieneModulo(empresa, "actividad") && <Chip active={tab === "leadtime"} onClick={() => setTab("leadtime")} color={MARCA}>⏱️ Lead time</Chip>}
         {ver("produccion") && conCostoOt && <Chip active={tab === "costo"} onClick={() => setTab("costo")} color={MARCA}>💲 Costo por OT</Chip>}
         {ver("produccion") && conMinutas && <Chip active={tab === "minutas"} onClick={() => setTab("minutas")} color={MARCA}>📝 Minutas</Chip>}
-        {ver("produccion") && tieneModulo(empresa, "obra") && <Chip active={tab === "obra"} onClick={() => setTab("obra")} color={MARCA}>🏗️ Obra</Chip>}
         {ver("personal") && <Chip active={tab === "reportes"} onClick={() => setTab("reportes")} color={MARCA}>📥 Descargar</Chip>}
         {ver("personal") && <Chip active={tab === "liquidacion"} onClick={() => setTab("liquidacion")} color={MARCA}>💰 Liquidación</Chip>}
       </FilaDeslizable>
 
       {/* Periodo (el reporte del día, el informe de producción y el de minutas tienen el suyo) */}
-      {tab !== "dia" && tab !== "informe" && tab !== "minutas" && <>
+      {tab !== "ninguno" && tab !== "informe" && tab !== "minutas" && <>
       <div className="flex gap-1.5 mb-2.5">
         <Chip active={periodo === "semana"} onClick={() => setPeriodo("semana")} color={MARCA}>Por semana</Chip>
         <Chip active={periodo === "mes"} onClick={() => setPeriodo("mes")} color={MARCA}>Por mes</Chip>
@@ -659,8 +538,10 @@ export default function ReportesScreen({ grupo = null }) {
       </FilaDeslizable>
       </>}
 
-      {tab === "dia" ? (
-        <ReporteDiaTab />
+      {tab === "ninguno" ? (
+        <div className="bg-gypi-surface rounded-2xl p-6 text-center border border-gypi-border text-[13px] text-gypi-dim">
+          En qué etapa está cada OT y cuánto lleva: Producción → OT → 🗂️ Etapas.
+        </div>
       ) : tab === "informe" ? (
         <InformeProduccionTab empresa={empresa} />
       ) : tab === "minutas" ? (
@@ -669,15 +550,8 @@ export default function ReportesScreen({ grupo = null }) {
         <Puntos />
       ) : tab === "produccion" ? (
         <ReporteProduccionTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId} />
-      ) : tab === "indicadores" ? (
-        <Indicadores fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId}
-          etapas={etapasCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} conTareas={conRegistroTareas(empresa)} />
-      ) : tab === "leadtime" ? (
-        <LeadTimeTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId} divisiones={divisionesCtx || []} division={division} />
       ) : tab === "costo" ? (
         <CostoOtTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} divisiones={divisionesCtx || []} division={division} />
-      ) : tab === "obra" ? (
-        <ReportesObraTab empresaId={empresaId} />
       ) : tab === "liquidacion" ? (
         <ReporteLiquidacionTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId} empresa={empresa} />
       ) : tab === "cumplimiento" ? (
