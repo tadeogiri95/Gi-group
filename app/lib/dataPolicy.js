@@ -280,6 +280,10 @@ export function validarPatch(tabla, body, sesion, { comoDueno = sesion?.rol === 
     const f = body.instalacion_desde;
     if (f !== undefined && f !== null && !(typeof f === "string" && /^\d{4}-\d{2}-\d{2}$/.test(f) && !Number.isNaN(Date.parse(`${f}T00:00:00Z`)))) return { status: 400, error: "Fecha de instalación inválida" };
   }
+  // La OT lleva IVA (201): true o false
+  if (tabla === "proyectos" && body && body.lleva_iva !== undefined && typeof body.lleva_iva !== "boolean") {
+    return { status: 400, error: "\"Lleva IVA\" inválido" };
+  }
   // Clase de complejidad elegida a mano (159): A, B, C, o null (automática)
   if (tabla === "proyectos" && body && body.clase_complejidad !== undefined && body.clase_complejidad !== null && !["A", "B", "C"].includes(body.clase_complejidad)) {
     return { status: 400, error: "Clase inválida" };

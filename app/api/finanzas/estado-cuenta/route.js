@@ -34,7 +34,9 @@ async function datosCliente(sesion, clave) {
   const [cuentas, clientes, proyectos, precios, entregas, tesoreria] = await Promise.all([
     leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre`),
     leer(sesion, `fin_clientes?empresa_id=eq.${e}&select=id,nombre,cuit,alias,activo,unido_a&order=id.asc`, 10000),
-    leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,cliente_id,obra,descripcion,estado,created_at&order=id.desc`, 20000)
+    // Si lleva IVA (201); sin la migración, sin esa columna
+    leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,cliente_id,obra,descripcion,estado,created_at,lleva_iva&order=id.desc`, 20000)
+      .catch(() => leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,cliente_id,obra,descripcion,estado,created_at&order=id.desc`, 20000))
       .catch(() => leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,obra,descripcion,estado,created_at&order=id.desc`, 20000)),
     leerPreciosOt(sesion, e),
     leerEntregasOt(sesion, e),
@@ -55,7 +57,7 @@ async function datosCliente(sesion, clave) {
     cuit: texto(fila?.cuit, 20),
     ots: (c?.ots || []).map((o) => ({
       proyecto_id: o.proyecto_id, ot: texto(o.ot, 40), obra: texto(o.obra, 120), descripcion: texto(o.descripcion, 160), fecha: o.fecha || "",
-      valor: o.estimado ? 0 : o.valor, sin_valor: Boolean(o.estimado || o.sin_valor), entregada: Boolean(o.entregada), entrega: o.entrega || "",
+      valor: o.estimado ? 0 : o.valor, sin_valor: Boolean(o.estimado || o.sin_valor), lleva_iva: Boolean(o.lleva_iva), entregada: Boolean(o.entregada), entrega: o.entrega || "",
     })),
     cobros: (c?.cobros || []).map((x) => ({ fecha: x.fecha, importe: x.importe, proyecto_id: x.proyecto_id || null, medio: texto(x.medio, 60) })),
   };

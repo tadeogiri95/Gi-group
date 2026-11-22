@@ -11,7 +11,9 @@
 //   - Cobros = todo lo que baja lo que nos debe (efectivo, transferencia,
 //     cheques, dólares, compensaciones, anticipos). Los que tienen OT van a
 //     esa OT; los demás quedan "sin OT" y restan del total del cliente.
-//   - Con IVA: el valor de las OT × 1,21 (los cobros ya son lo cobrado).
+//   - IVA por OT (201, 22/11): el PRECIO es sin IVA; la OT con la casilla
+//     "Lleva IVA (21 %)" vale × 1,21 (los cobros ya son lo cobrado). Antes
+//     era una casilla para todas las OT juntas.
 //   - Todas las OT, con un "desde" opcional que también recorta los cobros.
 //   - Entregada (22/11): la OT terminada en el Plan (TERMINADO = SI, estado
 //     "cerrado"), con el día de su entrega si Gypi la anotó en Finanzas. Los
@@ -35,6 +37,16 @@ export function factorDePct(pct) {
 /** "30 %" o "27,5 %": el % con que se valorizan las OT sin precio. */
 export const textoPctEstimado = (pct) => `${String(Math.round(factorDePct(pct) * 1000) / 10).replace(".", ",")} %`;
 export const IVA_OT = 0.21;
+export const AVISO_MIGRACION_201 = "Falta correr la migración 201 (OT con IVA) en Supabase. Mientras tanto todas las OT van sin IVA.";
+
+/** 1,21 si la OT lleva IVA (casilla de la 201), 1 si no. */
+export const factorIva = (o) => (o?.lleva_iva ? 1 + IVA_OT : 1);
+
+/** "Con IVA: $ 1.210.000 ($ 1.000.000 + IVA)" o "Sin IVA: $ 1.000.000". */
+export function textoIvaOt(precio, lleva) {
+  const $ = (n) => `$ ${Math.round(Number(n) || 0).toLocaleString("es-AR")}`;
+  return lleva ? `Con IVA: ${$(precio * (1 + IVA_OT))} (${$(precio)} + IVA)` : `Sin IVA: ${$(precio)}`;
+}
 
 const centavos = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -91,7 +103,7 @@ export function cuentasPorOt({ proyectos = [], precios = new Map(), materiales =
     const v = valorOt(precios.get(String(p.ot)), materiales.get(String(p.ot)), factor);
     const ot = {
       proyecto_id: Number(p.id), ot: String(p.ot), obra: p.obra || "", descripcion: p.descripcion || "", estado: p.estado || "",
-      fecha: fechaCargaOt(p) || "", ...v, entregada: p.estado === "cerrado",
+      fecha: fechaCargaOt(p) || "", ...v, lleva_iva: Boolean(p.lleva_iva), entregada: p.estado === "cerrado",
       entrega: p.estado === "cerrado" ? entregas.get(`p${p.id}`) || "" : "", materiales: centavos(materiales.get(String(p.ot))?.total),
       sin_precio_materiales: materiales.get(String(p.ot))?.sinPrecio || 0,
     };
@@ -117,11 +129,11 @@ export function cuentasPorOt({ proyectos = [], precios = new Map(), materiales =
 }
 
 /**
- * El resumen de un cliente con IVA o sin IVA y desde una fecha.
- * @returns {{ ots: object[], sin_ot: number, valor: number, cobrado: number, saldo: number, estimadas: number }}
+ * El resumen de un cliente desde una fecha. Cada OT con su IVA (201): valor
+ * = neto × 1,21 si lleva IVA; neto e iva quedan aparte para mostrarlos.
+ * @returns {{ ots: object[], sin_ot: number, valor: number, cobrado: number, saldo: number, estimadas: number, con_iva: number }}
  */
-export function resumirCliente(c, { conIva = false, desde = "" } = {}) {
-  const f = conIva ? 1 + IVA_OT : 1;
+export function resumirCliente(c, { desde = "" } = {}) {
   const ots = c.ots.filter((o) => !desde || !o.fecha || o.fecha >= desde);
   const ids = new Set(ots.map((o) => o.proyecto_id));
   const cobros = c.cobros.filter((x) => !desde || x.fecha >= desde);
@@ -132,14 +144,16 @@ export function resumirCliente(c, { conIva = false, desde = "" } = {}) {
     else sinOt += x.importe;
   }
   const filas = ots.map((o) => {
-    const valor = centavos(o.valor * f);
+    const neto = centavos(o.valor);
+    const valor = centavos(neto * factorIva(o));
     const cobrado = centavos(cobradoOt.get(o.proyecto_id) || 0);
-    return { ...o, valor, cobrado, saldo: centavos(valor - cobrado) };
+    return { ...o, neto, iva: centavos(valor - neto), valor, cobrado, saldo: centavos(valor - cobrado) };
   }).sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "") || b.ot.localeCompare(a.ot));
   const valor = centavos(filas.reduce((s, o) => s + o.valor, 0));
   const cobrado = centavos(cobros.reduce((s, x) => s + x.importe, 0));
   return {
     ots: filas, sin_ot: centavos(sinOt), valor, cobrado, saldo: centavos(valor - cobrado), estimadas: filas.filter((o) => o.estimado).length,
+    con_iva: filas.filter((o) => o.lleva_iva).length,
     ...repartoEntrega(filas, sinOt),
   };
 }

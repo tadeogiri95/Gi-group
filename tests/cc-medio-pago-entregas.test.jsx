@@ -80,7 +80,7 @@ const CLI = {
 };
 
 test("estado de cuenta del cliente — el medio en cada pago; entregadas con lo que deben y pendientes de entrega con su anticipo", () => {
-  const s = estadoCliente(CLI, { conIva: false, hoy: "2026-11-20" });
+  const s = estadoCliente(CLI, { hoy: "2026-11-20" });
   assert.equal(s.movimientos.find((m) => m.abono === 200).detalle, "Efectivo · OT 7795 · Edificio Norte · Cocina");
   assert.equal(s.movimientos.find((m) => m.abono === 700).detalle, "Transferencia · Galicia");
   // El pago suelto de 700 va primero a las entregadas más viejas: 7796 (500) y 7797 (200 de 300)
@@ -89,13 +89,13 @@ test("estado de cuenta del cliente — el medio en cada pago; entregadas con lo 
   assert.deepEqual([s.entrega.falta_entregadas, s.entrega.falta_por_entregar, s.entrega.a_favor], [100, 800, 0]);
   assert.equal(s.entrega.falta_entregadas + s.entrega.falta_por_entregar, s.saldo, "explica el saldo");
   // Al 30/09 la 7797 no existía y la 7796 ya estaba entregada; al 20/09, todavía no
-  const antes = estadoCliente(CLI, { conIva: false, hasta: "2026-09-20", hoy: "2026-11-20" });
+  const antes = estadoCliente(CLI, { hasta: "2026-09-20", hoy: "2026-11-20" });
   assert.deepEqual(antes.entrega.por_entregar.map((p) => p.concepto.slice(0, 7)), ["OT 7795", "OT 7796"]);
   assert.equal(antes.entrega.entregadas.length, 0);
 });
 
 test("la hoja — secciones de entregadas y pendientes de entrega, y el medio de los pagos al proveedor", () => {
-  const cliente = estadoCliente(CLI, { conIva: false, hoy: "2026-11-20" });
+  const cliente = estadoCliente(CLI, { hoy: "2026-11-20" });
   const proveedor = estadoProveedor([
     { op: { fecha: "2026-10-01", referencia: "0005-00012001" }, compra: 1000, pago: 0 },
     { op: { fecha: "2026-10-15", referencia: "OP 12" }, compra: 0, pago: 400, medio: "Cheque o e-cheq" },
