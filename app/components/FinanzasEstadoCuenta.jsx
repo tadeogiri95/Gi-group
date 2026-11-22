@@ -14,8 +14,8 @@ import { Chip, Modal } from "./ui";
  * Arma los datos de la hoja con lo que devuelve /api/finanzas/estado-cuenta.
  * @returns {Parameters<typeof descargarEstadoCuenta>[0]}
  */
-export function armarEstadoCuenta(d, { conIva = true, desde = "", hasta = "", hoy = hoyAr(), nombre = "" } = {}) {
-  const cliente = d.cliente ? estadoCliente(d.cliente, { conIva, desde, hasta, hoy }) : null;
+export function armarEstadoCuenta(d, { desde = "", hasta = "", hoy = hoyAr(), nombre = "" } = {}) {
+  const cliente = d.cliente ? estadoCliente(d.cliente, { desde, hasta, hoy }) : null;
   const proveedor = d.proveedor ? estadoProveedor(d.proveedor.movimientos, { desde, hasta, hoy }) : null;
   return {
     empresa: d.empresa || {},
@@ -41,7 +41,6 @@ function EstadoCuenta({ cliente, proveedor, nombre, onCerrar }) {
   const [fechas, setFechas] = useState(false);
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
-  const [conIva, setConIva] = useState(true);
   const [armando, setArmando] = useState(false);
   const [error, setError] = useState(null);
 
@@ -58,7 +57,7 @@ function EstadoCuenta({ cliente, proveedor, nombre, onCerrar }) {
       const res = await apiFetch(`/api/finanzas/estado-cuenta?${q}`);
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "No se pudo armar el estado de cuenta");
-      await descargarEstadoCuenta(armarEstadoCuenta(d, { conIva, desde: d0, hasta: h0, nombre }));
+      await descargarEstadoCuenta(armarEstadoCuenta(d, { desde: d0, hasta: h0, nombre }));
       onCerrar();
     } catch (e) {
       setError(e.message || "No se pudo armar el PDF");
@@ -85,7 +84,7 @@ function EstadoCuenta({ cliente, proveedor, nombre, onCerrar }) {
           </div>
         )}
         {cliente && (
-          <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={conIva} onChange={(e) => setConIva(e.target.checked)} /> Montos de las OT con IVA (21 %)</label>
+          <p className="m-0 text-[12px] text-gypi-dim">Las OT van sin IVA, salvo las que tienen tildado &quot;Lleva IVA (21 %)&quot; (en el detalle de la OT o en la Cuenta por OT).</p>
         )}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         <button type="button" className="g-btn g-btn-primary" disabled={armando} onClick={descargar}>{armando ? "Armando el PDF…" : "📥 Descargar PDF"}</button>

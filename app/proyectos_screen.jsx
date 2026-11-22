@@ -780,7 +780,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null, vistaIn
         <SueltosOt proyecto={sueltos} empresaId={empresaId} esGestion={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setSueltos(null)} />
       )}
       {detalle && (
-        <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} verCostos={comoDueno(usuario)} precio={verPrecios ? precios.get(String(detalle.ot)) : undefined}
+        <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} verCostos={comoDueno(usuario)} precio={verPrecios ? precios.get(String(detalle.ot)) : undefined} puedeVerPrecio={verPrecios}
           modoObjetivo={modoObjetivo} puedeCambiarSemana={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setDetalle(null)}
           pausas={pausas} usuarioNombre={usuario?.nombre || null} onPausaCambiada={leerPausas}
           onProyectoActualizado={(p) => setProyectos(prev => prev.map(x => x.id === p.id ? { ...x, ...p } : x))} />

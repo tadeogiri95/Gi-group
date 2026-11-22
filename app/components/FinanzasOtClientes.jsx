@@ -6,19 +6,34 @@
 // Cada OT del cliente con su valor (presupuesto, o materiales ÷ el % de
 // materiales de Configuración, 30 % por defecto, marcado
 // "⚠ Estimado"), lo cobrado y el saldo; los cobros sin OT restan del total.
-// Con IVA o sin IVA, todas las OT o desde una fecha, y la lista de OT
+// Cada OT con su casilla "Lleva IVA (21 %)" (201, 22/11; antes era una
+// casilla para todas), todas las OT o desde una fecha, y la lista de OT
 // estimadas para salir a buscar el presupuesto.
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { plata } from "../lib/finanzasOperaciones";
 import { resumirCliente, textoPctEstimado } from "../lib/finanzasOtClientes";
 import { Chip, Modal, Spinner } from "./ui";
+import IvaOt from "./IvaOt";
 
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
 const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 const MAX = 200;
 
-function TablaOt({ r, pct }) {
+/** Lo que el cliente debe con o sin IVA: "(sin IVA)", "(con IVA)" o "(2 OT con IVA)". */
+function textoIva(r) {
+  if (!r.con_iva) return " (sin IVA)";
+  if (r.con_iva === r.ots.length) return " (con IVA)";
+  return ` (${r.con_iva} OT con IVA, las demás sin IVA)`;
+}
+
+/** Marca en los datos leídos la casilla de IVA de una OT, para recalcular sin volver a leer. */
+const conIvaDe = (d, cambio) => d && ({
+  ...d,
+  clientes: d.clientes.map((c) => ({ ...c, ots: c.ots.map((o) => (o.proyecto_id === cambio.id ? { ...o, lleva_iva: cambio.lleva_iva } : o)) })),
+});
+
+function TablaOt({ r, pct, onIva }) {
   return (
     <table className="w-full border-collapse text-[13px] mt-1" aria-label="OT del cliente">
       <thead>
@@ -37,8 +52,12 @@ function TablaOt({ r, pct }) {
               <span className="block text-[12px] text-gypi-dim">{[fechaCorta(o.fecha), o.descripcion].filter(Boolean).join(" · ")}</span>
               {o.estimado && <span className="block text-[12px] font-semibold text-gypi-amber-ink">⚠ Estimado: falta el presupuesto (materiales {plata(o.materiales, "ARS")} ÷ {textoPctEstimado(pct)}{o.sin_precio_materiales ? `; ${o.sin_precio_materiales} artículos sin precio` : ""})</span>}
               {o.sin_valor && <span className="block text-[12px] text-gypi-red">Sin presupuesto ni materiales con precio</span>}
+              <IvaOt proyecto={{ id: o.proyecto_id, lleva_iva: o.lleva_iva }} compacto onGuardado={onIva} />
             </td>
-            <td className="py-1 text-right font-mono">{plata(o.valor, "ARS")}</td>
+            <td className="py-1 text-right font-mono">
+              {plata(o.valor, "ARS")}
+              {o.lleva_iva && o.iva > 0 && <span className="block text-[12px] text-gypi-dim">{plata(o.neto, "ARS")} + IVA</span>}
+            </td>
             <td className="py-1 text-right font-mono">{o.cobrado ? plata(o.cobrado, "ARS") : ""}</td>
             <td className="py-1 text-right font-mono font-semibold">{plata(o.saldo, "ARS")}</td>
           </tr>
@@ -58,12 +77,11 @@ function TablaOt({ r, pct }) {
 
 /**
  * En la ficha de un cliente: las OT que componen lo que falta cobrar (valor,
- * cobrado y saldo de cada una), con IVA o sin IVA.
+ * cobrado y saldo de cada una), cada OT con su IVA.
  */
 export function ComposicionOt({ clave }) {
   const [d, setD] = useState(null);
   const [error, setError] = useState(null);
-  const [conIva, setConIva] = useState(false);
   useEffect(() => {
     apiFetch("/api/finanzas/ot-clientes")
       .then(async (res) => {
@@ -74,20 +92,19 @@ export function ComposicionOt({ clave }) {
       .catch((e) => setError(e.message));
   }, []);
   const c = useMemo(() => (d?.clientes || []).find((x) => x.clave === clave) || null, [d, clave]);
-  const r = useMemo(() => (c ? resumirCliente(c, { conIva }) : null), [c, conIva]);
+  const r = useMemo(() => (c ? resumirCliente(c) : null), [c]);
   if (error) return <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>;
   if (!d) return <Spinner size={18} />;
   if (!r || !r.ots.length) return <p className="m-0 text-[13px] text-gypi-dim">Este cliente no tiene OT en el Plan de trabajo.</p>;
   return (
     <div className="flex flex-col gap-2" aria-label="OT que componen la deuda">
       <div className="flex flex-wrap items-center gap-3">
-        <p className="m-0">Según sus OT falta cobrar <b>{plata(r.saldo, "ARS")}</b>{conIva ? " (con IVA)" : " (sin IVA)"}</p>
-        <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={conIva} onChange={(e) => setConIva(e.target.checked)} /> Con IVA (21 %)</label>
+        <p className="m-0">Según sus OT falta cobrar <b>{plata(r.saldo, "ARS")}</b>{textoIva(r)}</p>
       </div>
       <p className="m-0 text-[12px] text-gypi-dim">
         {r.ots.length} OT · Valor {plata(r.valor, "ARS")} · Cobrado {plata(r.cobrado, "ARS")}{r.estimadas ? ` · ⚠ ${r.estimadas} estimadas (sin presupuesto: materiales ÷ ${textoPctEstimado(d.materiales_pct)})` : ""}
       </p>
-      <TablaOt r={r} pct={d.materiales_pct} />
+      <TablaOt r={r} pct={d.materiales_pct} onIva={(x) => setD((v) => conIvaDe(v, x))} />
     </div>
   );
 }
@@ -95,7 +112,6 @@ export function ComposicionOt({ clave }) {
 export default function FinanzasOtClientes({ onCerrar }) {
   const [d, setD] = useState(null);
   const [error, setError] = useState(null);
-  const [conIva, setConIva] = useState(false);
   const [desde, setDesde] = useState("");
   const [vista, setVista] = useState("clientes");
   const [buscar, setBuscar] = useState("");
@@ -111,30 +127,30 @@ export default function FinanzasOtClientes({ onCerrar }) {
   }, []);
 
   const resumen = useMemo(() => (d?.clientes || [])
-    .map((c) => ({ ...c, r: resumirCliente(c, { conIva, desde }) }))
+    .map((c) => ({ ...c, r: resumirCliente(c, { desde }) }))
     .filter((c) => c.r.ots.length)
-    .sort((a, b) => b.r.saldo - a.r.saldo), [d, conIva, desde]);
+    .sort((a, b) => b.r.saldo - a.r.saldo), [d, desde]);
   const estimadas = useMemo(() => resumen.flatMap((c) => c.r.ots.filter((o) => o.estimado || o.sin_valor).map((o) => ({ ...o, cliente: c.nombre }))), [resumen]);
   const b = normal(buscar);
   const lista = resumen.filter((c) => !b || normal(c.nombre).includes(b) || c.r.ots.some((o) => normal(o.ot).includes(b)));
   const total = resumen.reduce((s, c) => s + c.r.saldo, 0);
+  const otConIva = resumen.reduce((s, c) => s + c.r.con_iva, 0);
 
   return (
     <Modal open onClose={onCerrar} title="Cuenta por OT" maxWidth={1080}>
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
         <p className="m-0 text-[13px] text-gypi-dim">
-          Cada OT con su presupuesto (PRECIO del Plan, sin IVA). Si no tiene, va el costo de materiales ÷ {textoPctEstimado(d?.materiales_pct)} (el % de materiales de Finanzas → Configuración), en amarillo. Se restan todos los cobros; los que no tienen OT restan del total del cliente. Es para seguir lo que falta cobrar: no cambia la contabilidad.
+          Cada OT con su presupuesto (PRECIO del Plan, sin IVA; si tildás &quot;Lleva IVA (21 %)&quot; vale el precio × 1,21). Si no tiene, va el costo de materiales ÷ {textoPctEstimado(d?.materiales_pct)} (el % de materiales de Finanzas → Configuración), en amarillo. Se restan todos los cobros; los que no tienen OT restan del total del cliente. Es para seguir lo que falta cobrar: no cambia la contabilidad.
         </p>
         {!d && !error && <Spinner size={18} />}
         {d?.sin_deudores && <p className="m-0 text-[13px] text-gypi-amber-ink">Falta la cuenta &quot;Deudores por Ventas&quot; en el plan de cuentas: no se ven los cobros.</p>}
         {d && (
           <>
             <div className="flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={conIva} onChange={(e) => setConIva(e.target.checked)} /> Con IVA (21 %)</label>
               <label className="flex items-center gap-2 text-[13px]">OT desde <input type="date" className="g-input" value={desde} onChange={(e) => setDesde(e.target.value)} /></label>
               {desde && <button type="button" className="g-btn g-btn-secondary" onClick={() => setDesde("")}>Todas</button>}
             </div>
-            <p className="m-0">Falta cobrar en total <b>{plata(total, "ARS")}</b>{conIva ? " (con IVA)" : " (sin IVA)"}</p>
+            <p className="m-0">Falta cobrar en total <b>{plata(total, "ARS")}</b>{otConIva ? ` (${otConIva} OT con IVA, las demás sin IVA)` : " (sin IVA)"}</p>
             <div className="flex flex-wrap items-center gap-2">
               <Chip active={vista === "clientes"} onClick={() => setVista("clientes")}>Clientes ({resumen.length})</Chip>
               <Chip active={vista === "estimadas"} onClick={() => setVista("estimadas")}>⚠ OT sin presupuesto ({estimadas.length})</Chip>
@@ -153,7 +169,7 @@ export default function FinanzasOtClientes({ onCerrar }) {
                             {c.r.ots.length} OT · Valor {plata(c.r.valor, "ARS")} · Cobrado {plata(c.r.cobrado, "ARS")}{c.r.estimadas ? ` · ⚠ ${c.r.estimadas} estimadas` : ""}
                           </span>
                         </summary>
-                        <TablaOt r={c.r} pct={d.materiales_pct} />
+                        <TablaOt r={c.r} pct={d.materiales_pct} onIva={(x) => setD((v) => conIvaDe(v, x))} />
                       </details>
                     </li>
                   ))}

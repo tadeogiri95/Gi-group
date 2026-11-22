@@ -98,6 +98,23 @@ test("precio cambiado se corrige, sin precio se anula, reabierta anula la entreg
   assert.deepEqual([p.crear.length, p.corregir.length], [0, 0]);
 });
 
+test("OT con IVA (201) — la venta lleva el 21 % aparte y la entrega va por el neto; tildar o destildar corrige la venta", () => {
+  const proyectos = [OT(1, { estado: "cerrado", lleva_iva: true })];
+  const p = planVentas({ proyectos, precios: { "M-1": 1000 }, operaciones: [], clientes: [BCG], cuentas: CTAS, centros: CENTROS, config: CONFIG, hoy: "2026-11-09" });
+  assert.deepEqual(p.crear.map((o) => [o.origen, o.neto, o.iva, o.total, o.total_ars]), [
+    [ORIGEN_VENTA, 1000, 210, 1210, 1210],
+    [ORIGEN_ENTREGA, 1000, 0, 1000, 1000],
+  ]);
+  // Ya tenían venta y entrega sin IVA: se corrige solo la venta
+  const ops = [{ id: 20, origen: ORIGEN_VENTA, origen_id: "p1", total: 1000 }, { id: 21, origen: ORIGEN_ENTREGA, origen_id: "p1", total: 1000 }];
+  const c = planVentas({ proyectos, precios: { "M-1": 1000 }, operaciones: ops, clientes: [BCG], cuentas: CTAS, config: CONFIG, hoy: "2026-11-09" });
+  assert.deepEqual(c.corregir, [{ id: 20, cambios: { neto: 1000, iva: 210, otros_impuestos: 0, total: 1210, total_ars: 1210 } }]);
+  // Se destilda: la venta vuelve al neto
+  const ops2 = [{ ...ops[0], total: 1210 }, ops[1]];
+  const d = planVentas({ proyectos: [OT(1, { estado: "cerrado" })], precios: { "M-1": 1000 }, operaciones: ops2, clientes: [BCG], cuentas: CTAS, config: CONFIG, hoy: "2026-11-09" });
+  assert.deepEqual(d.corregir, [{ id: 20, cambios: { neto: 1000, iva: 0, otros_impuestos: 0, total: 1000, total_ars: 1000 } }]);
+});
+
 // ─── Servidor ───
 
 function mockBase({ config = { activo: true, desde: "2026-11-01" }, modulos = true, proyectos = [OT(1, { cliente: "Nuevo SRL", estado: "cerrado" })], ops = [] } = {}) {
