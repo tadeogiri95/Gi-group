@@ -158,10 +158,12 @@ test("U-12 — los primeros pasos abren la sección justa", () => {
   assert.match(home, /seccion=\{seccionMas\}/);
 });
 
-test("U-16 — Reportes muestra Producción (solo con el registro de tareas) y Obra con su módulo; la liquidación también al supervisor", () => {
+test("U-16 — Reportes muestra Producción (solo con el registro de tareas); Obra pasó a Instalaciones (22/11); la liquidación también al supervisor", () => {
   const src = readFileSync(new URL("../app/reportes_screen.jsx", import.meta.url), "utf8");
   assert.match(src, /ver\("produccion"\) && conRegistroTareas\(empresa\) && <Chip active=\{tab === "produccion"\}/);
-  assert.match(src, /ver\("produccion"\) && tieneModulo\(empresa, "obra"\) && <Chip active=\{tab === "obra"\}/);
+  assert.doesNotMatch(src, /tab === "obra"/);
+  const ot = readFileSync(new URL("../app/proyectos_screen.jsx", import.meta.url), "utf8");
+  assert.match(ot, /ganttTipo === "instalacion" && tieneModulo\(empresa, "obra"\) && <Chip active=\{vista === "obra"\}/);
   assert.match(src, /ver\("personal"\) && <Chip active=\{tab === "liquidacion"\}/);
 });
 
@@ -198,7 +200,9 @@ test("Reportes — Equipo muestra los del personal y Proyectos los de producció
   assert.deepEqual(chips(), ["📊 Asistencia", "📥 Descargar", "💰 Liquidación"]);
   cleanup();
   render(conAuth("produccion"));
-  assert.deepEqual(chips(), ["🗓️ Del día", "📈 Indicadores", "⏱️ Lead time", "🏗️ Obra"]);
+  // Del día, Indicadores, Lead time y Obra salieron el 22/11: queda el aviso de dónde está el tablero de etapas
+  assert.equal(screen.queryAllByRole("button").length, 0);
+  assert.ok(screen.getByText(/OT → 🗂️ Etapas/));
   const menu = readFileSync(new URL("../app/lib/menuGestion.js", import.meta.url), "utf8");
   assert.match(menu, /\{ id: "reportes", label: "Reportes", modulo: "actividad" \}/);
   const pantalla = readFileSync(new URL("../app/components/screens/BotonGestionScreen.jsx", import.meta.url), "utf8");

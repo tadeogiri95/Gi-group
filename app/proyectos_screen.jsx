@@ -19,6 +19,9 @@ import { puedeVerPrecios, leerPrecios } from "./lib/valorizacion";
 import { fmtPesos } from "./lib/costo";
 import TableroOt from "./components/TableroOt";
 import GanttOt from "./components/GanttOt";
+import TableroEtapas from "./components/TableroEtapas";
+import ReportesObra from "./components/ReportesObra";
+import { tieneModulo } from "./lib/modulos";
 import NoConformidades from "./components/NoConformidades";
 import SueltosOt from "./components/SueltosOt";
 import CargaOt from "./components/CargaOt";
@@ -588,14 +591,23 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null, vistaIn
         )}
       </div>
 
-      <div className="flex gap-1.5 mb-3" role="group" aria-label="Cómo ver las OT">
+      <div className="flex flex-wrap gap-1.5 mb-3" role="group" aria-label="Cómo ver las OT">
         <Chip active={vista === "lista"} onClick={() => setVista("lista")}>Lista</Chip>
         <Chip active={vista === "tablero"} onClick={() => setVista("tablero")}>Tablero</Chip>
+        <Chip active={vista === "etapas"} onClick={() => setVista("etapas")}>🗂️ Etapas</Chip>
         <Chip active={vista === "gantt"} onClick={() => setVista("gantt")}>📅 Gantt</Chip>
         <Chip active={vista === "calidad"} onClick={() => setVista("calidad")}>No conformes</Chip>
+        {/* Reportes escritos de los instaladores (antes en Reportes → Obra; Tadeo, 22/11) */}
+        {ganttTipo === "instalacion" && tieneModulo(empresa, "obra") && <Chip active={vista === "obra"} onClick={() => setVista("obra")}>🏗️ Reportes de obra</Chip>}
       </div>
 
-      {vista === "calidad" && !loading ? (
+      {vista === "obra" ? (
+        <ReportesObra empresaId={empresaId} />
+      ) : vista === "etapas" && !loading ? (
+        // Tablero tipo Trello por etapa (Tadeo, 22/11): con las cerradas, para Terminadas
+        <TableroEtapas proyectos={proyectos} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []}
+          pausas={pausas} onVerDetalle={setDetalle} />
+      ) : vista === "calidad" && !loading ? (
         <NoConformidades empresaId={empresaId} proyectos={proyectos} etapas={etapasCtx || []} defectos={defectos || []} />
       ) : vista === "gantt" && !loading ? (
         <GanttOt
