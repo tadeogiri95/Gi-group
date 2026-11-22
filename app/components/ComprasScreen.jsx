@@ -25,6 +25,7 @@ import FacturasSueltas from "./FacturasSueltas";
 import ArticuloNuevo from "./ArticuloNuevo";
 import FilaDeslizable from "./ui/FilaDeslizable";
 import { useOts } from "../hooks/useOts";
+import { useTecladoLista, CLASE_MARCADA } from "../hooks/useTecladoLista";
 import { otCompleta, textoOt } from "../lib/nombreOt";
 import { ESTADOS_OC_RECIBIDA, faltaFacturaOc } from "../lib/ordenesCompra";
 
@@ -78,6 +79,7 @@ function PedirMaterial({ articulos, ots, onListo, onCancelar, pedido = null, onC
     () => (!form.articulo && form.texto.trim() ? sugerirArticulos(articulos, form.texto) : { lista: [], resto: 0 }),
     [form.articulo, form.texto, articulos]
   );
+  const teclado = useTecladoLista(sugeridos.lista, (a) => setForm((f) => ({ ...f, articulo: a })), () => setForm((f) => ({ ...f, texto: "" })));
 
   const guardar = async () => {
     const cantidad = leerCantidadMovimiento(form.cantidad);
@@ -138,12 +140,12 @@ function PedirMaterial({ articulos, ots, onListo, onCancelar, pedido = null, onC
         </div>
       ) : (
         <>
-          <input id="ped-articulo" className="g-input w-full mb-1" value={form.texto} onChange={cambiar("texto")} maxLength={200} placeholder="Buscá por nombre o código, o escribilo si no está" />
+          <input id="ped-articulo" className="g-input w-full mb-1" value={form.texto} onChange={cambiar("texto")} onKeyDown={teclado.onKeyDown} autoComplete="off" maxLength={200} placeholder="Buscá por nombre o código, o escribilo si no está" />
           {sugeridos.lista.length > 0 && (
             <ul aria-label="Artículos encontrados" className="list-none p-0 m-0 mb-2 flex flex-col gap-1">
-              {sugeridos.lista.map((a) => (
+              {sugeridos.lista.map((a, i) => (
                 <li key={a.sku}>
-                  <button onClick={() => setForm((f) => ({ ...f, articulo: a }))} className="w-full min-h-[44px] text-left bg-gypi-bg rounded-lg px-2 border border-gypi-border cursor-pointer font-body text-gypi-text text-[13px]">
+                  <button {...teclado.props(i)} onClick={() => setForm((f) => ({ ...f, articulo: a }))} className={`w-full min-h-[44px] text-left bg-gypi-bg rounded-lg px-2 border border-gypi-border cursor-pointer font-body text-gypi-text text-[13px] ${i === teclado.activa ? CLASE_MARCADA : ""}`}>
                     <b>{a.nombre || a.sku}</b> <span className="text-gypi-dim">· {a.sku}</span>
                   </button>
                 </li>
