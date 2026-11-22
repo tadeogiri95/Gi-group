@@ -14,6 +14,7 @@ import { textoOt } from "../lib/nombreOt";
 import BotonNuevaPersona from "./AltaPersona";
 import { proveedorDeLista } from "../lib/elegirDeLista";
 import RemitosFoto from "./RemitosFoto";
+import { useTecladoLista, CLASE_MARCADA } from "../hooks/useTecladoLista";
 import MovimientoCorregir, { HistorialMovimiento, historialMovimiento } from "./MovimientoCorregir";
 
 const CUANTOS = 100;
@@ -115,6 +116,7 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
   const cambiarRenglon = (i, campo) => (e) => setForm((f) => ({ ...f, renglones: f.renglones.map((r, j) => (j === i ? { ...r, [campo]: e.target.value } : r)) }));
   const sacarRenglon = (i) => setForm((f) => ({ ...f, renglones: f.renglones.filter((_, j) => j !== i) }));
   const elegirArticulo = (a) => setForm((f) => (esVarios(f.tipo) ? agregarRenglon(f, a) : { ...f, articulo: a }));
+  const teclado = useTecladoLista(sugeridos.lista, elegirArticulo, () => setForm((f) => ({ ...f, texto: "" })));
 
   const guardarVarios = async () => {
     if (!form.renglones.length) { setError("Agregá al menos un artículo"); return; }
@@ -249,12 +251,12 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
             </div>
           ) : (
             <>
-              <input id="mov-articulo" className="g-input w-full mb-1" value={form.texto} onChange={cambiar("texto")} placeholder="Nombre o código" />
+              <input id="mov-articulo" className="g-input w-full mb-1" value={form.texto} onChange={cambiar("texto")} onKeyDown={teclado.onKeyDown} autoComplete="off" placeholder="Nombre o código" />
               {sugeridos.lista.length > 0 && (
                 <ul aria-label="Artículos encontrados" className="list-none p-0 m-0 mb-2 flex flex-col gap-1">
-                  {sugeridos.lista.map((a) => (
+                  {sugeridos.lista.map((a, i) => (
                     <li key={a.sku}>
-                      <button onClick={() => elegirArticulo(a)} className="w-full min-h-[44px] text-left bg-gypi-bg rounded-lg px-2 border border-gypi-border cursor-pointer font-body text-gypi-text text-[13px]">
+                      <button {...teclado.props(i)} onClick={() => elegirArticulo(a)} className={`w-full min-h-[44px] text-left bg-gypi-bg rounded-lg px-2 border border-gypi-border cursor-pointer font-body text-gypi-text text-[13px] ${i === teclado.activa ? CLASE_MARCADA : ""}`}>
                         <b>{a.nombre || a.sku}</b> <span className="text-gypi-dim">· {a.sku}</span>
                       </button>
                     </li>
