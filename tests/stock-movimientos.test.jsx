@@ -250,19 +250,18 @@ test("movimientos en Stock — lista, anular y cargar un ingreso", async () => {
   fireEvent.click(screen.getByLabelText(/Anular 📦 Retiro/));
   await waitFor(() => assert.deepEqual(enviados[0], { accion: "anular", id: 4 }));
 
+  // 22/11: el ingreso también va por tanda (varios renglones, la misma fecha)
   fireEvent.click(screen.getByText("📥 Cargar ingreso"));
+  fireEvent.change(screen.getByLabelText("Proveedor para todos"), { target: { value: "Aluar" } });
   fireEvent.change(screen.getByLabelText("Artículo"), { target: { value: "tablilla" } });
   fireEvent.click(screen.getByText("Tablilla 0277 negra"));
-  fireEvent.change(screen.getByLabelText("Cantidad (MT)"), { target: { value: "10" } });
-  fireEvent.change(screen.getByLabelText("Proveedor"), { target: { value: "Aluar" } });
-  fireEvent.change(screen.getByLabelText("Precio unitario (sin IVA)"), { target: { value: "1.500,50" } });
+  fireEvent.change(screen.getByLabelText("Cantidad de Tablilla 0277 negra"), { target: { value: "10" } });
+  fireEvent.change(screen.getByLabelText("Precio de Tablilla 0277 negra"), { target: { value: "1.500,50" } });
   fireEvent.click(screen.getByText("Guardar"));
   await waitFor(() => assert.equal(enviados.length, 2));
+  assert.equal(enviados[1].accion, "registrar_varios");
   assert.equal(enviados[1].tipo, "ingreso");
-  assert.equal(enviados[1].cantidad, 10);
-  assert.equal(enviados[1].proveedor, "Aluar");
-  assert.equal(enviados[1].precio_unitario, 1500.5);
-  assert.equal(enviados[1].ot, null);
+  assert.deepEqual(enviados[1].renglones, [{ sku: TABLILLA.sku, cantidad: 10, proveedor: "Aluar", comprobante: null, precio_unitario: 1500.5 }]);
 });
 
 test("accesos — botón en el inicio del operario, en la ficha y pestaña en Stock", () => {
@@ -305,9 +304,9 @@ test("/api/stock/movimientos — varios: si uno está mal no se guarda ninguno",
   res = await api.POST(req(await token("operativo"), { accion: "registrar_varios", tipo: "consumo", renglones: [{ sku: TABLILLA.sku, cantidad: -1 }] }));
   assert.equal(res.status, 400, "cantidad mayor a cero");
   res = await api.POST(req(await token("operativo"), { accion: "registrar_varios", tipo: "ingreso", renglones: [{ sku: TABLILLA.sku, cantidad: 1 }] }));
-  assert.equal(res.status, 400, "los ingresos van de a uno");
-  res = await api.POST(req(await token("operativo"), { accion: "registrar_varios", tipo: "consumo", renglones: Array.from({ length: 51 }, () => ({ sku: TABLILLA.sku, cantidad: 1 })) }));
-  assert.equal(res.status, 400, "hasta 50 por vez");
+  assert.equal(res.status, 403, "los ingresos los carga la oficina");
+  res = await api.POST(req(await token("operativo"), { accion: "registrar_varios", tipo: "consumo", renglones: Array.from({ length: 201 }, () => ({ sku: TABLILLA.sku, cantidad: 1 })) }));
+  assert.equal(res.status, 400, "hasta 200 por tanda");
 });
 
 test("movimientos en Stock — varios retiros juntos con la OT de todos y una distinta", async () => {

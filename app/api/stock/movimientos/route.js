@@ -10,7 +10,10 @@
 //               El artículo tiene que estar en el stock copiado de la planilla
 //               y la OT, si viene, entre las OT de la empresa.
 //   registrar_varios → (11/11, parte 5) varios retiros o devoluciones juntos:
-//               { tipo, renglones: [{ sku, cantidad, ot? }], notas? }. Se
+//               { tipo, renglones: [{ sku, cantidad, ot? }], notas?, fecha? }.
+//               22/11 (carga por tanda): también ingresos, con proveedor,
+//               comprobante y precio por renglón (409 repetido si un
+//               comprobante ya entró, salvo forzar); hasta 200 renglones. Se
 //               revisa todo antes y se guardan todos o ninguno. Con OT, cada
 //               uno suma al costo de esa OT (costoMaterialesServidor).
 //   anular    → gestión, cualquiera; el resto, solo los suyos recién cargados.
@@ -130,7 +133,8 @@ async function registrarVarios(sesion, datos) {
   const dia = fechaDelMovimiento(datos.fecha);
   if (dia.error) return NextResponse.json({ error: dia.error }, { status: 400 });
   const skus = datos.renglones.map((r) => r.sku);
-  const ots = datos.renglones.map((r) => r.ot).filter(Boolean);
+  // El ingreso no lleva OT (22/11: los ingresos también van por tanda)
+  const ots = datos.tipo === "ingreso" ? [] : datos.renglones.map((r) => r.ot).filter(Boolean);
   const [articulos, proyectos, empleados] = await Promise.all([
     sbGet(`articulos_stock?empresa_id=eq.${e}&sku=${encodeURIComponent(enLista(skus))}&select=sku,nombre,unidad,division,activo`, opts),
     ots.length ? sbGet(`proyectos?empresa_id=eq.${e}&ot=${encodeURIComponent(enLista(ots))}&select=ot`, opts) : Promise.resolve([]),
@@ -143,9 +147,33 @@ async function registrarVarios(sesion, datos) {
     const a = porSku.get(r.sku);
     if (!a) errores.push(`Renglón ${i + 1}: el artículo ${r.sku} no está en el stock`);
     else if (a.activo === false) errores.push(`Renglón ${i + 1}: ${a.nombre || r.sku} ya no está en la planilla MRP`);
-    if (r.ot && !otsOk.has(String(r.ot))) errores.push(`Renglón ${i + 1}: no encontré la OT ${r.ot}`);
+    if (r.ot && datos.tipo !== "ingreso" && !otsOk.has(String(r.ot))) errores.push(`Renglón ${i + 1}: no encontré la OT ${r.ot}`);
   });
+  // 22/11 (carga por tanda): el proveedor de cada ingreso es uno de la lista
+  const esIngreso = datos.tipo === "ingreso";
+  const provDe = new Map();
+  if (esIngreso && datos.renglones.some((r) => r.proveedor)) {
+    const proveedores = (await sbGet(`proveedores?empresa_id=eq.${e}&select=id,nombre,activo,unido_a`, { ...opts, silent: true, fallback: [] })) || [];
+    datos.renglones.forEach((r, i) => {
+      if (!r.proveedor || provDe.has(r.proveedor)) return;
+      const p = proveedorDeLista({ nombre: r.proveedor }, proveedores);
+      if (p) provDe.set(r.proveedor, p);
+      else errores.push(`Renglón ${i + 1}: ${avisoFaltaProveedor(r.proveedor)}`);
+    });
+  }
   if (errores.length) return NextResponse.json({ error: errores[0], errores }, { status: 400 });
+  // El comprobante que ya entró (una recepción de OC, una factura u otro ingreso) se confirma antes
+  if (esIngreso && !datos.forzar) {
+    const pares = new Map();
+    for (const r of datos.renglones) {
+      const p = provDe.get(r.proveedor);
+      if (p && r.comprobante) pares.set(`${p.id}|${r.comprobante.toUpperCase()}`, { proveedor: p.nombre, comprobante: r.comprobante });
+    }
+    const repetidos = (await Promise.all([...pares.values()].map((x) => buscarIngresoRepetido(sbGet, e, x, opts)))).filter(Boolean);
+    if (repetidos.length) {
+      return NextResponse.json({ error: repetidos.map(avisoIngresoRepetido).join(" "), repetido: true, repetidos: repetidos.length }, { status: 409 });
+    }
+  }
   const quien = {
     empleado_id: sesion.empleado_id || null,
     legajo: Number.isInteger(sesion.legajo) ? sesion.legajo : null,
@@ -153,11 +181,19 @@ async function registrarVarios(sesion, datos) {
   };
   const filas = datos.renglones.map((r) => {
     const a = porSku.get(r.sku);
-    return {
+    const p = esIngreso ? provDe.get(r.proveedor) : null;
+    const fila = {
       empresa_id: e, tipo: datos.tipo, sku: a.sku, nombre: a.nombre ?? null, unidad: a.unidad ?? null, division: a.division ?? null,
-      cantidad: r.cantidad, ot: r.ot ? String(r.ot) : null, proveedor: null, comprobante: null, precio_unitario: null, notas: datos.notas, ...quien,
+      cantidad: r.cantidad, ot: r.ot && !esIngreso ? String(r.ot) : null,
+      proveedor: p ? String(p.nombre).slice(0, 120) : null,
+      comprobante: esIngreso ? r.comprobante || null : null,
+      precio_unitario: esIngreso ? r.precio_unitario ?? null : null,
+      notas: datos.notas, ...quien,
       fecha: dia.fecha,
     };
+    // Todas las filas con las mismas columnas (la base las guarda juntas)
+    if (esIngreso) fila.proveedor_id = p ? Number(p.id) : null;
+    return fila;
   });
   await insertarMovimientos(filas, opts);
   broadcastRefresh(e, "movimientos_stock");
