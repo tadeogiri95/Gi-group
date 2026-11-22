@@ -2,8 +2,8 @@
 // por OT (reglas en app/lib/finanzasOtClientes.js). Sin migración.
 //
 //   GET → cada cliente con sus OT (valor sin IVA: presupuesto o materiales ÷
-//       el % de materiales de Configuración, estimado) y sus cobros. El IVA y el "desde" se aplican en la
-//       pantalla. No guarda nada: el costo de materiales se calcula sin fijar
+//       el % de materiales de Configuración, estimado), si lleva IVA (201) y sus
+//       cobros. El IVA de cada OT y el "desde" se aplican en la pantalla. No guarda nada: el costo de materiales se calcula sin fijar
 //       precios (eso lo sigue haciendo el Costo de la OT).
 //
 // Solo el rol Dueño (la base también lo exige).
@@ -26,8 +26,9 @@ export async function GET(request) {
     const [cuentas, clientes, proyectos, precios] = await Promise.all([
       leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre`),
       leer(sesion, `fin_clientes?empresa_id=eq.${e}&select=id,nombre,alias,activo,unido_a&order=id.asc`, 10000),
-      // Con el cliente unido a la OT (184); sin la migración, solo el nombre
-      leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,cliente_id,obra,descripcion,estado,created_at&order=id.desc`, 20000)
+      // Con el cliente unido a la OT (184) y si lleva IVA (201); sin las migraciones, sin esas columnas
+      leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,cliente_id,obra,descripcion,estado,created_at,lleva_iva&order=id.desc`, 20000)
+        .catch(() => leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,cliente_id,obra,descripcion,estado,created_at&order=id.desc`, 20000))
         .catch(() => leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,obra,descripcion,estado,created_at&order=id.desc`, 20000)),
       leerPreciosOt(sesion, e),
     ]);

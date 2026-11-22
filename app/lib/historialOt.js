@@ -132,6 +132,8 @@ export function describirCambio(c, nombreEtapa = (x) => `etapa ${x}`) {
     if (c.metodo === "DELETE") return "Borró la OT";
     if (campos.estado === "cerrado" && Object.keys(campos).length === 1) return "Cerró la OT";
     if (campos.estado === "activo" && Object.keys(campos).length === 1) return "Reactivó la OT";
+    // 201: casilla "Lleva IVA (21 %)"
+    if (typeof campos.lleva_iva === "boolean" && Object.keys(campos).length === 1) return campos.lleva_iva ? "Marcó que la OT lleva IVA (21 %)" : "Marcó que la OT va sin IVA";
     if (campos.avance_manual !== undefined) {
       const am = campos.avance_manual || {};
       if (!am.activo) return "Apagó el checkeo manual";

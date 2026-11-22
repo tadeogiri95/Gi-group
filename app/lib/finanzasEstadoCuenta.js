@@ -12,7 +12,8 @@
 // El PDF SALE DE LA EMPRESA: acá solo entra lo que se le puede mostrar al
 // otro. Nada de costos, márgenes, valores estimados por materiales, cuentas
 // contables, quién cargó ni descripciones internas de las operaciones.
-//  - Cliente: cada OT con PRECIO en el Plan (sin IVA, o con IVA si se tilda)
+//  - Cliente: cada OT con PRECIO en el Plan (sin IVA; × 1,21 las OT con la
+//    casilla "Lleva IVA (21 %)", 201, que dicen "con IVA")
 //    y cada cobro ("Pago recibido", con su OT si tiene). Las OT sin PRECIO no
 //    se valorizan: van en una lista aparte "con monto a confirmar".
 //  - Proveedor: los movimientos de la cuenta Proveedores (compras, notas de
@@ -21,7 +22,7 @@
 
 import { CLASES_COMPRA, ORIGEN_COMPRA_MANUAL, ORIGEN_SALDO_INICIAL, pendientesProveedor } from "./finanzasProveedores";
 import { ORIGEN_AJUSTE_SALDO } from "./finanzasAjusteSaldo";
-import { IVA_OT } from "./finanzasOtClientes";
+import { factorIva } from "./finanzasOtClientes";
 import { partesOt } from "./nombreOt";
 
 const centavos = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -61,12 +62,17 @@ function conSaldo(eventos, { desde, hasta }) {
  * La cuenta del cliente, armada con lo que devuelve cuentasPorOt (sin materiales:
  * las OT sin PRECIO quedan sin valor y van "a confirmar").
  * @param {{ ots: object[], cobros: object[] }} c
- * @param {{ conIva?: boolean, desde?: string, hasta?: string, hoy: string }} o
+ * Cada OT con su IVA (201): las que llevan IVA, × 1,21 y "con IVA" en el detalle.
+ * @param {{ desde?: string, hasta?: string, hoy: string }} o
  */
-export function estadoCliente(c, { conIva = true, desde = "", hasta = "", hoy }) {
-  const f = conIva ? 1 + IVA_OT : 1;
-  const ots = (c?.ots || []).map((o, i) => ({ ...o, fecha: o.fecha || "0000-00-00", orden: i, ...conceptoOt(o) }));
-  const valorizadas = ots.filter((o) => !o.estimado && !o.sin_valor && o.valor > 0).map((o) => ({ ...o, importe: centavos(o.valor * f) }));
+export function estadoCliente(c, { desde = "", hasta = "", hoy }) {
+  const ots = (c?.ots || []).map((o, i) => {
+    const { concepto, detalle } = conceptoOt(o);
+    return { ...o, fecha: o.fecha || "0000-00-00", orden: i, concepto, detalle: o.lleva_iva ? [detalle, "con IVA"].filter(Boolean).join(" · ") : detalle };
+  });
+  const valorizadas = ots.filter((o) => !o.estimado && !o.sin_valor && o.valor > 0).map((o) => ({ ...o, importe: centavos(o.valor * factorIva(o)) }));
+  const conIva = valorizadas.filter((o) => o.lleva_iva).length;
+  const todasConIva = conIva > 0 && conIva === valorizadas.length;
   const porId = new Map(ots.map((o) => [o.proyecto_id, o]));
   const cobros = (c?.cobros || []).map((x, i) => ({ ...x, orden: 100000 + i }));
   const eventos = [
@@ -104,9 +110,9 @@ export function estadoCliente(c, { conIva = true, desde = "", hasta = "", hoy })
     .sort(porFecha)
     .map((o) => ({ fecha: o.fecha, concepto: o.concepto, detalle: o.detalle }));
   return {
-    ...cuenta, pendientes, a_confirmar: aConfirmar, con_iva: conIva,
+    ...cuenta, pendientes, a_confirmar: aConfirmar, con_iva: conIva, todas_con_iva: todasConIva,
     columnas: { cargo: "Importe OT", abono: "Pagado" },
-    textos: { cargos: conIva ? "Total de OT (con IVA)" : "Total de OT (sin IVA)", abonos: "Pagado" },
+    textos: { cargos: todasConIva ? "Total de OT (con IVA)" : conIva ? "Total de OT" : "Total de OT (sin IVA)", abonos: "Pagado" },
   };
 }
 
@@ -208,7 +214,7 @@ export function htmlEstadoCuenta({ empresa = {}, nombre, cuit = "", cliente = nu
   const periodo = desde || hasta
     ? `Período: ${desde ? fechaLarga(desde) : "desde el inicio"} al ${fechaLarga(corte)}`
     : `Todos los movimientos al ${fechaLarga(corte)}`;
-  const iva = cliente ? (cliente.con_iva ? "Importes de OT con IVA" : "Importes de OT sin IVA") : "";
+  const iva = cliente ? (cliente.todas_con_iva ? "Importes de OT con IVA" : cliente.con_iva ? "Importes de OT sin IVA, salvo las que dicen \"con IVA\"" : "Importes de OT sin IVA") : "";
   const kpi = (l, v, big = false) => `<div class="k${big ? " big" : ""}"><div class="l">${esc(l)}</div><div class="v">${esc(pesos(v))}</div></div>`;
   const resumen = ambos
     ? `<div class="res">${kpi("Como cliente: " + textoSaldo("cliente", cliente.saldo).toLowerCase(), Math.abs(cliente.saldo))}${kpi("Como proveedor: " + textoSaldo("proveedor", proveedor.saldo).toLowerCase(), Math.abs(proveedor.saldo))}${kpi(Math.abs(saldo) < 0.01 ? "Saldo neto" : textoSaldo("neto", saldo) + " (neto)", Math.abs(saldo), true)}</div>`

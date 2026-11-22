@@ -31,7 +31,9 @@ async function datosCliente(sesion, clave) {
   const [cuentas, clientes, proyectos, precios] = await Promise.all([
     leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre`),
     leer(sesion, `fin_clientes?empresa_id=eq.${e}&select=id,nombre,cuit,alias,activo,unido_a&order=id.asc`, 10000),
-    leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,cliente_id,obra,descripcion,estado,created_at&order=id.desc`, 20000)
+    // Si lleva IVA (201); sin la migración, sin esa columna
+    leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,cliente_id,obra,descripcion,estado,created_at,lleva_iva&order=id.desc`, 20000)
+      .catch(() => leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,cliente_id,obra,descripcion,estado,created_at&order=id.desc`, 20000))
       .catch(() => leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,obra,descripcion,estado,created_at&order=id.desc`, 20000)),
     leerPreciosOt(sesion, e),
   ]);

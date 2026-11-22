@@ -9,6 +9,7 @@ import { AuthContext } from "../context/AuthContext";
 import { puedePedir } from "../lib/compras";
 import { apiFetch, sbGetAll } from "../lib/supabase";
 import { sugerirArticulos } from "../lib/stock";
+import { useTecladoLista, CLASE_MARCADA } from "../hooks/useTecladoLista";
 import { notaDelProblema, textoPedidosProblema } from "../lib/pedidoProblema";
 
 let articulosCache = null;
@@ -57,6 +58,7 @@ function Pedir({ origen, origenId, texto, ot = null, onPedido }) {
     return () => { vivo = false; };
   }, [abierto]);
   const sugeridos = useMemo(() => (art ? { lista: [], resto: 0 } : sugerirArticulos(lista, busca, 6)), [lista, busca, art]);
+  const teclado = useTecladoLista(sugeridos.lista, setArt, () => setBusca(""));
   const todos = [...pedidos, ...hechos];
   const resumen = textoPedidosProblema(todos);
 
@@ -110,12 +112,12 @@ function Pedir({ origen, origenId, texto, ot = null, onPedido }) {
       ) : (
         <>
           <label className="g-label" htmlFor={`pp-busca-${origen}-${origenId}`}>Artículo del stock o qué hace falta</label>
-          <input id={`pp-busca-${origen}-${origenId}`} className="g-input w-full mb-1" maxLength={200} value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Ej: correa, bisagra, aceite" autoComplete="off" />
+          <input id={`pp-busca-${origen}-${origenId}`} className="g-input w-full mb-1" maxLength={200} value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={teclado.onKeyDown} placeholder="Ej: correa, bisagra, aceite" autoComplete="off" />
           {sugeridos.lista.length > 0 && (
             <ul aria-label="Artículos del stock" className="list-none m-0 p-0 mb-2 flex flex-col gap-1">
-              {sugeridos.lista.map((a) => (
+              {sugeridos.lista.map((a, i) => (
                 <li key={a.sku}>
-                  <button type="button" onClick={() => setArt(a)} className="w-full min-h-[40px] text-left bg-gypi-surface border border-gypi-border rounded-lg px-2 text-[13px] cursor-pointer font-body text-gypi-text">
+                  <button type="button" {...teclado.props(i)} onClick={() => setArt(a)} className={`w-full min-h-[40px] text-left bg-gypi-surface border border-gypi-border rounded-lg px-2 text-[13px] cursor-pointer font-body text-gypi-text ${i === teclado.activa ? CLASE_MARCADA : ""}`}>
                     {a.nombre} <span className="text-gypi-dim">· {a.sku}{a.unidad ? ` · ${a.unidad}` : ""}</span>
                   </button>
                 </li>
