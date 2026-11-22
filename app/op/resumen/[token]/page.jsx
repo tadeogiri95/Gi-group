@@ -100,6 +100,10 @@ export default async function PaginaResumenPago({ params }) {
                 </ul>
                 <div className="flex flex-wrap gap-2 mt-1">
                   {o.comprobante && <a className="g-btn g-btn-secondary text-[13px]" href={o.comprobante} target="_blank" rel="noopener noreferrer">📎 Ver comprobante</a>}
+                  {/* 22/11: los PDF de las facturas que paga la orden */}
+                  {(o.facturas_comprobantes || []).map((a) => (
+                    <a key={`f-${a.url}`} className="g-btn g-btn-secondary text-[13px]" href={a.url} target="_blank" rel="noopener noreferrer">{a.tipo === "pdf" ? "📄" : "🖼"} {a.nombre}</a>
+                  ))}
                   {(o.adjuntos || []).map((a) => (
                     <a key={a.url} className="g-btn g-btn-secondary text-[13px]" href={a.url} target="_blank" rel="noopener noreferrer">{a.tipo === "pdf" ? "📄" : "🖼"} {a.nombre}</a>
                   ))}

@@ -22,7 +22,7 @@ import { apiFetch } from "../lib/supabase";
 import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import { numeroWhatsapp } from "../lib/compras";
 import {
-  ESTADOS_ORDEN, FORMAS_PAGO, SIN_PAGAR, accionesOrden, adjuntosDe, cuentasParaPagar, fechaCorta, imprimirOrdenPago, mandadaAlCfo, sumasPagos, textoForma, textoPlazo, textoWhatsappCfo, vistaPorCfo,
+  ESTADOS_ORDEN, FORMAS_PAGO, SIN_PAGAR, accionesOrden, adjuntosDe, comprobantesFactura, cuentasParaPagar, fechaCorta, imprimirOrdenPago, mandadaAlCfo, sumasPagos, textoForma, textoPlazo, textoWhatsappCfo, vistaPorCfo,
 } from "../lib/finanzasPagos";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -337,6 +337,10 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
         {(orden.facturas || []).length > 0 && (
           <div className="text-[13px] text-gypi-dim">
             Paga: {(orden.facturas || []).map((f) => `${fechaCorta(f.fecha)} ${f.detalle} (${plata(f.importe, "ARS")})`).join(" · ")}
+            {/* 22/11: el PDF o la foto de cada factura (los ve también el CFO) */}
+            {(orden.facturas || []).flatMap(comprobantesFactura).map((a) => (
+              <a key={a.url} href={a.url} target="_blank" rel="noopener noreferrer" className="ml-2 text-gypi-cyan underline">{a.tipo === "pdf" ? "📄" : "🖼"} {a.nombre}</a>
+            ))}
           </div>
         )}
         {orden.notas && <p className="m-0 text-[13px]">📝 {orden.notas}</p>}

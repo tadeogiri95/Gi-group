@@ -43,7 +43,7 @@ import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { cambioDeEstado, operacionAlta } from "../../../lib/finanzasCheques";
 import { hoyAr } from "../../../lib/finanzasOperaciones";
-import { CLAVE_CFO, DIAS_UNIR, accionesOrden, cambioAlUnir, generarPago, movimientosParaUnir, validarOrden } from "../../../lib/finanzasPagos";
+import { CLAVE_CFO, DIAS_UNIR, accionesOrden, cambioAlUnir, generarPago, movimientosParaUnir, ponerComprobantesFacturas, validarOrden } from "../../../lib/finanzasPagos";
 import { validarResumen } from "../../../lib/finanzasResumenPago";
 import { comprobanteValido } from "../../../lib/finanzasMiCaja";
 import { validarComprobantes } from "../../../lib/finanzasAdjuntos";
@@ -112,8 +112,10 @@ export async function GET(request) {
       leer(sesion, `fin_resumenes_pago?empresa_id=eq.${e}&estado=neq.anulado&select=*&order=numero.desc`, 2000).catch((err) => (falta186(err) ? null : [])),
     ]);
     const { cuentas: _c, ...resto } = ctx;
+    // 22/11: los PDF de las facturas que paga cada orden (para la pantalla y el PDF)
+    const conComp = await ponerComprobantesFacturas(ordenes || [], e, (path) => leer(sesion, path));
     return NextResponse.json({
-      ...resto, ordenes,
+      ...resto, ordenes: conComp,
       empresa: empresas?.[0] || {},
       cfo: { nombre: cfg?.[0]?.valor?.nombre || "", telefono: cfg?.[0]?.valor?.telefono || "" },
       links: Object.fromEntries((ordenes || []).filter((o) => o.token && o.estado !== "anulada").map((o) => [o.id, linkCfo(request, o.token)])),

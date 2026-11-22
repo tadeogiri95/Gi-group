@@ -84,10 +84,20 @@ export default async function PaginaOrdenPago({ params }) {
             <h2 className="m-0 mb-2 text-[15px] font-bold">Qué se paga</h2>
             <ul className="list-none m-0 p-0 flex flex-col gap-2">
               {facturas.map((f, i) => (
-                <li key={i} className="flex items-baseline gap-2 text-[14px]">
-                  <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(f.fecha)}</span>
-                  <span className="flex-1 min-w-0">{f.detalle}</span>
-                  <span className="font-mono">{plata(f.importe, "ARS")}</span>
+                <li key={i} className="flex flex-col gap-1 text-[14px]">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(f.fecha)}</span>
+                    <span className="flex-1 min-w-0">{f.detalle}</span>
+                    <span className="font-mono">{plata(f.importe, "ARS")}</span>
+                  </div>
+                  {/* 22/11: el PDF o la foto de la factura */}
+                  {(f.comprobantes || []).length > 0 && (
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 pl-4">
+                      {f.comprobantes.map((a) => (
+                        <a key={a.url} className="text-[13px] font-semibold text-gypi-amber-ink" href={a.url} target="_blank" rel="noopener noreferrer">{a.tipo === "pdf" ? "📄" : "🖼"} {a.nombre}</a>
+                      ))}
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
