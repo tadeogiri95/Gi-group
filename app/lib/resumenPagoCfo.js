@@ -9,7 +9,7 @@
 import { sbGet, sbPatch, sbGetAll } from "./sbHelpers";
 import { enviarPushLegajos } from "./pushGerencia";
 import { getModulosEmpresa } from "./planEnforcement";
-import { CLAVE_CFO } from "./finanzasPagos";
+import { CLAVE_CFO, ponerComprobantesFacturas } from "./finanzasPagos";
 import { plata } from "./finanzasOperaciones";
 import { TOKEN_VALIDO } from "./ordenPagoCfo";
 import { datosResumenParaCfo } from "./finanzasResumenPago";
@@ -34,7 +34,9 @@ export async function datosResumenCfo(token) {
     sbGet(`empresa?id=eq.${r.empresa_id}&select=nombre,logo_url&limit=1`, { silent: true, fallback: [] }).then((x) => x || []),
     sbGet(`config_sistema?empresa_id=eq.${r.empresa_id}&clave=eq.${CLAVE_CFO}&select=valor&limit=1`, { silent: true, fallback: [] }).then((x) => x || []),
   ]);
-  return { ...datosResumenParaCfo(r, ordenes, empresa || {}), cfo: cfg?.valor?.nombre || "" };
+  // 22/11: los PDF de las facturas que paga cada orden
+  const conComp = await ponerComprobantesFacturas(ordenes, r.empresa_id, (path) => sbGet(path, { silent: true, fallback: null }));
+  return { ...datosResumenParaCfo(r, conComp, empresa || {}), cfo: cfg?.valor?.nombre || "" };
 }
 
 /**

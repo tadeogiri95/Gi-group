@@ -9,7 +9,7 @@
 import { sbGet, sbPatch, sbGetAll } from "./sbHelpers";
 import { enviarPushLegajos } from "./pushGerencia";
 import { getModulosEmpresa } from "./planEnforcement";
-import { CLAVE_CFO, datosParaCfo, vistaPorCfo } from "./finanzasPagos";
+import { CLAVE_CFO, datosParaCfo, ponerComprobantesFacturas, vistaPorCfo } from "./finanzasPagos";
 import { plata } from "./finanzasOperaciones";
 
 export const TOKEN_VALIDO = /^[A-Za-z0-9_-]{20,80}$/;
@@ -27,11 +27,13 @@ async function ordenDelToken(token) {
 export async function datosOrdenCfo(token) {
   const o = await ordenDelToken(token);
   if (!o) return null;
-  const [[empresa], [cfg]] = await Promise.all([
+  const [[empresa], [cfg], [conComp]] = await Promise.all([
     sbGet(`empresa?id=eq.${o.empresa_id}&select=nombre,logo_url&limit=1`, { silent: true, fallback: [] }).then((r) => r || []),
     sbGet(`config_sistema?empresa_id=eq.${o.empresa_id}&clave=eq.${CLAVE_CFO}&select=valor&limit=1`, { silent: true, fallback: [] }).then((r) => r || []),
+    // 22/11: los PDF de las facturas que paga la orden
+    ponerComprobantesFacturas([o], o.empresa_id, (path) => sbGet(path, { silent: true, fallback: null })),
   ]);
-  return { ...datosParaCfo(o, empresa || {}), cfo: cfg?.valor?.nombre || "" };
+  return { ...datosParaCfo(conComp || o, empresa || {}), cfo: cfg?.valor?.nombre || "" };
 }
 
 /**

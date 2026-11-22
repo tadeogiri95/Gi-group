@@ -13,7 +13,7 @@
 //     las órdenes ya pagadas.
 //   - 20/11: cada e-cheq puede llevar el plazo fijo nuevo que lo calza; abajo
 //     del total, "A rescatar del FCI" = transferencias + plazos fijos.
-import { FORMAS_PAGO, ESTADOS_ORDEN, CSS_RESCATE, adjuntosDe, fechaCorta, htmlRescate, lineasRescate, sumasPagos, textoForma, textoPlazo, vistaPorCfo } from "./finanzasPagos";
+import { FORMAS_PAGO, ESTADOS_ORDEN, CSS_RESCATE, adjuntosDe, comprobantesFactura, fechaCorta, htmlRescate, lineasRescate, sumasPagos, textoForma, textoPlazo, vistaPorCfo } from "./finanzasPagos";
 import { plata } from "./finanzasOperaciones";
 
 /** Formas que se pagan en el momento; el resto son cheques. */
@@ -73,6 +73,8 @@ export function renglonesResumen(ordenes = []) {
       orden_id: o.id, numero: o.numero, fecha: o.fecha, proveedor: o.proveedor_nombre, estado: o.estado,
       forma: x.forma, medio: textoForma(x), clase: claseForma(x.forma), importe: centavos(x.importe),
       comprobante: i === 0 ? o.comprobante_url || null : null,
+      // 22/11: los PDF de las facturas que paga la orden, en el primer renglón
+      facturas_comprobantes: i === 0 ? (o.facturas || []).flatMap(comprobantesFactura) : [],
       plazo: x.forma === "echeq" && x.plazo_fijo ? { texto: textoPlazo(x), importe: centavos(x.plazo_fijo.importe), vencimiento: x.plazo_fijo.vencimiento } : null,
     })));
 }
@@ -104,6 +106,7 @@ export function datosResumenParaCfo(resumen, ordenes = [], empresa = {}) {
       numero: o.numero, fecha: o.fecha, proveedor: o.proveedor_nombre, estado: o.estado, total: Number(o.total) || 0,
       comprobante: /^https:\/\//.test(String(o.comprobante_url || "")) ? o.comprobante_url : null,
       adjuntos: adjuntosDe(o),
+      facturas_comprobantes: (o.facturas || []).flatMap(comprobantesFactura),
       formas: (o.formas || []).map((x) => ({ texto: textoForma(x), importe: x.importe, clase: claseForma(x.forma), ...(x.plazo_fijo ? { plazo: { texto: textoPlazo(x), importe: x.plazo_fijo.importe } } : {}) })),
       // El link de la orden, para verla de a una
       token: o.token || null,
@@ -139,7 +142,7 @@ export function htmlResumenPago({ empresa = {}, resumen, ordenes = [] }) {
   const tr = filas.map((r) => {
     const comp = urlSegura(r.comprobante);
     const pf = r.plazo ? `<tr class="pf"><td></td><td></td><td>${esc(r.plazo.texto)}</td><td class="n">${esc(plata(r.plazo.importe))}</td><td></td></tr>` : "";
-    return `<tr><td>${esc(fechaCorta(r.fecha))}</td><td>${esc(r.proveedor)}<span class="chico" style="display:block">OP N° ${esc(r.numero)}</span></td><td>${esc(r.medio)}</td><td class="n">${esc(plata(r.importe))}</td><td>${comp ? `<a href="${esc(comp)}">Ver</a>` : ""}</td></tr>${pf}`;
+    return `<tr><td>${esc(fechaCorta(r.fecha))}</td><td>${esc(r.proveedor)}<span class="chico" style="display:block">OP N° ${esc(r.numero)}</span></td><td>${esc(r.medio)}</td><td class="n">${esc(plata(r.importe))}</td><td>${[...(comp ? [`<a href="${esc(comp)}">Ver</a>`] : []), ...(r.facturas_comprobantes || []).map((a) => `<a href="${esc(a.url)}">${esc(a.nombre)}</a>`)].join("<br>")}</td></tr>${pf}`;
   }).join("");
   const est = ESTADOS_RESUMEN[resumen.estado];
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Resumen de órdenes de pago N° ${esc(resumen.numero)}</title>

@@ -276,7 +276,7 @@ export function datosParaCfo(orden, empresa = {}) {
     empresa: { nombre: empresa.nombre || "", logo: /^https:\/\//.test(String(empresa.logo_url || "")) ? empresa.logo_url : null },
     numero: orden.numero, fecha: orden.fecha, proveedor: orden.proveedor_nombre, total: Number(orden.total) || 0,
     estado: orden.estado, notas: orden.notas || null, cargada_por: orden.cargada_por_nombre || null,
-    facturas: (orden.facturas || []).map((f) => ({ fecha: f.fecha, detalle: f.detalle, importe: f.importe })),
+    facturas: (orden.facturas || []).map((f) => ({ fecha: f.fecha, detalle: f.detalle, importe: f.importe, comprobantes: comprobantesFactura(f) })),
     formas: (orden.formas || []).map((x) => ({ texto: textoForma(x), importe: x.importe, ...(x.plazo_fijo ? { plazo: { texto: textoPlazo(x), importe: x.plazo_fijo.importe } } : {}) })),
     rescate: sumasPagos([orden]),
     pagada: orden.estado === "pagada", pagada_fecha: orden.pagada_fecha || null,
@@ -299,6 +299,60 @@ export function adjuntosDe(orden) {
     });
 }
 
+/**
+ * 22/11: los PDF o fotos de las facturas que paga la orden. Cada factura
+ * guarda op_id (la compra o gasto en fin_operaciones) y esa operación tiene
+ * sus comprobantes (fin_operaciones.comprobantes, migración 187, o la foto
+ * vieja comprobante_url). Antes el CFO veía la factura solo como texto.
+ */
+export function idsOperacionesDe(ordenes = []) {
+  const ids = new Set();
+  for (const o of ordenes) for (const f of o?.facturas || []) {
+    const id = Number(f?.op_id);
+    if (Number.isInteger(id) && id > 0) ids.add(id);
+  }
+  return [...ids];
+}
+
+/** { op_id: [{ url, nombre, tipo }] } con los comprobantes de cada operación (solo https). */
+export function mapaComprobantes(operaciones = []) {
+  const mapa = {};
+  for (const op of operaciones || []) {
+    const lista = Array.isArray(op?.comprobantes) ? op.comprobantes.filter((c) => c && typeof c.url === "string") : [];
+    if (op?.comprobante_url && !lista.some((c) => c.url === op.comprobante_url)) lista.unshift({ url: op.comprobante_url });
+    const limpios = adjuntosDe({ adjuntos: lista });
+    if (limpios.length) mapa[op.id] = limpios;
+  }
+  return mapa;
+}
+
+/** La orden con los comprobantes puestos en cada factura (facturas[i].comprobantes). */
+export function conComprobantesFacturas(orden, mapa = {}) {
+  if (!orden || !Array.isArray(orden.facturas) || !orden.facturas.length) return orden;
+  return { ...orden, facturas: orden.facturas.map((f) => ({ ...f, comprobantes: mapa[Number(f?.op_id)] || [] })) };
+}
+
+/**
+ * Lee los comprobantes de las facturas de esas órdenes y los pone en cada
+ * una. leerFilas(path) devuelve las filas (con sesión o service_role, según
+ * quién llame). Si algo falla, las órdenes siguen igual, sin los links.
+ */
+export async function ponerComprobantesFacturas(ordenes = [], empresaId, leerFilas) {
+  const ids = idsOperacionesDe(ordenes);
+  if (!ids.length || !empresaId) return ordenes;
+  const base = `fin_operaciones?empresa_id=eq.${empresaId}&id=in.(${ids.join(",")})`;
+  let filas = null;
+  try { filas = await leerFilas(`${base}&select=id,comprobantes,comprobante_url`); } catch { filas = null; }
+  // Sin la 187 no existe la columna comprobantes: queda la foto vieja
+  if (!Array.isArray(filas)) { try { filas = await leerFilas(`${base}&select=id,comprobante_url`); } catch { filas = null; } }
+  if (!Array.isArray(filas) || !filas.length) return ordenes;
+  const mapa = mapaComprobantes(filas);
+  return ordenes.map((o) => conComprobantesFacturas(o, mapa));
+}
+
+/** Los comprobantes de una factura de la orden, listos para mostrar. */
+export const comprobantesFactura = (f) => adjuntosDe({ adjuntos: f?.comprobantes });
+
 /** Mensaje de WhatsApp para el CFO. */
 export function textoWhatsappCfo(orden, url, { empresa = "", cfo = "" } = {}) {
   return [
@@ -320,7 +374,10 @@ export function htmlOrdenPago({ empresa = {}, orden }) {
   const logo = /^https:\/\//.test(String(empresa?.logo_url || "")) ? empresa.logo_url : null;
   const nombre = empresa?.razon_social || empresa?.nombre || "";
   const est = ESTADOS_ORDEN[orden.estado];
-  const facturas = (orden.facturas || []).map((f) => `<tr><td>${esc(fechaCorta(f.fecha))}</td><td>${esc(f.detalle)}</td><td class="n">${esc(plata(f.importe))}</td></tr>`).join("");
+  const facturas = (orden.facturas || []).map((f) => {
+    const links = comprobantesFactura(f).map((a) => `<a href="${esc(a.url)}">${esc(a.nombre)}</a>`).join(" · ");
+    return `<tr><td>${esc(fechaCorta(f.fecha))}</td><td>${esc(f.detalle)}${links ? `<span class="chico" style="display:block">📎 ${links}</span>` : ""}</td><td class="n">${esc(plata(f.importe))}</td></tr>`;
+  }).join("");
   const formas = (orden.formas || []).map((x) => `<tr><td>${esc(textoForma(x))}</td><td class="n">${esc(plata(x.importe))}</td></tr>${x.plazo_fijo ? `<tr class="pf"><td>${esc(textoPlazo(x))}</td><td class="n">${esc(plata(x.plazo_fijo.importe))}</td></tr>` : ""}`).join("");
   const adjuntos = adjuntosDe(orden).map((a) => `<li><a href="${esc(a.url)}">${esc(a.nombre)}</a></li>`).join("");
   const decision = vistaPorCfo(orden)
