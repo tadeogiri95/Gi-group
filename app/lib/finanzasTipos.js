@@ -251,6 +251,25 @@ export const NOMBRE_FORMA = {
 };
 
 /**
+ * El medio de pago de un cobro o un pago, para los resúmenes de cuenta
+ * (22/11): "Efectivo", "Cheque o e-cheq", "Compensación"… En las
+ * transferencias, con el banco ("Transferencia · Galicia"). Vacío si no hubo
+ * plata de por medio (una venta, una nota de crédito, un ajuste).
+ * @param {{ cuenta_debe, cuenta_haber, origen? }} op
+ * @param {{ tesoreria: { cuenta, nombre?, tipo, moneda }[], cuentas: { codigo, nombre }[] }} ctx
+ */
+export function medioDePago(op, ctx = {}) {
+  if (op?.origen === "compensacion") return "Compensación";
+  const forma = formaDePago(op, ctx);
+  if (forma === "sin_caja") return "";
+  if (forma !== "transferencia") return NOMBRE_FORMA[forma] || "";
+  const t = new Map((ctx.tesoreria || []).map((x) => [x.cuenta, x]));
+  const banco = t.get(op?.cuenta_debe) || t.get(op?.cuenta_haber);
+  const nombre = String(banco?.nombre || "").replace(/\s+/g, " ").trim().slice(0, 40);
+  return nombre ? `${NOMBRE_FORMA.transferencia} · ${nombre}` : NOMBRE_FORMA.transferencia;
+}
+
+/**
  * Qué cambia al pasar a los tipos nuevos.
  * @param {{ tipos: { codigo, nombre?, grupo?, cuenta_debe?, cuenta_haber?, activo? }[], operaciones: { id, tipo, cuenta_debe, cuenta_haber }[], proveedores?: { id, fin_tipo }[], cuentas?: object[], tesoreria?: object[] }} d
  * @returns {{ cambios: { viejo, nuevo, operaciones }[], adivinadas: { id, nuevo }[], sin_tipo: number, crear: object[], desactivar: string[], proveedores: { viejo, nuevo, n }[], operaciones: number }}

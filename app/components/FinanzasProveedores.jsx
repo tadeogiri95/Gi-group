@@ -16,6 +16,7 @@
 // Parte 5: "🔗 Cliente y proveedor" y la cuenta unificada en la ficha.
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { medioDePago } from "../lib/finanzasTipos";
 import { apiFetch } from "../lib/supabase";
 import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import {
@@ -336,6 +337,7 @@ export function Ficha({ saldo, datos, cuentasProv, aprendidas, onCerrar, onCarga
   const [manual, setManual] = useState(null);
   const [ajuste, setAjuste] = useState(false);
   const [errorAjuste, setErrorAjuste] = useState(null);
+  const ctxMedio = useMemo(() => ({ tesoreria: datos.tesoreria || [], cuentas: datos.cuentas || [] }), [datos.tesoreria, datos.cuentas]);
   async function anularElAjuste(id) {
     setErrorAjuste(null);
     try {
@@ -434,6 +436,7 @@ export function Ficha({ saldo, datos, cuentasProv, aprendidas, onCerrar, onCarga
                   <td className="py-1">
                     <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(m.op.fecha)}</span> {m.op.tipo}
                     {m.op.descripcion && <span className="block text-[12px] text-gypi-dim break-words">{m.op.descripcion}</span>}
+                    {m.pago > 0 && medioDePago(m.op, ctxMedio) && <span className="block text-[12px] text-gypi-dim">Medio de pago: {medioDePago(m.op, ctxMedio)}</span>}
                     {m.op.origen === ORIGEN_AJUSTE_SALDO && <button type="button" className="text-[12px] text-gypi-red underline bg-transparent border-none p-0 cursor-pointer" onClick={() => anularElAjuste(m.op.id)}>Anular el ajuste</button>}
                   </td>
                   <td className="py-1 text-right font-mono">{m.compra ? plata(m.compra, "ARS") : ""}</td>

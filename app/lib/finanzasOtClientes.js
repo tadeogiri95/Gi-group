@@ -15,6 +15,9 @@
 //     "Lleva IVA (21 %)" vale × 1,21 (los cobros ya son lo cobrado). Antes
 //     era una casilla para todas las OT juntas.
 //   - Todas las OT, con un "desde" opcional que también recorta los cobros.
+//   - Entregada (22/11): la OT terminada en el Plan (TERMINADO = SI, estado
+//     "cerrado"), con el día de su entrega si Gypi la anotó en Finanzas. Los
+//     cobros sin OT pagan primero las entregadas más viejas.
 import { claveNombre } from "./finanzasProveedores";
 import { claveCliente, clienteDeOt, efectoCliente, indiceClientes } from "./finanzasClientes";
 import { elegirPrecio, fechaCargaOt } from "./costoMateriales";
@@ -82,7 +85,7 @@ export function valorOt(precio, materiales, factor = FACTOR_ESTIMADO) {
  * Las OT y los cobros de cada cliente (sin recortar por fecha).
  * @returns {{ clave, cliente_id, nombre, ots: object[], cobros: object[] }[]}
  */
-export function cuentasPorOt({ proyectos = [], precios = new Map(), materiales = new Map(), ops = [], cuentasDeu, clientes = [], factor = FACTOR_ESTIMADO }) {
+export function cuentasPorOt({ proyectos = [], precios = new Map(), materiales = new Map(), ops = [], cuentasDeu, clientes = [], factor = FACTOR_ESTIMADO, entregas = new Map(), medioDe = null }) {
   const indice = indiceClientes(clientes);
   const nombreDe = new Map(clientes.map((c) => [Number(c.id), c.nombre]));
   const por = new Map();
@@ -100,7 +103,8 @@ export function cuentasPorOt({ proyectos = [], precios = new Map(), materiales =
     const v = valorOt(precios.get(String(p.ot)), materiales.get(String(p.ot)), factor);
     const ot = {
       proyecto_id: Number(p.id), ot: String(p.ot), obra: p.obra || "", descripcion: p.descripcion || "", estado: p.estado || "",
-      fecha: fechaCargaOt(p) || "", ...v, lleva_iva: Boolean(p.lleva_iva), materiales: centavos(materiales.get(String(p.ot))?.total),
+      fecha: fechaCargaOt(p) || "", ...v, lleva_iva: Boolean(p.lleva_iva), entregada: p.estado === "cerrado",
+      entrega: p.estado === "cerrado" ? entregas.get(`p${p.id}`) || "" : "", materiales: centavos(materiales.get(String(p.ot))?.total),
       sin_precio_materiales: materiales.get(String(p.ot))?.sinPrecio || 0,
     };
     de(clave, id ? nombreDe.get(id) || p.cliente : String(p.cliente).trim()).ots.push(ot);
@@ -117,6 +121,7 @@ export function cuentasPorOt({ proyectos = [], precios = new Map(), materiales =
     const s = de(clave, clave.startsWith("c") ? nombreDe.get(Number(clave.slice(1))) || op.entidad || "" : String(op.entidad || "").trim());
     s.cobros.push({
       id: op.id, fecha: op.fecha, importe: centavos(-ef), proyecto_id: pid && otDe.get(pid) === clave ? pid : null, tipo: op.tipo || "", descripcion: op.descripcion || "",
+      medio: medioDe ? medioDe(op) : "",
       ...(propia && propia !== clave ? { a_nombre_de: String(op.entidad || "").trim() || null } : {}),
     });
   }
@@ -146,5 +151,40 @@ export function resumirCliente(c, { desde = "" } = {}) {
   }).sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "") || b.ot.localeCompare(a.ot));
   const valor = centavos(filas.reduce((s, o) => s + o.valor, 0));
   const cobrado = centavos(cobros.reduce((s, x) => s + x.importe, 0));
-  return { ots: filas, sin_ot: centavos(sinOt), valor, cobrado, saldo: centavos(valor - cobrado), estimadas: filas.filter((o) => o.estimado).length, con_iva: filas.filter((o) => o.lleva_iva).length };
+  return {
+    ots: filas, sin_ot: centavos(sinOt), valor, cobrado, saldo: centavos(valor - cobrado), estimadas: filas.filter((o) => o.estimado).length,
+    con_iva: filas.filter((o) => o.lleva_iva).length,
+    ...repartoEntrega(filas, sinOt),
+  };
+}
+
+/**
+ * Cuánto del saldo es de OT entregadas y cuánto de OT que todavía no se
+ * entregaron (22/11). Los cobros sin OT pagan primero las entregadas más
+ * viejas, después las pendientes; lo que sobra queda a favor del cliente.
+ * @param {{ valor: number, cobrado: number, saldo: number, fecha: string, entregada?: boolean }[]} filas
+ * @returns {{ entregadas: { n, valor, cobrado, saldo }, pendientes: { n, valor, cobrado, saldo }, a_favor: number }}
+ */
+export function repartoEntrega(filas = [], sinOt = 0) {
+  const grupo = (lista) => ({
+    n: lista.length,
+    valor: centavos(lista.reduce((s, o) => s + o.valor, 0)),
+    cobrado: centavos(lista.reduce((s, o) => s + o.cobrado, 0)),
+    saldo: centavos(lista.reduce((s, o) => s + Math.max(0, o.saldo), 0)),
+    // Lo cobrado de más en una OT también sirve para las otras
+    sobra: centavos(lista.reduce((s, o) => s + Math.max(0, -o.saldo), 0)),
+  });
+  const ent = grupo(filas.filter((o) => o.entregada));
+  const pen = grupo(filas.filter((o) => !o.entregada));
+  let libre = centavos((Number(sinOt) || 0) + ent.sobra + pen.sobra);
+  const usaEnt = Math.min(ent.saldo, libre);
+  libre = centavos(libre - usaEnt);
+  const usaPen = Math.min(pen.saldo, libre);
+  libre = centavos(libre - usaPen);
+  const sinSobra = ({ sobra, ...g }) => g;
+  return {
+    entregadas: { ...sinSobra(ent), saldo: centavos(ent.saldo - usaEnt) },
+    pendientes: { ...sinSobra(pen), saldo: centavos(pen.saldo - usaPen) },
+    a_favor: libre,
+  };
 }
