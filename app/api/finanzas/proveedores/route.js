@@ -98,15 +98,17 @@ export async function GET(request) {
   if (response) return response;
   const e = sesion.empresa_id;
   try {
-    const [cuentas, proveedores] = await Promise.all([
+    const [cuentas, proveedores, tesoreria] = await Promise.all([
       leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre,activa&order=codigo.asc`),
       leer(sesion, `proveedores?empresa_id=eq.${e}&select=id,nombre,activo,fin_tipo&order=nombre.asc,id.asc`),
+      // Para el medio de pago de cada pago en la ficha (22/11)
+      leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda`).catch(() => []),
     ]);
     const prov = [...cuentasProveedores(cuentas)];
     const operaciones = prov.length
       ? await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&or=(cuenta_debe.in.(${prov.join(",")}),cuenta_haber.in.(${prov.join(",")}))&select=${COLUMNAS}&order=fecha.asc,id.asc`, 50000)
       : [];
-    return NextResponse.json({ cuentas, proveedores, operaciones, cuentas_proveedores: prov, cuentas_guardadas: await leerGuardadas(e) });
+    return NextResponse.json({ cuentas, proveedores, tesoreria, operaciones, cuentas_proveedores: prov, cuentas_guardadas: await leerGuardadas(e) });
   } catch (err) {
     return errorFinanzas(err, "proveedores GET");
   }

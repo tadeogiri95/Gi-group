@@ -14,6 +14,7 @@
 // (parte 6, FinanzasOtClientes.jsx) y "🔗 Cliente y proveedor" (parte 5).
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { medioDePago } from "../lib/finanzasTipos";
 import { apiFetch } from "../lib/supabase";
 import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import { ORIGEN_SALDO_INICIAL } from "../lib/finanzasProveedores";
@@ -300,6 +301,7 @@ export function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
   const movimientos = useMemo(() => movimientosCliente(datos.operaciones, saldo.clave, cuentasDeu, datos.clientes), [datos, saldo, cuentasDeu]);
   const porOt = useMemo(() => saldoPorOt(movimientos), [movimientos]);
   const ots = useMemo(() => new Map(datos.proyectos.map((p) => [Number(p.id), p])), [datos.proyectos]);
+  const ctxMedio = useMemo(() => ({ tesoreria: datos.tesoreria || [], cuentas: datos.cuentas || [] }), [datos.tesoreria, datos.cuentas]);
   const s = textoSaldoCliente(saldo.saldo);
 
   async function anular(grupo) {
@@ -392,6 +394,7 @@ export function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
                       <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(m.op.fecha)}</span> {m.op.tipo}
                       {m.op.descripcion && <span className="block text-[12px] text-gypi-dim break-words">{m.op.descripcion}</span>}
                       {m.op.proyecto_id && ots.get(Number(m.op.proyecto_id)) && <span className="block text-[12px] text-gypi-dim">OT {ots.get(Number(m.op.proyecto_id)).ot}</span>}
+                      {m.cobro > 0 && medioDePago(m.op, ctxMedio) && <span className="block text-[12px] text-gypi-dim">Medio de pago: {medioDePago(m.op, ctxMedio)}</span>}
                       {grupo && <button type="button" className="text-[12px] text-gypi-red underline bg-transparent border-none p-0 cursor-pointer" onClick={() => anular(grupo)}>Anular el cobro</button>}
                       {m.op.origen === ORIGEN_AJUSTE_SALDO && <button type="button" className="text-[12px] text-gypi-red underline bg-transparent border-none p-0 cursor-pointer" onClick={() => anularElAjuste(m.op.id)}>Anular el ajuste</button>}
                     </td>

@@ -25,6 +25,20 @@ export async function leerPreciosOt(sesion, empresaId) {
   }
 }
 
+/**
+ * El día de entrega de cada OT que Gypi anotó en Finanzas (operaciones
+ * "entrega_ot" vivas): Map p<id> → fecha (22/11, resumen de cuenta). Las OT
+ * terminadas antes de que se prendieran las ventas no tienen día; si falla, vacío.
+ */
+export async function leerEntregasOt(sesion, empresaId) {
+  try {
+    const filas = await leer(sesion, `fin_operaciones?empresa_id=eq.${empresaId}&origen=eq.entrega_ot&anulada_at=is.null&select=origen_id,fecha&order=id.asc`, 50000);
+    return new Map(filas.filter((f) => f.origen_id && f.fecha).map((f) => [String(f.origen_id), String(f.fecha)]));
+  } catch {
+    return new Map();
+  }
+}
+
 const enTandas = async (xs, n, fn) => {
   const out = [];
   for (let i = 0; i < xs.length; i += n) out.push(...(await fn(xs.slice(i, i + n))));

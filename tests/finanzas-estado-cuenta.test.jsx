@@ -157,8 +157,8 @@ test("/api/finanzas/estado-cuenta — solo el Dueño; nunca manda estimados, des
   assert.equal(d.empresa.nombre, "Gi Group SRL");
   assert.equal(d.cliente.cuit, "30-2");
   assert.deepEqual(d.cliente.ots.map((o) => [o.ot, o.valor, o.sin_valor]), [["7001", 1000, false], ["7002", 0, true]]);
-  assert.deepEqual(d.cliente.cobros, [{ fecha: "2026-09-20", importe: 500, proyecto_id: 101 }]);
-  assert.deepEqual(d.proveedor.movimientos, [{ op: { fecha: "2026-09-21", referencia: "A-1", origen: "sos", descripcion: "" }, compra: 300, pago: 0 }]);
+  assert.deepEqual(d.cliente.cobros, [{ fecha: "2026-09-20", importe: 500, proyecto_id: 101, medio: "" }]);
+  assert.deepEqual(d.proveedor.movimientos, [{ op: { fecha: "2026-09-21", referencia: "A-1", origen: "sos", descripcion: "" }, compra: 300, pago: 0, medio: "" }]);
   const todo = JSON.stringify(d);
   assert.doesNotMatch(todo, /interna|interno|cuenta_debe|cuenta_haber|materiales|estimado/);
 });

@@ -19,6 +19,12 @@
 //  - Proveedor: los movimientos de la cuenta Proveedores (compras, notas de
 //    crédito, pagos), con el número de comprobante; las compras pendientes se
 //    calculan como en la ficha (los pagos van a las más viejas primero).
+//
+// 22/11 (pedido de Tadeo): cada cobro y cada pago dice su medio
+// ("Transferencia · Galicia", "Efectivo", "Cheque o e-cheq"…), y del cliente
+// se separan las OT entregadas (terminadas en el Plan) de las que faltan
+// entregar, cada una con su importe, lo pagado y lo que falta. Los pagos sin
+// OT van primero a las entregadas más viejas.
 
 import { CLASES_COMPRA, ORIGEN_COMPRA_MANUAL, ORIGEN_SALDO_INICIAL, pendientesProveedor } from "./finanzasProveedores";
 import { ORIGEN_AJUSTE_SALDO } from "./finanzasAjusteSaldo";
@@ -79,13 +85,17 @@ export function estadoCliente(c, { desde = "", hasta = "", hoy }) {
     ...valorizadas.map((o) => ({ fecha: o.fecha, orden: o.orden, concepto: o.concepto, detalle: o.detalle, cargo: o.importe })),
     ...cobros.map((x) => {
       const ot = x.proyecto_id ? porId.get(x.proyecto_id) : null;
-      return { fecha: x.fecha, orden: x.orden, concepto: "Pago recibido", detalle: ot ? [ot.concepto, ot.detalle].filter(Boolean).join(" · ") : "", abono: x.importe };
+      const deOt = ot ? [ot.concepto, ot.detalle].filter(Boolean).join(" · ") : "";
+      return { fecha: x.fecha, orden: x.orden, concepto: "Pago recibido", detalle: [x.medio, deOt].filter(Boolean).join(" · "), abono: x.importe };
     }),
   ];
   const cuenta = conSaldo(eventos, { desde, hasta });
 
-  // Lo que falta de cada OT al cierre: primero los cobros de esa OT, después los sueltos a las más viejas
+  // Lo que falta de cada OT al cierre: primero los cobros de esa OT; los
+  // sueltos (y lo pagado de más en otra OT) van a las entregadas más viejas y
+  // después a las que faltan entregar
   const corte = hasta || hoy;
+  const entregadaAl = (o) => Boolean(o.entregada) && (!o.entrega || o.entrega <= corte);
   const hastaCorte = cobros.filter((x) => x.fecha <= corte);
   const falta = new Map(valorizadas.filter((o) => o.fecha <= corte).map((o) => [o.proyecto_id, o.importe]));
   let sueltos = 0;
@@ -96,21 +106,39 @@ export function estadoCliente(c, { desde = "", hasta = "", hoy }) {
       if (resto < 0) sueltos = centavos(sueltos - resto);
     } else sueltos = centavos(sueltos + x.importe);
   }
-  const pendientes = [];
-  for (const o of [...valorizadas].sort(porFecha)) {
-    if (!falta.has(o.proyecto_id)) continue;
-    let resto = falta.get(o.proyecto_id);
+  const enCorte = [...valorizadas].filter((o) => falta.has(o.proyecto_id)).sort(porFecha);
+  const ordenPago = [...enCorte.filter(entregadaAl), ...enCorte.filter((o) => !entregadaAl(o))];
+  for (const o of ordenPago) {
+    const resto = falta.get(o.proyecto_id);
     const usa = Math.min(resto, sueltos);
-    resto = centavos(resto - usa);
+    falta.set(o.proyecto_id, centavos(resto - usa));
     sueltos = centavos(sueltos - usa);
-    if (resto > 0.009) pendientes.push({ fecha: o.fecha, concepto: [o.concepto, o.detalle].filter(Boolean).join(" · "), importe: o.importe, falta: resto, dias: dias(o.fecha, corte) });
   }
+  const fila = (o) => {
+    const f = falta.get(o.proyecto_id);
+    const desdeCuando = entregadaAl(o) && o.entrega ? o.entrega : o.fecha;
+    return {
+      fecha: o.fecha, entrega: entregadaAl(o) ? o.entrega || "" : "", concepto: [o.concepto, o.detalle].filter(Boolean).join(" · "),
+      importe: o.importe, pagado: centavos(o.importe - f), falta: f, dias: dias(desdeCuando, corte),
+    };
+  };
+  const pendientes = enCorte.filter((o) => falta.get(o.proyecto_id) > 0.009).map(fila);
+  // Entregadas: solo las que deben algo (las pagadas ya están en los movimientos)
+  const entregadas = enCorte.filter((o) => entregadaAl(o) && falta.get(o.proyecto_id) > 0.009).map(fila);
+  // Por entregar: todas, aunque estén pagadas (son anticipos de algo que falta entregar)
+  const porEntregar = enCorte.filter((o) => !entregadaAl(o)).map(fila);
+  const suma = (xs, k) => centavos(xs.reduce((t, x) => t + x[k], 0));
+  const entrega = {
+    entregadas, por_entregar: porEntregar,
+    falta_entregadas: suma(entregadas, "falta"), falta_por_entregar: suma(porEntregar, "falta"),
+    importe_por_entregar: suma(porEntregar, "importe"), pagado_por_entregar: suma(porEntregar, "pagado"), a_favor: sueltos,
+  };
   const aConfirmar = ots
     .filter((o) => (o.estimado || o.sin_valor || !(o.valor > 0)) && entre(o.fecha, desde, corte))
     .sort(porFecha)
     .map((o) => ({ fecha: o.fecha, concepto: o.concepto, detalle: o.detalle }));
   return {
-    ...cuenta, pendientes, a_confirmar: aConfirmar, con_iva: conIva, todas_con_iva: todasConIva,
+    ...cuenta, pendientes, entrega, a_confirmar: aConfirmar, con_iva: conIva, todas_con_iva: todasConIva,
     columnas: { cargo: "Importe OT", abono: "Pagado" },
     textos: { cargos: todasConIva ? "Total de OT (con IVA)" : conIva ? "Total de OT" : "Total de OT (sin IVA)", abonos: "Pagado" },
   };
@@ -132,9 +160,10 @@ export function conceptoProveedor(op, efecto) {
  * @param {{ op: object, compra: number, pago: number }[]} movs
  */
 export function estadoProveedor(movs, { desde = "", hasta = "", hoy }) {
-  const eventos = (movs || []).map((m, i) => ({
-    fecha: m.op.fecha, orden: i, ...conceptoProveedor(m.op, m.compra - m.pago), cargo: m.compra, abono: m.pago,
-  }));
+  const eventos = (movs || []).map((m, i) => {
+    const { concepto, detalle } = conceptoProveedor(m.op, m.compra - m.pago);
+    return { fecha: m.op.fecha, orden: i, concepto, detalle: [detalle, m.medio].filter(Boolean).join(" · "), cargo: m.compra, abono: m.pago };
+  });
   const cuenta = conSaldo(eventos, { desde, hasta });
   const corte = hasta || hoy;
   const pendientes = pendientesProveedor((movs || []).filter((m) => m.op.fecha <= corte), corte).map((p) => {
@@ -180,10 +209,22 @@ function seccionHtml(titulo, s, { desde, corte }) {
   const filas = s.movimientos.map((m) => `<tr><td>${esc(fechaCorta(m.fecha))}</td><td><b>${esc(m.concepto)}</b>${m.detalle ? `<div class="sub">${esc(m.detalle)}</div>` : ""}</td><td class="n">${m.cargo ? esc(pesos(m.cargo)) : ""}</td><td class="n">${m.abono ? esc(pesos(m.abono)) : ""}</td><td class="n s">${esc(pesos(m.saldo))}</td></tr>`).join("");
   const anterior = desde ? `<tr class="ant"><td>${esc(fechaCorta(desde))}</td><td>Saldo anterior</td><td></td><td></td><td class="n s">${esc(pesos(s.anterior))}</td></tr>` : "";
   const vacio = !s.movimientos.length ? `<tr><td></td><td class="vacio">Sin movimientos${desde ? " en el período" : ""}.</td><td></td><td></td><td></td></tr>` : "";
-  const pend = s.pendientes.length ? `
+  const tag = (d) => `<span class="tag ${d > 60 ? "tr" : d > 30 ? "ta" : "tv"}">${esc(d)} ${d === 1 ? "día" : "días"}</span>`;
+  const e = s.entrega;
+  const entrega = e ? `
+  ${e.falta_entregadas > 0.009 || e.falta_por_entregar > 0.009 ? `<p class="aclara reparto">Del saldo: <b>${esc(pesos(e.falta_entregadas))}</b> corresponde a OT ya entregadas y <b>${esc(pesos(e.falta_por_entregar))}</b> a OT pendientes de entrega${e.a_favor > 0.009 ? `; además hay <b>${esc(pesos(e.a_favor))}</b> pagados a cuenta` : ""}.</p>` : ""}
+  <h3>OT entregadas con saldo pendiente al ${esc(fechaLarga(corte))}</h3>
+  ${e.entregadas.length ? `<table><thead><tr><th class="f">Entrega</th><th>OT</th><th class="n">Importe</th><th class="n">Pagado</th><th class="n">Falta</th><th class="n">Antigüedad</th></tr></thead><tbody>
+  ${e.entregadas.map((p) => `<tr><td>${esc(fechaCorta(p.entrega) || "Entregada")}</td><td>${esc(p.concepto)}</td><td class="n">${esc(pesos(p.importe))}</td><td class="n">${p.pagado ? esc(pesos(p.pagado)) : ""}</td><td class="n s">${esc(pesos(p.falta))}</td><td class="n">${tag(p.dias)}</td></tr>`).join("")}
+  </tbody><tfoot><tr><td></td><td>Total</td><td></td><td></td><td class="n">${esc(pesos(e.falta_entregadas))}</td><td></td></tr></tfoot></table>` : `<p class="aclara">Todas las OT entregadas están pagadas.</p>`}
+  <h3>OT pendientes de entrega al ${esc(fechaLarga(corte))}</h3>
+  ${e.por_entregar.length ? `<table><thead><tr><th class="f">Fecha</th><th>OT</th><th class="n">Importe</th><th class="n">Pagado</th><th class="n">Falta</th></tr></thead><tbody>
+  ${e.por_entregar.map((p) => `<tr><td>${esc(fechaCorta(p.fecha))}</td><td>${esc(p.concepto)}</td><td class="n">${esc(pesos(p.importe))}</td><td class="n">${p.pagado ? esc(pesos(p.pagado)) : ""}</td><td class="n s">${esc(pesos(p.falta))}</td></tr>`).join("")}
+  </tbody><tfoot><tr><td></td><td>Total</td><td class="n">${esc(pesos(e.importe_por_entregar))}</td><td class="n">${esc(pesos(e.pagado_por_entregar))}</td><td class="n">${esc(pesos(e.falta_por_entregar))}</td></tr></tfoot></table>` : `<p class="aclara">No hay OT pendientes de entrega.</p>`}` : "";
+  const pend = !e && s.pendientes.length ? `
   <h3>Pendiente de pago al ${esc(fechaLarga(corte))}</h3>
   <table><thead><tr><th class="f">Fecha</th><th>Concepto</th><th class="n">Importe</th><th class="n">Falta</th><th class="n">Antigüedad</th></tr></thead><tbody>
-  ${s.pendientes.map((p) => `<tr><td>${esc(fechaCorta(p.fecha))}</td><td>${esc(p.concepto)}</td><td class="n">${esc(pesos(p.importe))}</td><td class="n s">${esc(pesos(p.falta))}</td><td class="n"><span class="tag ${p.dias > 60 ? "tr" : p.dias > 30 ? "ta" : "tv"}">${esc(p.dias)} ${p.dias === 1 ? "día" : "días"}</span></td></tr>`).join("")}
+  ${s.pendientes.map((p) => `<tr><td>${esc(fechaCorta(p.fecha))}</td><td>${esc(p.concepto)}</td><td class="n">${esc(pesos(p.importe))}</td><td class="n s">${esc(pesos(p.falta))}</td><td class="n">${tag(p.dias)}</td></tr>`).join("")}
   </tbody></table>` : "";
   const conf = s.a_confirmar.length ? `
   <h3>OT con monto a confirmar</h3>
@@ -194,7 +235,7 @@ function seccionHtml(titulo, s, { desde, corte }) {
   <table><thead><tr><th class="f">Fecha</th><th>Concepto</th><th class="n">${esc(s.columnas.cargo)}</th><th class="n">${esc(s.columnas.abono)}</th><th class="n">Saldo</th></tr></thead><tbody>
   ${anterior}${filas}${vacio}
   </tbody><tfoot><tr><td></td><td>Totales${desde ? " del período" : ""}</td><td class="n">${esc(pesos(s.cargos))}</td><td class="n">${esc(pesos(s.abonos))}</td><td class="n">${esc(pesos(s.saldo))}</td></tr></tfoot></table>
-  ${pend}${conf}
+  ${entrega}${pend}${conf}
 </section>`;
 }
 
@@ -267,6 +308,7 @@ export function htmlEstadoCuenta({ empresa = {}, nombre, cuit = "", cliente = nu
   .tag { padding: 2px 7px; border-radius: 10px; font-size: 9px; font-weight: 700; }
   .tv { background: #dcfce7; color: #166534; } .ta { background: #fef3c7; color: #92400e; } .tr { background: #fee2e2; color: #991b1b; }
   .aclara { margin: 0 0 6px; color: #6b7280; font-size: 10px; }
+  .aclara.reparto { margin: 8px 0 0; color: #374151; font-size: 11px; }
   .nota { margin-top: 16px; background: #f3f6fa; border-left: 3px solid var(--marca); padding: 9px 12px; color: #4b5563; font-size: 10px; line-height: 1.6; }
 </style></head><body>
   <div class="cabecera">
