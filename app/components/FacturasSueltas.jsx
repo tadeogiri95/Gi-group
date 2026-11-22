@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, sbGetAll } from "../lib/supabase";
 import { sugerirArticulos, cantidadTexto } from "../lib/stock";
+import { useTecladoLista, CLASE_MARCADA } from "../hooks/useTecladoLista";
 import { fotoBase64 } from "../lib/foto";
 import { textoPrecio } from "../lib/preciosArticulos";
 import { COMO_ASOCIADO, MAX_ARCHIVO_B64, TIPOS_DOCUMENTO, netoFactura } from "../lib/facturasSueltas";
@@ -73,15 +74,17 @@ function borradorDePlanilla(hojas, indice, archivo) {
 export function ElegirArticulo({ articulos, etiqueta, onElegir }) {
   const [texto, setTexto] = useState("");
   const { lista, resto } = useMemo(() => sugerirArticulos(articulos, texto, 8), [articulos, texto]);
+  const elegir = (a) => { onElegir(a); setTexto(""); };
+  const teclado = useTecladoLista(lista, elegir, () => setTexto(""));
   return (
     <div className="mt-1">
-      <input aria-label={etiqueta} className="g-input w-full text-[13px]" value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Buscar artículo del MRP por nombre o código" />
+      <input aria-label={etiqueta} className="g-input w-full text-[13px]" value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={teclado.onKeyDown} autoComplete="off" placeholder="Buscar artículo del MRP por nombre o código" />
       {lista.length > 0 && (
         <ul className="list-none m-0 p-0 mt-1 flex flex-col gap-1">
-          {lista.map((a) => (
+          {lista.map((a, i) => (
             <li key={a.sku}>
-              <button type="button" onClick={() => { onElegir(a); setTexto(""); }}
-                className="w-full text-left min-h-[40px] px-2.5 rounded-lg border border-gypi-border bg-gypi-bg cursor-pointer text-[13px] text-gypi-text">
+              <button type="button" {...teclado.props(i)} onClick={() => elegir(a)}
+                className={`w-full text-left min-h-[40px] px-2.5 rounded-lg border border-gypi-border bg-gypi-bg cursor-pointer text-[13px] text-gypi-text ${i === teclado.activa ? CLASE_MARCADA : ""}`}>
                 {a.nombre} <span className="text-xs text-gypi-dim">· {a.sku}</span>
               </button>
             </li>

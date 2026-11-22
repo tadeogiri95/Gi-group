@@ -11,7 +11,8 @@
 // 22/10, el estado de cada etapa de la ruta (como en el Tablero), que se ve
 // aunque nadie registre tareas. Desde la Minuta (parte M3), 📝 En las
 // minutas: lo que se dijo de la OT en las reuniones (solo gerencia). Desde el
-// 04/11, 📄 Ver PDF de la OT (carpeta de Drive, PdfOt.jsx).
+// 04/11, 📄 Ver PDF de la OT (carpeta de Drive, PdfOt.jsx). Desde el 22/11,
+// la casilla "Lleva IVA (21 %)" debajo del precio (IvaOt.jsx, migración 201).
 import { useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll } from "../lib/supabase";
 import { resumirOp, fmtHoras } from "../lib/detalleOp";
@@ -42,6 +43,7 @@ import InstalacionOt from "./InstalacionOt";
 import DisenoTecnicaOt from "./DisenoTecnicaOt";
 import { TituloOt } from "./NombreOt";
 import { PdfDeOt } from "./PdfOt";
+import IvaOt from "./IvaOt";
 
 // 4.5 → "4,5 min"; 95 → "1 h 35 min"
 function fmtPorUnidad(min) {
@@ -78,7 +80,7 @@ function Barra({ pct }) {
   );
 }
 
-export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], costoHora = null, verCostos = false, precio, modoObjetivo = null, puedeCambiarSemana = false, onClose, onProyectoActualizado,
+export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], costoHora = null, verCostos = false, precio, puedeVerPrecio = false, modoObjetivo = null, puedeCambiarSemana = false, onClose, onProyectoActualizado,
   pausas = [], usuarioNombre = null, onPausaCambiada }) {
   useEscape(onClose);
   // Checkeo manual (141): lo guardado acá se ve sin volver a abrir el detalle
@@ -180,7 +182,9 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
                 {[proyecto?.fecha_entrega && `Entrega ${fechaCorta(proyecto.fecha_entrega)}`, proyecto?.cantidad != null && `Cantidad ${proyecto.cantidad}`, proyecto?.total_modulos && `${proyecto.total_modulos} módulos`].filter(Boolean).join(" · ")}
               </div>
             )}
-            {precio != null && <div className="text-[13px] font-bold text-gypi-text mt-1">💲 Precio {fmtPesos(precio)}</div>}
+            {precio != null && <div className="text-[13px] font-bold text-gypi-text mt-1">💲 Precio {fmtPesos(precio)} <span className="font-normal text-gypi-dim">sin IVA</span></div>}
+            {/* 🧾 Lleva IVA (201): quien ve los precios la marca; Finanzas suma el 21 % */}
+            {puedeVerPrecio && <IvaOt proyecto={proyecto} precio={precio} onGuardado={onProyectoActualizado} />}
             {puedeCambiarSemana && modoObjetivo && (
               <div className="mt-1.5">
                 <SelectorSemana proyecto={{ ...proyecto, ...semana }} modo={modoObjetivo} hoy={hoyArg()} compacto
