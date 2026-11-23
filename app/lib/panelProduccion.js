@@ -116,7 +116,7 @@ export function entregasDeSemana(porOt, s) {
 }
 
 /** OT con la producción terminada en la semana, piezas escaneadas y lo que valen. */
-export function produccionDeSemana(porOt, pasos, s, precios = null) {
+export function produccionDeSemana(porOt, pasos, s, precios = null, estimadas = new Set()) {
   const ots = [];
   for (const t of porOt.values()) {
     const fin = finProduccionDe(t);
@@ -124,8 +124,10 @@ export function produccionDeSemana(porOt, pasos, s, precios = null) {
   }
   const piezas = (pasos || []).filter((p) => enSemana(diaDe(p.created_at), s)).length;
   const valor = precios ? ots.reduce((sum, t) => sum + (precios.get(String(t.ot)) || 0), 0) : null;
+  // De ese valor, lo estimado por materiales (OT sin PRECIO en el Plan, 23/11)
+  const valorEstimado = precios ? ots.filter((t) => estimadas.has(String(t.ot))).reduce((sum, t) => sum + (precios.get(String(t.ot)) || 0), 0) : null;
   return {
-    ots: ots.length, piezas, valor,
+    ots: ots.length, piezas, valor, valorEstimado,
     otsLista: ots.map((t) => t.ot),
     leadTime: promedio(ots.map((t) => t.produccion).filter((h) => h != null)),
   };
@@ -202,7 +204,7 @@ export function maquinasDeSemana({ s, maquinas = [], fallas = [], ahora = Date.n
  * cuello de botella: la etapa de producción con más OT esperando (y más
  * horas de espera); Instalación no cuenta.
  */
-export function enProceso(columnas, precios = null) {
+export function enProceso(columnas, precios = null, estimadas = new Set()) {
   const etapas = (columnas || []).filter((c) => c.id !== "terminadas").map((c) => {
     const enCurso = c.tarjetas.filter((t) => t.estado === "en_curso");
     const esperando = c.tarjetas.filter((t) => t.estado === "esperando");
@@ -221,6 +223,7 @@ export function enProceso(columnas, precios = null) {
     ots: tarjetas.length,
     esperando: tarjetas.filter((t) => t.estado === "esperando").length,
     valor: precios ? tarjetas.reduce((s, t) => s + (precios.get(String(t.ot)) || 0), 0) : null,
+    valorEstimado: precios ? tarjetas.filter((t) => estimadas.has(String(t.ot))).reduce((s, t) => s + (precios.get(String(t.ot)) || 0), 0) : null,
     cuello: cuello ? { id: cuello.id, nombre: cuello.nombre, esperando: cuello.esperando, horasEspera: cuello.horasEspera } : null,
   };
 }
@@ -248,13 +251,14 @@ export function pausadasAhora(pausas, proyectos = new Map()) {
  *   base: lo de cargarPlanVivo (vivo, vigentes, etapasCodigo, cfgValor, proyectos, divisiones, empleados, piezas, avance, retrabajos, pausas)
  *   pasos: escaneos (pasos_pieza requeridos) desde la primera semana
  *   manual, cargas, bultos, reportes, actas: los del tablero de etapas
- *   precios: Map OT → precio, o null si el usuario no ve precios
+ *   precios: Map OT → valor (PRECIO del Plan o estimado por materiales, 23/11), o null si el usuario no ve precios
+ *   estimadas: Set de las OT cuyo valor es estimado
  *   noConformidades, defectos (lista de la empresa), pendientes (pendientes_obra)
  *   maquinas, tareasMaquinas, registrosMaquinas, fallas: los de Maquinaria
  *   fecha: un día de la semana elegida; hoy; ahora (Date)
  */
 export function armarPanel(d) {
-  const { base, pasos = [], manual = [], cargas = [], bultos = [], reportes = [], actas = [], precios = null,
+  const { base, pasos = [], manual = [], cargas = [], bultos = [], reportes = [], actas = [], precios = null, estimadas = new Set(),
     noConformidades = [], defectos = null, pendientes = [],
     maquinas = [], tareasMaquinas = [], registrosMaquinas = [], fallas = [], fecha, hoy, ahora = new Date() } = d;
   const { vivo, vigentes: items, etapasCodigo, cfgValor, proyectos = [], divisiones = [], empleados = [], piezas = [], avance = [], retrabajos = [], pausas = [] } = base;
@@ -280,7 +284,7 @@ export function armarPanel(d) {
 
   const filas = semanas.map((s) => {
     const informe = calcularInforme({ periodo: { tipo: "semana", ...s }, items, etapasCodigo, piezas, pasos, manual, avance, proyectos: porOtProyecto, vivo, retrabajos, pausas });
-    const produccion = produccionDeSemana(tablero.porOt, pasos, s, precios);
+    const produccion = produccionDeSemana(tablero.porOt, pasos, s, precios, estimadas);
     const capacidad = capacidadPlanta(planta, diasDelPeriodo(s.desde, s.hasta), { feriados }).gente;
     return {
       ...s,
@@ -303,7 +307,7 @@ export function armarPanel(d) {
     semanas: filas,
     conPrecios: !!precios,
     ahora: {
-      enProceso: enProceso(tablero.columnas, precios),
+      enProceso: enProceso(tablero.columnas, precios, estimadas),
       atrasadas: atrasadasPlan(vivo, porOtProyecto),
       pausadas: pausadasAhora(pausas, porOtProyecto),
       pendientesAbiertos: (pendientes || []).filter((p) => !p.resuelto).length,

@@ -82,6 +82,25 @@ export function valorOt(precio, materiales, factor = FACTOR_ESTIMADO) {
 }
 
 /**
+ * El valor de cada OT (23/11, igual en toda la app): el PRECIO del Plan y, si
+ * no tiene, materiales ÷ % de materiales (estimado), con valorOt.
+ * @param {{ precios: Map<string, number>, materiales: Map<string, { total: number }>, factor?: number }} d
+ * @returns {Map<string, { valor: number, estimado: boolean }>} solo las OT con valor
+ */
+export function combinarValores({ precios = new Map(), materiales = new Map(), factor }) {
+  const out = new Map();
+  for (const [ot, precio] of precios) {
+    if (Number(precio) > 0) out.set(String(ot), { valor: Number(precio), estimado: false });
+  }
+  for (const [ot, m] of materiales) {
+    if (out.has(String(ot))) continue;
+    const v = valorOt(0, m, factor);
+    if (v.valor > 0) out.set(String(ot), { valor: v.valor, estimado: true });
+  }
+  return out;
+}
+
+/**
  * Las OT y los cobros de cada cliente (sin recortar por fecha).
  * @returns {{ clave, cliente_id, nombre, ots: object[], cobros: object[] }[]}
  */

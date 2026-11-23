@@ -193,9 +193,12 @@ export default function PanelProduccion() {
               ayuda="OT cuyo último proceso de producción llegó al 100 % en la semana, y piezas escaneadas en la semana en cualquier proceso." />
             {panel.conPrecios && (
               <Indicador id="valor" titulo="$ producidos" valor={fmtPesos(s.produccion.valor || 0)}
-                detalle={panel.ahora.enProceso.valor != null ? `${fmtPesos(panel.ahora.enProceso.valor)} en proceso hoy` : null}
+                detalle={[
+                  s.produccion.valorEstimado > 0 && `≈ ${fmtPesos(s.produccion.valorEstimado)} estimado`,
+                  panel.ahora.enProceso.valor != null && `${fmtPesos(panel.ahora.enProceso.valor)} en proceso hoy${panel.ahora.enProceso.valorEstimado > 0 ? ` (≈ ${fmtPesos(panel.ahora.enProceso.valorEstimado)} estimado)` : ""}`,
+                ].filter(Boolean).join(" · ") || null}
                 serie={serieDe(semanas, (x) => x.produccion.valor, (v) => fmtPesos(v || 0))}
-                ayuda="Precio (columna PRECIO del Plan de trabajo) de las OT que terminaron la producción en la semana. En proceso: el de las OT que hoy están en alguna etapa o esperando." />
+                ayuda="Valor de las OT que terminaron la producción en la semana: la columna PRECIO del Plan de trabajo o, si no tiene, estimado por sus materiales (costo de materiales ÷ el % de materiales de Finanzas). En proceso: el de las OT que hoy están en alguna etapa o esperando." />
             )}
             <Indicador id="en-proceso" titulo="OT en proceso hoy" valor={num(panel.ahora.enProceso.ots, 0)}
               detalle={`${panel.ahora.enProceso.esperando} esperando entre etapas`}

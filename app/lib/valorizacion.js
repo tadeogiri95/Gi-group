@@ -5,7 +5,7 @@
 // En la planificación, el precio de una OT se reparte entre semanas y meses
 // según las horas que el plan pone en cada uno (Tadeo eligió "según las
 // horas de cada semana").
-import { sbGetAll } from "./supabase";
+import { apiFetch } from "./supabase";
 import { inicioDeSemana } from "./semanaObjetivo";
 
 /** Dueño, Administración y Supervisor ven los precios; los operarios no. */
@@ -13,13 +13,28 @@ export function puedeVerPrecios(usuario) {
   return usuario?.rol === "gerencial" || usuario?.rol === "administrativo";
 }
 
-/** Precios de las OT (navegador): Map OT → precio. Sin permiso o sin la migración 142, vacío. */
+/** Texto del valor de una OT: "$ 1.000" o "≈ $ 1.000 estimado". */
+export const textoValorOt = (valor, estimado, fmt) => (estimado ? `≈ ${fmt(valor)} estimado` : fmt(valor));
+
+/**
+ * Valor de las OT (navegador, de /api/valor-ot): { precios: Map OT → valor,
+ * estimadas: Set de OT cuyo valor es estimado por materiales }. Sin permiso
+ * o si falla, vacío.
+ */
 export async function leerPrecios() {
   try {
-    const r = await sbGetAll("precios_ot?precio=not.is.null&select=ot,precio", { maxFilas: 20000 });
-    return new Map((r.data || []).map((f) => [String(f.ot), Number(f.precio)]));
+    const r = await apiFetch("/api/valor-ot");
+    if (!r.ok) return { precios: new Map(), estimadas: new Set() };
+    const d = await r.json();
+    const precios = new Map();
+    const estimadas = new Set();
+    for (const [ot, valor, estimado] of d.valores || []) {
+      precios.set(String(ot), Number(valor));
+      if (estimado) estimadas.add(String(ot));
+    }
+    return { precios, estimadas };
   } catch {
-    return new Map();
+    return { precios: new Map(), estimadas: new Set() };
   }
 }
 
@@ -29,24 +44,27 @@ export const nombreMes = (mes) => `${MESES[Number(mes.slice(5, 7)) - 1]} ${mes.s
 
 /**
  * Valorización del plan del período.
- * @param {{ ots: { id, ot, completo: number }[], segmentos: { id, fecha, gente }[], pendientes: { id, gente }[], precios: Map<string, number>, eficiencia?: number, modo?: string }} p
+ * @param {{ ots: { id, ot, completo: number }[], segmentos: { id, fecha, gente }[], pendientes: { id, gente }[], precios: Map<string, number>, estimadas?: Set<string>, eficiencia?: number, modo?: string }} p
  *   ots: las OT tildadas, con `completo` = horas efectivas de toda la OT (lo hecho y lo que falta)
  *   segmentos y pendientes: los de planAutomatico (horas de reloj)
- * @returns {{ total, conPrecio, sinPrecio, porSemana: { desde, valor }[], porMes: { mes, valor }[], pasa, hecho, sinHoras }}
+ *   precios: el valor de cada OT (PRECIO del Plan o estimado por materiales, 23/11)
+ *   estimadas: las OT cuyo valor es estimado (cuentan en conPrecio y en el total)
+ * @returns {{ total, conPrecio, sinPrecio, estimadas, totalEstimado, porSemana: { desde, valor }[], porMes: { mes, valor }[], pasa, hecho, sinHoras }}
  *   total: suma de los precios de las OT tildadas.
  *   porSemana / porMes: lo que el plan fabrica en cada semana o mes.
  *   pasa: lo que queda para el período siguiente; hecho: lo ya fabricado antes;
  *   sinHoras: OT con precio pero sin datos de la planilla para repartirlo.
  */
-export function valorizarPlan({ ots, segmentos = [], pendientes = [], precios, eficiencia = 100, modo }) {
+export function valorizarPlan({ ots, segmentos = [], pendientes = [], precios, estimadas = new Set(), eficiencia = 100, modo }) {
   const ef = (eficiencia || 100) / 100;
   const semanas = new Map(), meses = new Map();
-  let total = 0, conPrecio = 0, sinPrecio = 0, pasa = 0, hecho = 0, sinHoras = 0, enPlan = 0;
+  let total = 0, conPrecio = 0, sinPrecio = 0, pasa = 0, hecho = 0, sinHoras = 0, enPlan = 0, nEstimadas = 0, totalEstimado = 0;
   for (const o of ots || []) {
     const precio = precios?.get(String(o.ot));
     if (precio == null) { sinPrecio++; continue; }
     conPrecio++;
     total += precio;
+    if (estimadas?.has(String(o.ot))) { nEstimadas++; totalEstimado += precio; }
     if (!(o.completo > 0)) { sinHoras += precio; continue; }
     // Horas efectivas: los segmentos y pendientes vienen en horas de reloj
     const porHora = precio / o.completo;
@@ -66,7 +84,7 @@ export function valorizarPlan({ ots, segmentos = [], pendientes = [], precios, e
   }
   const orden = (m) => [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   return {
-    total, conPrecio, sinPrecio, enPlan, pasa, hecho, sinHoras,
+    total, conPrecio, sinPrecio, enPlan, pasa, hecho, sinHoras, estimadas: nEstimadas, totalEstimado,
     porSemana: orden(semanas).map(([desde, valor]) => ({ desde, valor })),
     porMes: orden(meses).map(([mes, valor]) => ({ mes, valor })),
   };

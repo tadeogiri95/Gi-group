@@ -7,6 +7,7 @@ import { cargarPlanVivo } from "./informeProduccionServidor";
 import { armarPanel, semanasPanel } from "./panelProduccion";
 import { normalizarDefectos, CLAVE_DEFECTOS } from "./calidad";
 import { hoyArg } from "./dates";
+import { valoresDeOts } from "./valorOtServidor";
 
 const vacio = () => ({ data: [] });
 const DIA = 86400000;
@@ -34,8 +35,9 @@ export async function panelDeEmpresa(empresaId, fecha, { sesion, conPrecios = fa
     sbGetAll(`bultos_ot?empresa_id=eq.${e}&cargado=eq.true&select=ot,cargado_at`, { ...opts, maxFilas: 20000 }).catch(vacio),
     sbGetAll(`reportes_instalacion?empresa_id=eq.${e}&select=ot,avance,created_at`, { ...opts, maxFilas: 20000 }).catch(vacio),
     sbGetAll(`actas_ot?empresa_id=eq.${e}&firmada_at=not.is.null&select=ot,firmada_at`, opts).catch(vacio),
-    // Los precios solo para quien los puede ver (y sin la 142, nada)
-    conPrecios ? sbGetAll(`precios_ot?empresa_id=eq.${e}&precio=not.is.null&select=ot,precio`, { ...opts, maxFilas: 20000 }).catch(() => null) : Promise.resolve(null),
+    // El valor de las OT solo para quien ve precios: el PRECIO del Plan o, si
+    // no tiene, estimado por materiales (23/11; sin la 142, nada)
+    conPrecios ? valoresDeOts(sesion, e).catch(() => null) : Promise.resolve(null),
     sbGetAll(`no_conformidades?empresa_id=eq.${e}&created_at=gte.${desdeTs}&select=ot,defecto,cantidad,created_at`, { ...opts, maxFilas: 20000 }).catch(vacio),
     sbGetAll(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_DEFECTOS}&select=valor`, opts).catch(vacio),
     sbGetAll(`pendientes_obra?empresa_id=eq.${e}&select=ot,resuelto,created_at`, { ...opts, maxFilas: 20000 }).catch(vacio),
@@ -46,7 +48,8 @@ export async function panelDeEmpresa(empresaId, fecha, { sesion, conPrecios = fa
   ]);
   return armarPanel({
     base, pasos: pasos.data, manual: manual.data, cargas: cargas.data, bultos: bultos.data, reportes: reportes.data, actas: actas.data,
-    precios: precios ? new Map(precios.data.map((f) => [String(f.ot), Number(f.precio)])) : null,
+    precios: precios ? new Map([...precios].map(([ot, v]) => [ot, v.valor])) : null,
+    estimadas: precios ? new Set([...precios].filter(([, v]) => v.estimado).map(([ot]) => ot)) : new Set(),
     noConformidades: nc.data, defectos: normalizarDefectos(defectos.data[0]?.valor?.lista), pendientes: pendientes.data,
     maquinas: maquinas.data, tareasMaquinas: tareas.data, registrosMaquinas: registros.data, fallas: fallas.data,
     fecha, hoy, ahora,

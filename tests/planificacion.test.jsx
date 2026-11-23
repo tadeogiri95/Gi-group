@@ -925,7 +925,9 @@ test("precios — Dueño, Administración y Supervisor; los operarios no", () =>
   assert.match(sql, /grant select on public\.precios_ot to authenticated;/);
 });
 
-function mockConPrecios(precios) {
+// El valor de cada OT viene de /api/valor-ot (23/11): PRECIO del Plan o
+// estimado por materiales ([ot, valor, estimado]).
+function mockConPrecios(precios, estimadas = []) {
   const pedidos = [];
   mockCarga({
     proyectos: [
@@ -937,9 +939,13 @@ function mockConPrecios(precios) {
   });
   const base = global.fetch;
   global.fetch = async (url, opts) => {
+    if (String(url).startsWith("/api/valor-ot")) {
+      pedidos.push("valor-ot");
+      const valores = [...precios.map((p) => [p.ot, p.precio, 0]), ...estimadas.map((p) => [p.ot, p.precio, 1])];
+      return new Response(JSON.stringify({ valores }), { status: 200 });
+    }
     const path = JSON.parse(opts.body).path || "";
     pedidos.push(path);
-    if (path.startsWith("precios_ot")) return new Response(JSON.stringify({ data: path.includes("offset=0") ? precios : [] }), { status: 200 });
     return base(url, opts);
   };
   return pedidos;
@@ -953,7 +959,7 @@ test("📊 Carga — 💲 precio de cada OT y valorización por semana y mes", a
   const fila = screen.getByLabelText("Planificar OT M-7473").closest("li");
   await waitFor(() => assert.match(fila.textContent, /\$ 2\.500\.000/));
   const valor = screen.getByLabelText("Valorización");
-  assert.match(valor.textContent, /OT tildadas con precio: 2\$ 3\.500\.000/);
+  assert.match(valor.textContent, /OT tildadas con valor: 2\$ 3\.500\.000/);
   fireEvent.click(screen.getByLabelText("Planificar OT M-9000"));
   assert.match(valor.textContent, /\$ 2\.500\.000/);
   // Con Semana: la semana que se ve, cada semana del plan y el total
@@ -983,7 +989,22 @@ test("📊 Carga — el supervisor ve los precios y los pide (05/11)", async () 
     </AuthContext.Provider>
   );
   await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-7473").checked, true));
-  await waitFor(() => assert.ok(pedidos.some((p) => p.startsWith("precios_ot"))));
+  await waitFor(() => assert.ok(pedidos.includes("valor-ot")));
+});
+
+test("📊 Carga — la OT sin PRECIO se valoriza por sus materiales, marcada ≈ estimado (23/11)", async () => {
+  lunes26();
+  mockConPrecios([{ ot: "M-7473", precio: 2500000 }], [{ ot: "M-9000", precio: 1000000 }]);
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, true));
+  const fila = screen.getByLabelText("Planificar OT M-9000").closest("li");
+  await waitFor(() => assert.match(fila.textContent, /≈ \$ 1\.000\.000 estimado/));
+  const valor = screen.getByLabelText("Valorización");
+  assert.match(valor.textContent, /OT tildadas con valor: 2\$ 3\.500\.000/);
+  assert.match(valor.textContent, /De eso, ≈ \$ 1\.000\.000 es estimado: 1 OT no tiene PRECIO en el Plan/);
+  // Con valor estimado no hay aviso de "sin precio"
+  const avisos = screen.queryByLabelText("Avisos de la planificación");
+  assert.equal(avisos?.querySelector('[data-aviso="precio"]') ?? null, null);
 });
 
 test("📊 Carga — avisa cuántas OT tildadas no tienen precio y cuántas no tienen placas, fondos ni canto", async () => {
@@ -997,7 +1018,7 @@ test("📊 Carga — avisa cuántas OT tildadas no tienen precio y cuántas no t
   fireEvent.click(within(tiempos).getByText("Ver cuáles ▼"));
   assert.match(tiempos.textContent, /M-9000 · Cliente 2/);
   assert.match(avisos.querySelector('[data-aviso="precio"]').textContent, /1 OT tildada no tiene PRECIO/);
-  assert.match(screen.getByLabelText("Planificar OT M-9000").closest("li").textContent, /sin precio/);
+  assert.match(screen.getByLabelText("Planificar OT M-9000").closest("li").textContent, /sin valor/);
   // Destildada, ya no avisa
   fireEvent.click(screen.getByLabelText("Planificar OT M-9000"));
   assert.equal(screen.queryByLabelText("Avisos de la planificación"), null);

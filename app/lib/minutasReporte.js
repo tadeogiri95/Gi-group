@@ -198,12 +198,14 @@ export function nombreInforme(modo, fecha) {
 }
 
 /**
- * @param {{ minutas: object[], items: object[], precios?: Record<string, number>, hoy: string, modo?: "dia"|"semana"|"mes", hasta?: string }} datos
- *   precios: OT → precio (migración 142); sin precio la OT va sin valor.
+ * @param {{ minutas: object[], items: object[], precios?: Record<string, number>, estimadas?: string[], hoy: string, modo?: "dia"|"semana"|"mes", hasta?: string }} datos
+ *   precios: OT → valor: el PRECIO del Plan (142) o, si no tiene, estimado por
+ *   sus materiales (23/11); sin ninguno de los dos la OT va sin valor.
+ *   estimadas: las OT cuyo valor es estimado.
  *   hasta: último día del período (los pendientes abiertos cuentan hasta ahí o hasta hoy).
  *   anterior: el feedback del período anterior ({ reuniones, items: [{ tipo, area }] }) para comparar.
  */
-export function informeMinutas({ minutas = [], items = [], precios = {}, hoy, modo = "semana", hasta = null, anterior = null }) {
+export function informeMinutas({ minutas = [], items = [], precios = {}, estimadas = [], hoy, modo = "semana", hasta = null, anterior = null }) {
   const base = resumenMinutas({ minutas, items, hoy });
   const fechaDe = new Map(minutas.map((m) => [m.id, m.fecha]));
   const its = items.map((it) => ({ ...it, fecha: it.fecha || fechaDe.get(it.minuta_id) || null }))
@@ -247,7 +249,7 @@ export function informeMinutas({ minutas = [], items = [], precios = {}, hoy, mo
     const k = `${it.seccion}|${it.ot || it.id}`;
     if (vistos.has(k)) continue;
     vistos.add(k);
-    terminadas.push({ seccion: it.seccion, fecha: it.fecha, ot: it.ot || null, proyecto: it.proyecto || null, cliente: it.cliente || null, texto: it.texto || "", valor: precio(it.ot) });
+    terminadas.push({ seccion: it.seccion, fecha: it.fecha, ot: it.ot || null, proyecto: it.proyecto || null, cliente: it.cliente || null, texto: it.texto || "", valor: precio(it.ot), estimado: precio(it.ot) != null && estimadas.includes(String(it.ot)) });
   }
   const totalDe = (sec) => {
     const l = terminadas.filter((t) => t.seccion === sec);

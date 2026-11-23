@@ -15,7 +15,7 @@ import { BotonPdfOt, LinkPdfOt } from "./components/PdfOt";
 import LinkClienteOt from "./components/LinkClienteOt";
 import { usePdfsOt } from "./hooks/usePdfsOt";
 import { indicePdfs } from "./lib/pdfOt";
-import { puedeVerPrecios, leerPrecios } from "./lib/valorizacion";
+import { puedeVerPrecios, leerPrecios, textoValorOt } from "./lib/valorizacion";
 import { fmtPesos } from "./lib/costo";
 import TableroOt from "./components/TableroOt";
 import GanttOt from "./components/GanttOt";
@@ -187,11 +187,13 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null, vistaIn
   const costoHora = useCostoHora(comoDueno(usuario));
   // Precio de cada OT (142): solo Dueño y Administración
   const verPrecios = puedeVerPrecios(usuario);
+  // Valor de cada OT (23/11): el PRECIO del Plan o, si no tiene, estimado por materiales
   const [precios, setPrecios] = useState(() => new Map());
+  const [estimadas, setEstimadas] = useState(() => new Set());
   useEffect(() => {
     if (!verPrecios || !empresaId) return;
     let vivo = true;
-    leerPrecios().then((m) => { if (vivo) setPrecios(m); });
+    leerPrecios().then((v) => { if (vivo) { setPrecios(v.precios); setEstimadas(v.estimadas); } });
     return () => { vivo = false; };
   }, [verPrecios, empresaId]);
   const divisiones = getDivisionesConSinAsignar(divisionesCtx);
@@ -725,7 +727,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null, vistaIn
                       {claseDeOt(p).clase}{claseDeOt(p).sinDatos ? <span className="text-gypi-mute font-normal">?</span> : null}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-gypi-dim">{textoEntrega(p, modoObjetivo).replace(/^Entrega /, "") || "—"}</td>
-                    {verPrecios && <td className="px-3 py-2.5 text-right font-mono whitespace-nowrap">{precios.has(String(p.ot)) ? fmtPesos(precios.get(String(p.ot))) : "—"}</td>}
+                    {verPrecios && <td className="px-3 py-2.5 text-right font-mono whitespace-nowrap">{precios.has(String(p.ot)) ? <span title={estimadas.has(String(p.ot)) ? "Sin PRECIO en el Plan: estimado por los materiales de la OT" : undefined} className={estimadas.has(String(p.ot)) ? "text-gypi-dim" : undefined}>{textoValorOt(precios.get(String(p.ot)), estimadas.has(String(p.ot)), fmtPesos)}</span> : "—"}</td>}
                     <td className="px-2 py-1.5 text-right whitespace-nowrap">
                       <LinkPdfOt ot={p.ot} indice={indicePdf} />
                       <button type="button" onClick={(e) => { e.stopPropagation(); setAcciones(p); }} aria-label={`Acciones de la OT ${p.ot}`}
@@ -765,7 +767,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null, vistaIn
                 )}
                 {(pct != null || entrega || (verPrecios && precios.has(String(p.ot)))) && (
                   <div className="flex items-center justify-between gap-2 text-[13px] text-gypi-dim">
-                    <span>{pct != null ? `🧩 ${pct} %` : ""}{verPrecios && precios.has(String(p.ot)) ? `${pct != null ? " · " : ""}${fmtPesos(precios.get(String(p.ot)))}` : ""}</span>
+                    <span>{pct != null ? `🧩 ${pct} %` : ""}{verPrecios && precios.has(String(p.ot)) ? `${pct != null ? " · " : ""}${textoValorOt(precios.get(String(p.ot)), estimadas.has(String(p.ot)), fmtPesos)}` : ""}</span>
                     <span className="whitespace-nowrap">{entrega}</span>
                   </div>
                 )}
@@ -793,7 +795,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null, vistaIn
         <SueltosOt proyecto={sueltos} empresaId={empresaId} esGestion={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setSueltos(null)} />
       )}
       {detalle && (
-        <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} verCostos={comoDueno(usuario)} precio={verPrecios ? precios.get(String(detalle.ot)) : undefined} puedeVerPrecio={verPrecios}
+        <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} verCostos={comoDueno(usuario)} precio={verPrecios ? precios.get(String(detalle.ot)) : undefined} precioEstimado={verPrecios && estimadas.has(String(detalle.ot))} puedeVerPrecio={verPrecios}
           modoObjetivo={modoObjetivo} puedeCambiarSemana={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setDetalle(null)}
           pausas={pausas} usuarioNombre={usuario?.nombre || null} onPausaCambiada={leerPausas}
           onProyectoActualizado={(p) => setProyectos(prev => prev.map(x => x.id === p.id ? { ...x, ...p } : x))} />

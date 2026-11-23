@@ -35,7 +35,7 @@ import AvanceManualOt from "./AvanceManualOt";
 import { useConfirm } from "./ui/ConfirmDialog";
 import SelectorSemana from "./SelectorSemana";
 import { clavePlan } from "../lib/reordenarPlan";
-import { puedeVerPrecios, leerPrecios, valorizarPlan, nombreMes } from "../lib/valorizacion";
+import { puedeVerPrecios, leerPrecios, valorizarPlan, nombreMes, textoValorOt } from "../lib/valorizacion";
 import { fmtPesos } from "../lib/costo";
 import { planHorizonte, trabajoDelPeriodo, ordenEficiente } from "../lib/planAutomatico";
 import { inicioDeSemana } from "../lib/semanaObjetivo";
@@ -169,11 +169,13 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   // Precio de cada OT (142): solo Dueño y Administración
   const { usuario } = useAuth();
   const verPrecios = puedeVerPrecios(usuario);
+  // Valor de cada OT (23/11): el PRECIO del Plan o, si no tiene, estimado por materiales
   const [precios, setPrecios] = useState(() => new Map());
+  const [estimadas, setEstimadas] = useState(() => new Set());
   useEffect(() => {
     if (!verPrecios) return;
     let vivo = true;
-    leerPrecios().then((m) => { if (vivo) setPrecios(m); });
+    leerPrecios().then((v) => { if (vivo) { setPrecios(v.precios); setEstimadas(v.estimadas); } });
     return () => { vivo = false; };
   }, [verPrecios, empresaId]);
   const [manualAbierto, setManualAbierto] = useState(null);
@@ -308,8 +310,8 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   }), [plan, desdeVisible, per.hasta, params, capacidad, ots, elegidas, horas]);
   const valor = useMemo(() => (verPrecios ? valorizarPlan({
     ots: ots.filter((p) => elegidas?.has(p.id)).map((p) => ({ id: p.id, ot: p.ot, completo: horas.get(p.id).completo })),
-    segmentos: plan?.segmentos, pendientes: plan?.pendientes, precios, eficiencia: params.eficiencia, modo,
-  }) : null), [verPrecios, ots, elegidas, horas, plan, precios, params.eficiencia, modo]);
+    segmentos: plan?.segmentos, pendientes: plan?.pendientes, precios, estimadas, eficiencia: params.eficiencia, modo,
+  }) : null), [verPrecios, ots, elegidas, horas, plan, precios, estimadas, params.eficiencia, modo]);
 
   if (error) return <div role="alert" className="text-sm text-gypi-red">{error}</div>;
   if (!datos || !elegidas) return <Cargando />;
@@ -430,8 +432,8 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
                   <div className="text-right">
                     <div className="text-[13px] font-bold whitespace-nowrap">{fmtH(h.total / ((params.eficiencia || 100) / 100))}</div>
                     {verPrecios && (precios.has(String(p.ot))
-                      ? <div className="text-xs text-gypi-dim whitespace-nowrap">{fmtPesos(precios.get(String(p.ot)))}</div>
-                      : <div className="text-xs text-gypi-amber-ink font-bold whitespace-nowrap">sin precio</div>)}
+                      ? <div className="text-xs text-gypi-dim whitespace-nowrap">{textoValorOt(precios.get(String(p.ot)), estimadas.has(String(p.ot)), fmtPesos)}</div>
+                      : <div className="text-xs text-gypi-amber-ink font-bold whitespace-nowrap">sin valor</div>)}
                   </div>
                 </label>
                 <TipoOt proyecto={p} onCambiar={(v) => cambiarTipo(p, v)} />
@@ -609,10 +611,11 @@ function Valorizacion({ valor, conPlan, per }) {
     <div className="g-card mb-3" aria-label="Valorización">
       <div className="g-label mb-1">💲 Valorización</div>
       <div className="flex items-baseline gap-2 mb-1">
-        <div className="text-[13px] flex-1">OT tildadas con precio: {valor.conPrecio}</div>
+        <div className="text-[13px] flex-1">OT tildadas con valor: {valor.conPrecio}</div>
         <div className="font-heading text-lg font-bold">{fmtPesos(valor.total)}</div>
       </div>
-      {valor.sinPrecio > 0 && <div className="text-xs text-gypi-dim mb-1">{valor.sinPrecio === 1 ? "1 OT tildada no tiene" : `${valor.sinPrecio} OT tildadas no tienen`} PRECIO en el Plan de trabajo.</div>}
+      {valor.estimadas > 0 && <div className="text-xs text-gypi-dim mb-1">De eso, ≈ {fmtPesos(valor.totalEstimado)} es estimado: {valor.estimadas === 1 ? "1 OT no tiene" : `${valor.estimadas} OT no tienen`} PRECIO en el Plan y se valoriza{valor.estimadas === 1 ? "" : "n"} por sus materiales.</div>}
+      {valor.sinPrecio > 0 && <div className="text-xs text-gypi-dim mb-1">{valor.sinPrecio === 1 ? "1 OT tildada no tiene" : `${valor.sinPrecio} OT tildadas no tienen`} PRECIO en el Plan ni materiales para estimar su valor.</div>}
       {!conPlan ? (
         <div className="text-xs text-gypi-dim">Tildá OT para ver cuánto se fabrica cada {porMes ? "mes" : "semana"}.</div>
       ) : (
@@ -627,7 +630,7 @@ function Valorizacion({ valor, conPlan, per }) {
               <div className="text-base font-bold">{fmtPesos(valor.enPlan)}</div>
             </div>
           </div>
-          <div className="text-xs text-gypi-dim mb-1">Cada OT reparte su precio según las horas que el plan pone en cada {porMes ? "mes" : "semana"}. Con ◀ ▶ arriba cambiás {porMes ? "el mes" : "la semana"} que se ve.</div>
+          <div className="text-xs text-gypi-dim mb-1">Cada OT reparte su valor según las horas que el plan pone en cada {porMes ? "mes" : "semana"}. Con ◀ ▶ arriba cambiás {porMes ? "el mes" : "la semana"} que se ve.</div>
           <table className="w-full text-[13px] mb-2" aria-label={porMes ? "Valorización por mes" : "Valorización por semana"}>
             <tbody>
               {filas.map((f) => fila(f.key, f.label, f.valor, { actual: f.actual }))}
@@ -656,7 +659,7 @@ function AvisosOt({ sinTiempos, sinPrecio }) {
   const [abierto, setAbierto] = useState(null);
   const avisos = [
     { id: "tiempos", lista: sinTiempos, texto: (n) => `${n === 1 ? "1 OT tildada no tiene" : `${n} OT tildadas no tienen`} placas, fondos ni canto: sin eso no se calculan sus tiempos y no entran en el plan.` },
-    { id: "precio", lista: sinPrecio, texto: (n) => `${n === 1 ? "1 OT tildada no tiene" : `${n} OT tildadas no tienen`} PRECIO en el Plan de trabajo: no suman a la valorización.` },
+    { id: "precio", lista: sinPrecio, texto: (n) => `${n === 1 ? "1 OT tildada no tiene" : `${n} OT tildadas no tienen`} PRECIO en el Plan de trabajo ni materiales para estimarlo: no suman a la valorización.` },
   ].filter((a) => a.lista.length);
   if (!avisos.length) return null;
   return (
