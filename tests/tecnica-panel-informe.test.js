@@ -51,8 +51,3 @@ test("cargarPlanVivo — el informe y el cron arrancan Producción después de T
   assert.equal(vivo.get("B").esperaTecnica, null, "EXCEL hecho: no espera");
 });
 
-test("Panel — el plan vivo de ⏰ OT atrasadas también espera Técnica", () => {
-  const src = readFileSync(new URL("../app/dashboard_gerencia.jsx", import.meta.url), "utf8");
-  assert.match(src, /noAntes: noAntesDeTecnica\(planDeEmpresa\(\{ proyectos: proy\.data/);
-  assert.match(src, /empleados\?activo=eq\.true&select=id,nombre/);
-});

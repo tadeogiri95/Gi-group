@@ -1,153 +1,76 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { otsEnPausa } from "./lib/pausaOt";
-import { planDeEmpresa, noAntesDeTecnica } from "./lib/planDisenoTecnica";
 import Image from "next/image";
 import { useRefrescoVisible } from "./hooks/useRefrescoVisible";
-import { useEscape } from "./hooks/useEscape";
-import { fmtTime, fmtDate, DIAS_KEY } from "./lib/theme";
+import { fmtTime, fmtDate } from "./lib/theme";
+import { sbGetAll } from "./lib/supabase";
+import { hoyArg } from "./lib/dates";
+import TrialBanner from "./components/TrialBanner";
+import ChecklistActivacion from "./components/ChecklistActivacion";
+import BillingScreen from "./components/BillingScreen";
+import { tieneModulo } from "./lib/modulos";
+import { getDivisionesConTodas } from "./lib/constants";
+import { useAuth } from "./context/AuthContext";
+import { esSupervisor } from "./lib/menuGestion";
+import { Tag } from "./components/ui";
+import AvisoMigraciones from "./components/AvisoMigraciones";
+import { contarPorDivision, nombreDivisionOt } from "./lib/avance";
+import { leerAvanceYHoras } from "./lib/otEnCursoDatos";
+import { alertasVehiculo, urgentes as alertasUrgentes } from "./lib/alertasFlota";
+import { textoVencimiento, SEMAFORO } from "./lib/flota";
+import { alertasMantenimiento } from "./lib/panelMantenimiento";
+import { otEnProduccion, escaneosDelDia, escaneosPorOt, inicioDelDiaArg } from "./lib/inicioGerencia";
+import NombreOt from "./components/NombreOt";
+import MisPlanillas, { detalleMisPlanillas, useMisPlanillas } from "./components/MisPlanillas";
+import MiCaja, { detalleMiCaja, useMiCaja } from "./components/MiCaja";
+
+/* ═══════════════════════════════════════════════════════
+   PANEL DE CONTROL (Inicio de gerencia)
+   Pedido de Tadeo (23/11): solo cuatro bloques y en este orden:
+   Equipo · OT en curso en producción · Escaneos de hoy · Flota.
+   La asistencia todavía no corre por Gypi: no se muestra.
+   ═══════════════════════════════════════════════════════ */
 
 // R11: colores por token. El color dice si algo está bien, para atender o mal;
 // el de la empresa es solo para lo principal.
 const MARCA = "var(--color-empresa-primary)";
 const TONO = {
   bien: { txt: "text-gypi-green-ink", fondo: "bg-gypi-green/10", borde: "border-gypi-green/25", relleno: "fill-gypi-green" },
-  aviso: { txt: "text-gypi-amber-ink", fondo: "bg-gypi-amber/10", borde: "border-gypi-amber/25", relleno: "fill-gypi-amber" },
   mal: { txt: "text-gypi-red-ink", fondo: "bg-gypi-red/10", borde: "border-gypi-red/25", relleno: "fill-gypi-red" },
-  info: { txt: "text-gypi-cyan-ink", fondo: "bg-gypi-cyan/10", borde: "border-gypi-cyan/25", relleno: "fill-gypi-cyan" },
-  neutro: { txt: "text-gypi-text", fondo: "bg-gypi-surf-hi", borde: "border-gypi-border", relleno: "fill-gypi-mute" },
+  marca: { relleno: "fill-(--color-empresa-primary)" },
 };
-
-import { sb, sbGetAll } from "./lib/supabase";
-import { hoyArg, ahoraArg, lunesDeLaSemana } from "./lib/dates";
-import { fechaCorta } from "./lib/ot";
-import { calcularScoreEmpleado, PESOS_SCORE } from "./lib/calc";
-import TrialBanner from "./components/TrialBanner";
-import ChecklistActivacion from "./components/ChecklistActivacion";
-import BillingScreen from "./components/BillingScreen";
-import { tieneModulo, conRegistroTareas, REGISTRO_TAREAS } from "./lib/modulos";
-import FotoViewer from "./components/FotoViewer";
-/* ═══════════════════════════════════════════════════════
-   DASHBOARD GERENCIAL — Vista en tiempo real
-   ═══════════════════════════════════════════════════════ */
-
-/* ─── Constantes ─── */
-import { getDivisionesConTodas } from "./lib/constants";
-import { useAuth } from "./context/AuthContext";
-import { esSupervisor } from "./lib/menuGestion";
-// getDemoDashboardData se carga dinámicamente (ver cargarDatos) — nunca debe
-// formar parte del bundle para empresas reales.
-
-const DIAS_SEMANA = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
-const DIAS_LABEL_SHORT = ["D", "L", "M", "X", "J", "V", "S"];
-
-import { Tag, EmptyState } from "./components/ui";
-import TarjetaMinuta from "./components/TarjetaMinuta";
-import AvisoMigraciones from "./components/AvisoMigraciones";
-import Icon from "./components/Icon";
-import { nombreSolicitud } from "./lib/tiposSolicitud";
-import { filasTablero, otEnCurso, contarPorDivision, nombreDivisionOt } from "./lib/avance";
-import { leerAvanceYHoras } from "./lib/otEnCursoDatos";
-import { alertasVehiculo, urgentes as alertasUrgentes } from "./lib/alertasFlota";
-import { textoVencimiento, SEMAFORO } from "./lib/flota";
-import { avancePorOt } from "./lib/piezas";
-import { alertasMantenimiento, textoDias } from "./lib/panelMantenimiento";
-import { modulosPorOt } from "./lib/cargaPlanta";
-import { normalizarParametros } from "./lib/planificacion";
-import { faltanManual } from "./lib/ajustesTiempo";
-import { itemsVigentes, diasExtraVigentes, planVivo, otAtrasadasPlan, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla, personalGantt } from "./lib/ganttPlan";
-import { CLAVE_FECHA_OBJETIVO, normalizarModo } from "./lib/semanaObjetivo";
-import { llegadasDelDia, asistenciaPorDivision, diaKeyDeFecha, esOperario, pct } from "./lib/asistenciaDia";
-import NombreOt from "./components/NombreOt";
-import { mapaOts, otCompleta, textoOt } from "./lib/nombreOt";
-import MisPlanillas, { detalleMisPlanillas, useMisPlanillas } from "./components/MisPlanillas";
-import MiCaja, { detalleMiCaja, useMiCaja } from "./components/MiCaja";
-import TarjetaPlata from "./components/TarjetaPlata";
-import { esDuenoFinanzas } from "./lib/finanzas";
-
-/* ─── Helpers ─── */
-const fmtMin = (min) => {
-  if (!min || min <= 0) return "0m";
-  const h = Math.floor(min / 60);
-  const m = Math.round(min % 60);
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-};
-
-const tonoPct = (pct) => pct >= 80 ? "bien" : pct >= 60 ? "aviso" : "mal";
 
 /** Título de cada tarjeta del tablero. */
 const Titulo = ({ children }) => <h3 className="m-0 font-heading text-[15px] font-bold text-gypi-text">{children}</h3>;
 
-/** Número chico de una tarjeta, con el color de su tono. */
-function Dato({ valor, etiqueta, tono = "neutro", grande = false }) {
-  return (
-    <div className={`g-kpi ${TONO[tono].fondo}`}>
-      <div className={`font-heading font-bold ${grande ? "text-[22px]" : "text-base font-mono"} ${TONO[tono].txt}`}>{valor}</div>
-      <div className="g-kpi-label">{etiqueta}</div>
-    </div>
-  );
-}
-
 /** Barra de porcentaje: un SVG con el ancho como atributo (sin estilos sueltos). */
-function Barra({ pct, tono, alto = 4, className = "" }) {
+function Barra({ pct, alto = 6, className = "" }) {
   return (
     <svg className={`w-full block rounded-sm bg-gypi-surf-hi ${className}`} height={alto} viewBox={`0 0 100 ${alto}`} preserveAspectRatio="none" aria-hidden="true">
-      <rect width={Math.max(0, Math.min(pct, 100))} height={alto} rx="1" className={TONO[tono].relleno} />
+      <rect width={Math.max(0, Math.min(pct, 100))} height={alto} rx="1" className={TONO.marca.relleno} />
     </svg>
-  );
-}
-
-/* ─── Gráfico de barras chico (todo en SVG: barras, números y días) ─── */
-function MiniBarChart({ data, maxVal, height = 70, barWidth = 28, labels = [] }) {
-  const max = maxVal || Math.max(...data, 1);
-  const gap = 4;
-  const w = data.length * (barWidth + gap) - gap;
-  const alto = height + 18;
-  return (
-    <svg width={w} height={alto} viewBox={`0 0 ${w} ${alto}`} className="overflow-visible" role="img" aria-label={`Fichadas por día: ${labels.map((l, i) => `${l} ${data[i]}`).join(", ")}`}>
-      {data.map((v, i) => {
-        const bh = Math.max(2, (v / max) * (height - 4));
-        const x = i * (barWidth + gap);
-        const y = height - bh;
-        return (
-          <g key={i}>
-            <rect x={x} y={y} width={barWidth} height={bh} rx={4} className="fill-gypi-green" fillOpacity={v > 0 ? 0.8 : 0.2} />
-            {v > 0 && <text x={x + barWidth / 2} y={y - 4} textAnchor="middle" className="fill-gypi-dim font-mono" fontSize="10" fontWeight="600">{Math.round(v)}</text>}
-            {labels[i] && <text x={x + barWidth / 2} y={alto - 2} textAnchor="middle" className="fill-gypi-mute font-mono" fontSize="11" fontWeight="600">{labels[i]}</text>}
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-/* ─── Dona ─── */
-function DonutChart({ value, total, size = 64, strokeWidth = 6, label }) {
-  const pct = total > 0 ? Math.round((value / total) * 100) : 0;
-  const r = (size - strokeWidth) / 2;
-  const circ = 2 * Math.PI * r;
-  const offset = circ - (pct / 100) * circ;
-  const tono = total > 0 ? tonoPct(pct) : "neutro";
-  return (
-    <div className="flex flex-col items-center gap-1.5">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`${label}: ${total > 0 ? `${pct}% del tiempo trabajando` : "sin datos"}`}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" className="stroke-gypi-border" strokeWidth={strokeWidth} />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" className={`${TONO[tono].relleno.replace("fill-", "stroke-")} transition-[stroke-dashoffset] duration-700 ease-out`} strokeWidth={strokeWidth}
-          strokeDasharray={circ} strokeDashoffset={offset}
-          strokeLinecap="round" transform={`rotate(-90 ${size / 2} ${size / 2})`} />
-        <text x={size / 2} y={size / 2 + 1} textAnchor="middle" dominantBaseline="middle" className="fill-gypi-text font-mono" fontSize="15" fontWeight="700">{total > 0 ? `${pct}%` : "—"}</text>
-      </svg>
-      {label && <div className="g-overline">{label}</div>}
-    </div>
   );
 }
 
 /* ─── Punto que late ("en vivo") ─── */
-const PulseDot = ({ activo = true, chico = false }) => (
-  <span className={`inline-block rounded-full animate-pulse ${chico ? "w-1.5 h-1.5" : "w-2 h-2"} ${activo ? "bg-gypi-green" : "bg-(--color-text-muted)"}`} aria-hidden="true" />
-);
+const PulseDot = () => <span className="inline-block w-2 h-2 rounded-full animate-pulse bg-gypi-green" aria-hidden="true" />;
 
+/** Botón del pie de una tarjeta que lleva a su pantalla. */
+function BotonIr({ onClick, children }) {
+  return (
+    <button onClick={onClick}
+      className="flex-1 w-full mt-3 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-surf-hi border border-gypi-border text-gypi-text"
+    >
+      {children} &rarr;
+    </button>
+  );
+}
 
-/* ─── Panel de Reportes de Obra con fotos y detalle expandible ─── */
+/** Hora de un escaneo, en la hora de Argentina. */
+const horaArg = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Argentina/Buenos_Aires" });
+};
+
 /** 📐 Mis planillas de la arquitecta que entra (parte 50); nada si no es arquitecta. */
 function TarjetaMisPlanillas() {
   const datos = useMisPlanillas(true);
@@ -186,508 +109,101 @@ function TarjetaMiCaja() {
   );
 }
 
-function ReportesObraPanel({ reportesObra }) {
-  const [expandedReport, setExpandedReport] = useState(null);
-  const [fotoViewer, setFotoViewer] = useState(null); // { fotos: [], index: 0 }
-
-  return (
-    <>
-      <section aria-label="Reportes de obra" className="card-hover g-card mb-4">
-        <div className="flex justify-between items-center mb-3">
-          <Titulo>Reportes de obra de hoy</Titulo>
-          {reportesObra.length > 0 && <Tag color="var(--color-cyan)">{reportesObra.length} reportes</Tag>}
-        </div>
-
-        {reportesObra.length === 0 ? (
-          <EmptyState
-            icon="mapPin"
-            title="Sin reportes de obra hoy"
-            description="Los reportes de trabajo en campo que suban desde el celular van a aparecer acá."
-            color="var(--color-cyan)"
-          />
-        ) : (
-          <div className="flex flex-col gap-2">
-            {reportesObra.map(r => {
-              const isExpanded = expandedReport === r.id;
-              const tieneFotos = r.fotos_urls && r.fotos_urls.length > 0;
-
-              return (
-                <div key={r.id} className={`rounded-xl overflow-hidden transition-all duration-200 bg-gypi-surf-hi border ${isExpanded ? TONO.info.borde : "border-(--color-border-hi)"}`}>
-                  <button type="button" onClick={() => setExpandedReport(isExpanded ? null : r.id)} aria-expanded={isExpanded} className="w-full flex items-center gap-2.5 p-3 cursor-pointer bg-transparent border-none text-left font-body">
-                    <div className={`w-9 h-9 rounded-[10px] flex items-center justify-center shrink-0 ${TONO.info.fondo} ${TONO.info.txt}`} aria-hidden="true"><Icon name="building" size={18} /></div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[13px] font-bold text-gypi-text">{r.nombre}</span>
-                        {tieneFotos && <Tag color="var(--color-cyan)">&#x1F4F7; {r.fotos_urls.length}</Tag>}
-                        {r.faltantes?.length > 0 && <Tag color="var(--color-red)">&#x26A0; {r.faltantes.length}</Tag>}
-                      </div>
-                      <div className="text-[12px] text-gypi-dim mt-0.5 truncate">
-                        {r.progreso?.slice(0, 60)}{r.progreso?.length > 60 ? "..." : ""}
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-0.5">
-                      <span className="text-xs text-gypi-dim">
-                        {new Date(r.created_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" className={`text-gypi-mute transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}><polyline points="6 9 12 15 18 9" /></svg>
-                    </div>
-                  </button>
-
-                  {isExpanded && (
-                    <div className="px-3 pb-3.5 border-t border-gypi-border">
-                      <div className="pt-3 pb-2">
-                        <div className={`g-overline mb-1.5 ${TONO.bien.txt}`}>&#x2705; Progreso</div>
-                        <div className="text-[13px] text-gypi-text leading-relaxed">{r.progreso || "—"}</div>
-                      </div>
-
-                      {r.faltantes?.length > 0 && (
-                        <div className="p-2 px-2.5 rounded-[10px] mb-2 bg-gypi-red/[0.06] border border-gypi-red/10">
-                          <div className={`g-overline mb-1.5 ${TONO.mal.txt}`}>&#x1F6AB; Faltantes</div>
-                          <div className="flex flex-wrap gap-1">
-                            {r.faltantes.map((f, i) => <span key={i} className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${TONO.mal.fondo} ${TONO.mal.txt}`}>{f}</span>)}
-                          </div>
-                        </div>
-                      )}
-
-                      {r.desvios?.length > 0 && (
-                        <div className="p-2 px-2.5 rounded-[10px] mb-2 bg-gypi-amber/[0.06] border border-gypi-amber/10">
-                          <div className={`g-overline mb-1.5 ${TONO.aviso.txt}`}>&#x26A0;&#xFE0F; Desvíos</div>
-                          <div className="flex flex-wrap gap-1">
-                            {r.desvios.map((d, i) => <span key={i} className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${TONO.aviso.fondo} ${TONO.aviso.txt}`}>{d}</span>)}
-                          </div>
-                        </div>
-                      )}
-
-                      {tieneFotos && (
-                        <div className="py-2">
-                          <div className={`g-overline mb-2 ${TONO.info.txt}`}>&#x1F4F7; Fotos ({r.fotos_urls.length})</div>
-                          <div className={`grid gap-2 ${r.fotos_urls.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
-                            {r.fotos_urls.map((url, i) => (
-                              <button key={i} type="button" onClick={() => setFotoViewer({ fotos: r.fotos_urls, index: i })} aria-label={`Ampliar foto ${i + 1}`} className={`cursor-pointer rounded-[10px] overflow-hidden bg-gypi-surface border border-gypi-border relative p-0 ${r.fotos_urls.length === 1 ? "aspect-video" : "aspect-square"}`}>
-                                <Image src={url} alt={`Foto ${i + 1}`} fill sizes="(max-width: 768px) 50vw, 300px" className="object-cover" />
-                                <div className="absolute bottom-1.5 right-1.5 px-2 py-0.5 rounded-md bg-black/60 text-white text-xs font-semibold" aria-hidden="true">&#x1F50D; Ampliar</div>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {!tieneFotos && r.fotos > 0 && (
-                        <div className="p-2 px-2.5 rounded-lg text-[12px] text-gypi-dim bg-gypi-surface">
-                          &#x1F4F7; El instalador indicó {r.fotos} foto{r.fotos > 1 ? "s" : ""} pero no se subieron correctamente
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      {fotoViewer && (
-        <FotoViewer
-          fotos={fotoViewer.fotos}
-          index={fotoViewer.index}
-          onClose={() => setFotoViewer(null)}
-          onNav={(i) => setFotoViewer(prev => ({ ...prev, index: i }))}
-        />
-      )}
-    </>
-  );
-}
-
-
 /* ═══════════════════════════════════════════════════════
    COMPONENTE PRINCIPAL: DashboardGerencia
    ═══════════════════════════════════════════════════════ */
-export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, isDemo = false }) {
+export default function DashboardGerencia({ goto, ctx, reload, empresa, isDemo = false }) {
   const { divisiones: divisionesCtx, etapas: etapasCtx, usuario } = useAuth();
   // El supervisor de división no paga ni pone en marcha la empresa: sin el
   // cartel de la prueba ni los primeros pasos del dueño (auditoría 01/11)
   const supervisor = esSupervisor(usuario);
   const DIVISIONES = getDivisionesConTodas(divisionesCtx);
-  const [division, setDivision] = useState("todas");
-  const [tab, setTab] = useState("resumen"); // resumen | asistencia | produccion | solicitudes
-  const [resumenProd, setResumenProd] = useState([]);
-  const [fichadasSemana, setFichadasSemana] = useState([]);
-  const [fichadasMes, setFichadasMes] = useState([]);
-  const [solsAprobadas, setSolsAprobadas] = useState([]);
-  const [reportesObra, setReportesObra] = useState([]);
-  const [docsExigidos, setDocsExigidos] = useState([]);
-  const [docsCargados, setDocsCargados] = useState([]);
-  // Si alguna consulta llegó al tope de filas, los totales pueden estar incompletos
-  const [datosIncompletos, setDatosIncompletos] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
   const [showBilling, setShowBilling] = useState(false);
-  const [scoreDetail, setScoreDetail] = useState(null);
-  const [showFullRanking, setShowFullRanking] = useState(false);
-  useEscape(() => setShowFullRanking(false), showFullRanking);
-  useEscape(() => setScoreDetail(null), !!scoreDetail);
-  // OT en curso y pedidos de compra pendientes (null = no se pudieron leer
-  // o la empresa no usa OT / Compras: la tarjeta no se muestra)
-  const [otCurso, setOtCurso] = useState(null);
-  // OT atrasadas (parte 36): pasaron su fecha de entrega y no están terminadas
-  const [otAtrasadasLista, setOtAtrasadasLista] = useState(null);
-  const [modoObjetivo, setModoObjetivo] = useState(normalizarModo());
-  const [pedidosCompra, setPedidosCompra] = useState(null);
-  // Flota (Mantenimiento parte 30): vehículos con lo que necesitan para sus alertas
-  const [flota, setFlota] = useState(null);
-  // Maquinaria (parte 36): máquinas, su plan y las fallas sin arreglar
-  const [maquinaria, setMaquinaria] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  // null = no se pudo leer o la empresa no usa ese módulo: la tarjeta no aparece
+  const [otCurso, setOtCurso] = useState(null);
+  const [escaneos, setEscaneos] = useState(null);
+  const [flota, setFlota] = useState(null);
 
   const hoy = hoyArg();
   const empleados = ctx.empleados || [];
-  const fichadasHoy = ctx.fichadasHoy || [];
-  const solicitudes = ctx.solicitudes || [];
-  const notificaciones = ctx.notificaciones || [];
+  const empActivos = empleados.filter(e => e.activo !== false);
 
-  /* ─── Timer ─── */
+  const empresaId = empresa?.id;
+  // OT y Flota son módulos propios (131): apagado o no contratado, su tarjeta no aparece
+  const conOt = tieneModulo(empresa, "proyectos");
+  const conFlota = tieneModulo(empresa, "flota");
+
+  /* ─── Timer del reloj ─── */
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(t);
   }, []);
 
-  /* ─── Cargar datos extra del dashboard ─── */
-  const cargarDatos = useCallback(async () => {
-    setLoading(true);
+  /* ─── OT en curso: el avance real (escaneo de piezas o % cargado a mano) ─── */
+  const cargarOt = useCallback(async () => {
+    if (isDemo || !empresaId || !conOt) return;
     try {
-      if (isDemo) {
-        const { getDemoDashboardData } = await import("./lib/demoData");
-        const d = getDemoDashboardData();
-        setResumenProd(d.resumenProd);
-        setFichadasSemana(d.fichadasSemana);
-        setFichadasMes(d.fichadasMes);
-        setSolsAprobadas(d.solsAprobadas);
-        setReportesObra(d.reportesObra);
-        setLoading(false);
-        return;
-      }
-      const monStr = lunesDeLaSemana(0);
-      const mesInicio = hoyArg().slice(0, 7) + "-01";
-
-      // Rangos de semana/mes: todas las páginas. Antes el gateway cortaba en 500
-      // filas sin avisar y el ranking, el score y las horas del mes salían
-      // incompletos (auditoría F3-03). El orden con id desempata las páginas.
-      const [prodData, fichadasSem, fichadasMesData, solsApData, repObra, docsExig, docsCarg] = await Promise.all([
-        // Producción en vivo: sale del registro de tareas (sin él no se pide)
-        REGISTRO_TAREAS ? sb.get(`v_resumen_diario?fecha=eq.${hoy}&select=*`) : [],
-        sbGetAll(`fichadas?select=legajo,fecha,ingreso,egreso,horas_trabajadas,llegada_tarde,minutos_tarde,empleados(nombre,division)&fecha=gte.${monStr}&order=fecha.asc,id.asc`, { maxFilas: 20000 }),
-        sbGetAll(`fichadas?select=empleado_id,legajo,fecha,horas_trabajadas,llegada_tarde,minutos_tarde&fecha=gte.${mesInicio}&order=fecha.asc,id.asc`, { maxFilas: 20000 }),
-        sbGetAll(`solicitudes?select=empleado_id,legajo,tipo,estado,created_at&estado=eq.aprobado&created_at=gte.${mesInicio}&order=id.asc`),
-        sb.get(`reportes_obra?fecha=eq.${hoy}&order=created_at.desc`),
-        sbGetAll(`documentos_exigidos_empleado?select=empleado_id,tipo_documento_id&order=id.asc`),
-        sbGetAll(`documentos_empleado?estado=eq.cargado&select=empleado_id,tipo_documento_id&order=id.asc`),
+      const [proy, avHs] = await Promise.all([
+        sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=neq.cerrado&select=*&order=id.asc`, { maxFilas: 20000 }),
+        leerAvanceYHoras(empresaId),
       ]);
-      setResumenProd(prodData || []);
-      setFichadasSemana(fichadasSem.data);
-      setFichadasMes(fichadasMesData.data);
-      setSolsAprobadas(solsApData.data);
-      setReportesObra(repObra || []);
-      setDocsExigidos(docsExig.data);
-      setDocsCargados(docsCarg.data);
-      setDatosIncompletos([fichadasSem, fichadasMesData, solsApData, docsExig, docsCarg].some((r) => r.truncado));
+      setOtCurso(otEnProduccion(proy.data || [], avHs.piezas || []));
     } catch (e) {
-      console.error("Dashboard error:", e);
-    } finally {
-      setLoading(false);
+      console.error("Panel OT en curso:", e);
+      setOtCurso(null);
     }
-  }, [hoy, isDemo]);
+  }, [isDemo, empresaId, conOt]);
 
-  useEffect(() => { cargarDatos(); }, [cargarDatos]);
+  /* ─── Escaneos de piezas de hoy (se refrescan cada minuto) ─── */
+  const cargarEscaneos = useCallback(async () => {
+    if (isDemo || !empresaId || !conOt) return;
+    try {
+      // Sin la migración 110 no hay escaneo por pieza: la tarjeta no aparece
+      const r = await sbGetAll(`pasos_pieza?empresa_id=eq.${empresaId}&created_at=gte.${encodeURIComponent(inicioDelDiaArg(hoyArg()))}&select=id,ot,etapa,created_at,piezas_ot(nombre,modulo),empleados(nombre)&order=created_at.desc,id.desc`, { maxFilas: 5000 });
+      setEscaneos(escaneosDelDia(r.data || [], etapasCtx || []));
+    } catch (e) {
+      console.error("Panel escaneos:", e);
+      setEscaneos(null);
+    }
+  }, [isDemo, empresaId, conOt, etapasCtx]);
 
-  // OT en curso y pedidos de compra: al abrir y con el botón de actualizar
-  // (no cada minuto: el avance y las horas de 6 meses son muchas filas)
-  const empresaId = empresa?.id;
-  // OT, Compras y Flota son módulos propios (131): apagado o no contratado, su tarjeta no aparece
-  const conOt = tieneModulo(empresa, "proyectos");
-  const conCompras = tieneModulo(empresa, "compras");
-  const conFlota = tieneModulo(empresa, "flota");
-  const conMaquinaria = tieneModulo(empresa, "maquinaria");
-  // Sin fichaje (la empresa usa su propio control de acceso) no hay asistencia ni ranking que mostrar
-  const conFichaje = tieneModulo(empresa, "fichaje");
-  const cargarOtYCompras = useCallback(async () => {
-    if (isDemo || !empresaId || !(conOt || conCompras || conFlota || conMaquinaria)) return;
-    const si = (con, leer) => (con ? leer().catch(() => null) : null);
-    const [proy, avHs, cfgObjetivo, plan, peds, veh, pap, chk, cho, arr, maq, tar, fal, mods, ajus, paus, pers] = await Promise.all([
-      // Todas las columnas: el plan vivo calcula las horas que faltan con placas, cantos y módulos
-      si(conOt, () => sbGetAll(`proyectos?empresa_id=eq.${empresaId}&estado=neq.cerrado&select=*&order=id.asc`, { maxFilas: 20000 })),
-      si(conOt, () => leerAvanceYHoras(empresaId)),
-      si(conOt, () => sb.get(`config_sistema?clave=eq.${CLAVE_FECHA_OBJETIVO}&select=valor&limit=1`)),
-      // ⏰ OT atrasadas sale del plan de producción confirmado (138)
-      si(conOt, () => leerPlanesConfirmados()),
-      // Sin la migración 113 no hay tabla de pedidos: la tarjeta no aparece
-      si(conCompras, () => sbGetAll(`pedidos_compra?estado=eq.pendiente&select=id,descripcion,cantidad,unidad,ot,empleado_nombre,created_at&order=created_at.asc,id.asc`, { maxFilas: 5000 })),
+  /* ─── Flota: vehículos con lo que necesitan para sus alertas (Mantenimiento parte 30) ─── */
+  const cargarFlota = useCallback(async () => {
+    if (isDemo || !empresaId || !conFlota) return;
+    try {
       // Sin la migración 126 no hay flota: la tarjeta no aparece
-      si(conFlota, () => sbGetAll(`vehiculos?activo=eq.true&order=patente.asc,id.asc`, { maxFilas: 2000 })),
-      si(conFlota, () => sbGetAll(`vehiculo_papeles?order=created_at.desc,id.desc`, { maxFilas: 20000 })),
-      si(conFlota, () => sbGetAll(`vehiculo_checklists?select=id,vehiculo_id,created_at,km,secciones&order=created_at.desc,id.desc`, { maxFilas: 2000 })),
-      si(conFlota, () => sbGetAll(`empleados?activo=eq.true&select=id,nombre,licencia_categoria,licencia_vencimiento&order=id.asc`, { maxFilas: 5000 })),
-      si(conFlota, () => sbGetAll(`vehiculo_arreglos?estado=eq.pendiente&select=id,vehiculo_id,descripcion,prioridad,estado&order=id.asc`, { maxFilas: 5000 })),
-      // Sin la migración 132 no hay máquinas; sin la 134, no hay fallas
-      si(conMaquinaria, () => sbGetAll(`maquinas?activo=eq.true&order=codigo.asc,id.asc`, { maxFilas: 2000 })),
-      si(conMaquinaria, () => sbGetAll(`maquina_tareas?activa=eq.true&order=orden.asc,id.asc`, { maxFilas: 20000 })),
-      si(conMaquinaria, () => sbGetAll(`maquina_fallas?estado=eq.pendiente&select=id,maquina_id,descripcion,parada,estado,created_at&order=created_at.asc,id.asc`, { maxFilas: 5000 })),
-      // Etiquetas de módulo: cuentan en las horas de Armado, igual que en el Gantt
-      si(conOt, () => sbGetAll(`piezas_ot?empresa_id=eq.${empresaId}&modulo=not.is.null&select=ot,modulo`, { maxFilas: 50000 })),
-      // "⏱ Faltan X h" (145), también como en el Gantt; sin la migración, nada
-      si(conOt, () => sbGetAll("ajustes_tiempo_ot?select=ot,etapa,tipo,horas,pendiente,created_at&tipo=eq.faltan&order=created_at.asc", { maxFilas: 20000 })),
-      // OT en pausa (151): no cuentan como atrasadas; sin la migración, ninguna
-      si(conOt, () => sbGetAll("pausas_ot?hasta=is.null&select=ot", { maxFilas: 20000 })),
-      // Nombres de las arquitectas: Producción espera que termine Técnica, como en el Gantt (parte 49)
-      si(conOt, () => sbGetAll("empleados?activo=eq.true&select=id,nombre&order=nombre.asc", { maxFilas: 2000 })),
-    ]);
-    setFlota(veh ? { vehiculos: veh.data || [], papeles: pap?.data || [], checklists: chk?.data || [], choferes: cho?.data || [], arreglos: arr?.data || [] } : null);
-    setMaquinaria(maq ? { maquinas: maq.data || [], tareas: tar?.data || [], fallas: fal?.data || [] } : null);
-    const filasOt = proy && avHs ? filasTablero(proy.data || [], { etapas: etapasCtx || [], divisiones: divisionesCtx || [], ...avHs, hoy: hoyArg() }) : null;
-    setOtCurso(filasOt ? otEnCurso(filasOt) : null);
-    setModoObjetivo(normalizarModo(cfgObjetivo?.[0]?.valor?.modo));
-    // Plan vivo (29/10): las mismas fechas que el Gantt de OT
-    const procesos = filasOt && plan ? planVivo(itemsVigentes(plan.planes), {
-      proyectos: new Map((proy.data || []).map((p) => [String(p.ot), p])), modulos: modulosPorOt(mods?.data || []),
-      etapasCodigo: etapasDelPlan(plan.cfgValor, etapasCtx || [], divisionesCtx || []),
-      avance: avHs.avance || [], piezas: avHs.piezas || [],
-      terminadas: new Set((proy.data || []).filter((p) => p.terminado_planilla).map((p) => String(p.ot))), hoy: hoyArg(),
-      params: normalizarParametros(plan.cfgValor), horasSemana: horasSemanaDeGrilla(plan.empleados, divisionesCtx || [], plan.cfgValor),
-      personal: personalGantt(plan.empleados, divisionesCtx || [], plan.cfgValor), diasExtra: diasExtraVigentes(plan.planes),
-      manual: faltanManual(ajus?.data || []), pausadas: otsEnPausa(paus?.data || []),
-      noAntes: noAntesDeTecnica(planDeEmpresa({ proyectos: proy.data || [], divisiones: divisionesCtx || [], cfgValor: plan.cfgValor, personal: pers?.data || [], hoy: hoyArg(), pausadas: otsEnPausa(paus?.data || []), ajustes: ajus?.data || [] }).espera),
-    }) : null;
-    setOtAtrasadasLista(procesos ? otAtrasadasPlan(filasOt, procesos, { porEscaneo: avancePorOt(avHs.piezas || []) }) : null);
-    // Cada pedido con su OT completa (Código · Cliente · Proyecto · Descripción, 02/11)
-    const otsAbiertas = mapaOts(proy?.data || []);
-    setPedidosCompra(peds ? (peds.data || []).map((p) => ({ ...p, otTexto: p.ot ? textoOt(otCompleta(p.ot, otsAbiertas)) : null })) : null);
-  }, [isDemo, empresaId, conOt, conCompras, conFlota, conMaquinaria, etapasCtx, divisionesCtx]);
-  useEffect(() => { cargarOtYCompras(); }, [cargarOtYCompras]); // eslint-disable-line react-hooks/set-state-in-effect
-  // Cada minuto, solo con la pestaña a la vista (F3-04)
-  useRefrescoVisible(cargarDatos, { intervaloMs: 60000 });
+      const [veh, pap, chk, cho, arr] = await Promise.all([
+        sbGetAll(`vehiculos?activo=eq.true&order=patente.asc,id.asc`, { maxFilas: 2000 }),
+        sbGetAll(`vehiculo_papeles?order=created_at.desc,id.desc`, { maxFilas: 20000 }).catch(() => ({ data: [] })),
+        sbGetAll(`vehiculo_checklists?select=id,vehiculo_id,created_at,km,secciones&order=created_at.desc,id.desc`, { maxFilas: 2000 }).catch(() => ({ data: [] })),
+        sbGetAll(`empleados?activo=eq.true&select=id,nombre,licencia_categoria,licencia_vencimiento&order=id.asc`, { maxFilas: 5000 }).catch(() => ({ data: [] })),
+        sbGetAll(`vehiculo_arreglos?estado=eq.pendiente&select=id,vehiculo_id,descripcion,prioridad,estado&order=id.asc`, { maxFilas: 5000 }).catch(() => ({ data: [] })),
+      ]);
+      setFlota({ vehiculos: veh.data || [], papeles: pap.data || [], checklists: chk.data || [], choferes: cho.data || [], arreglos: arr.data || [] });
+    } catch (e) {
+      console.error("Panel flota:", e);
+      setFlota(null);
+    }
+  }, [isDemo, empresaId, conFlota]);
 
-  // Alertas de la flota: lo vencido y lo que vence pronto, lo más urgente primero
+  useEffect(() => { cargarOt(); cargarFlota(); }, [cargarOt, cargarFlota]); // eslint-disable-line react-hooks/set-state-in-effect
+  // Los escaneos, al abrir y cada minuto con la pestaña a la vista (F3-04)
+  useRefrescoVisible(cargarEscaneos, { intervaloMs: 60000 });
+  useEffect(() => { cargarEscaneos(); }, [cargarEscaneos]); // eslint-disable-line react-hooks/set-state-in-effect
+
+  // Alertas de los vehículos: lo vencido y lo que vence pronto, lo más urgente primero
   const alertasFlota = useMemo(() => {
     if (!flota?.vehiculos.length) return null;
     const porId = new Map(flota.choferes.map(e => [e.id, e]));
-    return alertasUrgentes(flota.vehiculos.flatMap(v => alertasVehiculo(v, {
+    const alertas = alertasUrgentes(flota.vehiculos.flatMap(v => alertasVehiculo(v, {
       papeles: flota.papeles.filter(p => p.vehiculo_id === v.id), checklists: flota.checklists, arreglos: flota.arreglos, responsable: porId.get(v.responsable_id), hoy,
     }).map(a => ({ ...a, patente: v.patente }))));
+    return alertasMantenimiento({ alertasFlota: alertas, hoy, textoVencimiento });
   }, [flota, hoy]);
-  // La tarjeta 🔧 Mantenimiento junta la flota y las máquinas; sin ninguna de las dos no aparece
-  const alertasMant = useMemo(() => {
-    const conVehiculos = (conFlota && alertasFlota) ? alertasFlota : null;
-    const conMaquinas = conMaquinaria && maquinaria?.maquinas.length ? maquinaria : null;
-    if (!conVehiculos && !conMaquinas) return null;
-    return alertasMantenimiento({ alertasFlota: conVehiculos, ...(conMaquinas || {}), hoy, textoVencimiento });
-  }, [conFlota, alertasFlota, conMaquinaria, maquinaria, hoy]);
 
-  /* ─── Datos derivados ─── */
-  const empActivos = empleados.filter(e => e.activo !== false);
-  const totalEmp = empActivos.length;
-
-  // Filtrar por division
-  const filterDiv = (arr, divField = "division") =>
-    division === "todas" ? arr : arr.filter(r => r[divField] === division);
-
-  // Produccion
-  const prodF = filterDiv(resumenProd);
-  const enActividad = prodF.filter(r => r.etapa_actual != null && r.etapa_actual > 0).length;
-  const enEspera = prodF.filter(r => r.etapa_actual === 0).length;
-  const sinTarea = prodF.filter(r => r.etapa_actual == null).length;
-  const totalMinProd = prodF.reduce((a, r) => a + (parseFloat(r.minutos_productivos) || 0), 0);
-  const totalMinEspera = prodF.reduce((a, r) => a + (parseFloat(r.minutos_espera) || 0), 0);
-  const pctProd = (totalMinProd + totalMinEspera) > 0 ? Math.round(totalMinProd * 100 / (totalMinProd + totalMinEspera)) : 0;
-
-  // Solicitudes
-  const pendientes = solicitudes.filter(s => s.estado === "pendiente");
-  const aprobadas = solicitudes.filter(s => s.estado === "aprobado");
-  const rechazadas = solicitudes.filter(s => s.estado === "rechazado");
-
-  // Asistencia (pedido de Tadeo 19/10): solo operarios con turno; los dueños
-  // y administrativos no tienen jornada fija. Un día de esta semana, hoy por
-  // defecto: los días pasados salen de las fichadas de la semana.
-  const { diaKey, hora: horaActual } = ahoraArg();
-  const [diaVer, setDiaVer] = useState(hoy);
-  const lunes = lunesDeLaSemana(0);
-  const verHoy = diaVer === hoy;
-  const fichadasDelDia = verHoy ? fichadasHoy : fichadasSemana.filter(f => f.fecha === diaVer);
-  const llegadas = llegadasDelDia({
-    empleados: empActivos, fichadas: fichadasDelDia, divisiones: divisionesCtx || [],
-    diaKey: verHoy ? diaKey : diaKeyDeFecha(diaVer), horaActual: verHoy ? horaActual : null,
-  });
-  const asistDia = asistenciaPorDivision(llegadas);
-  const moverDia = (dias) => {
-    const d = new Date(`${diaVer}T12:00:00`);
-    d.setDate(d.getDate() + dias);
-    const f = d.toISOString().slice(0, 10);
-    if (f >= lunes && f <= hoy) setDiaVer(f);
-  };
-
-  // Semana: solo fichadas de operarios
-  const legajosOperarios = new Set(empActivos.filter(esOperario).map(e => e.legajo));
-  const fichadasSemanaOp = fichadasSemana.filter(f => legajosOperarios.has(f.legajo));
-  const operariosConTurnoHoy = empActivos.filter(e => esOperario(e) && e.diagrama?.[diaKey]).length;
-
-  // Tardanzas semana
-  const tardesEstaSemana = fichadasSemanaOp.filter(f => f.llegada_tarde).length;
-
-  // Promedio horas trabajadas por dia esta semana (solo fichadas con egreso registrado)
-  const fichadasConHoras = fichadasSemanaOp.filter(f => f.horas_trabajadas && parseFloat(f.horas_trabajadas) > 0);
-  const promedioHorasDia = fichadasConHoras.length > 0
-    ? (fichadasConHoras.reduce((a, f) => a + parseFloat(f.horas_trabajadas), 0) / fichadasConHoras.length)
-    : 0;
-
-  // Ranking mensual de empleados operativos
-  const ranking = useMemo(() => {
-    const operativos = empleados.filter(e => e.rol === "operativo" && e.area === "produccion" && e.activo !== false);
-    if (!operativos.length) return [];
-
-    const [anio, mesIdx1, dia] = hoyArg().split("-").map(Number);
-    const mes = mesIdx1 - 1;
-    const DIAS_SEM = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
-
-    const diasTranscurridos = (() => {
-      const dias = [];
-      const d = new Date(anio, mes, 1);
-      const hoyDate = new Date(anio, mes, dia);
-      while (d <= hoyDate) { dias.push(new Date(d)); d.setDate(d.getDate() + 1); }
-      return dias;
-    })();
-
-    return operativos.map(emp => {
-      const diag = emp.diagrama || {};
-      const horasSemanales = emp.horas_semanales || 45;
-
-      const diasProgramados = diasTranscurridos.filter(d => {
-        const key = DIAS_SEM[d.getDay()];
-        return diag[key] && diag[key].in;
-      }).length;
-
-      const horasDiarias = horasSemanales / Math.max(1, Object.keys(diag).filter(k => diag[k]).length || 5);
-      const horasEsperadas = diasProgramados * horasDiarias;
-
-      const fichasEmp = fichadasMes.filter(f => f.empleado_id === emp.id || f.legajo === emp.legajo);
-      const diasTrabajados = fichasEmp.length;
-      const tardanzas = fichasEmp.filter(f => f.llegada_tarde).length;
-      const horasTrabajadas = fichasEmp.reduce((a, f) => a + (parseFloat(f.horas_trabajadas) || 0), 0);
-      const horasExtra = Math.max(0, horasTrabajadas - horasEsperadas);
-
-      const solsEmp = solsAprobadas.filter(s =>
-        (s.empleado_id === emp.id || s.legajo === emp.legajo) &&
-        ["permiso", "vacaciones", "ausencia"].includes(s.tipo)
-      );
-      const diasPermiso = solsEmp.length;
-      const horasPermiso = diasPermiso * horasDiarias;
-
-      const tiposExigidos = new Set(docsExigidos.filter(d => d.empleado_id === emp.id).map(d => d.tipo_documento_id));
-      const tiposCargados = new Set(docsCargados.filter(d => d.empleado_id === emp.id).map(d => d.tipo_documento_id));
-      const documentosExigidos = tiposExigidos.size;
-      const documentosCompletos = [...tiposExigidos].filter(t => tiposCargados.has(t)).length;
-
-      const calculo = calcularScoreEmpleado({
-        diasProgramados, diasTrabajados, tardanzas,
-        horasTrabajadas, horasExtra, horasPermiso, horasEsperadas,
-        documentosExigidos, documentosCompletos,
-      });
-
-      return {
-        id: emp.id, nombre: emp.nombre, apodo: emp.apodo, legajo: emp.legajo, division: emp.division,
-        score: calculo.score,
-        diasProgramados, diasTrabajados, tardanzas, horasTrabajadas: +horasTrabajadas.toFixed(1),
-        horasExtra: +horasExtra.toFixed(1), diasPermiso, horasPermiso: +horasPermiso.toFixed(1),
-        horasEsperadas: +horasEsperadas.toFixed(1),
-        pAsistencia: calculo.pAsistencia,
-        pPuntualidad: calculo.pPuntualidad,
-        pDisponibilidad: calculo.pDisponibilidad,
-        pEsfuerzo: calculo.pEsfuerzo,
-        pDocumentacion: calculo.pDocumentacion,
-        documentosExigidos, documentosCompletos,
-      };
-    }).sort((a, b) => b.score - a.score);
-  }, [empleados, fichadasMes, solsAprobadas, docsExigidos, docsCargados]);
-
-  // Fichadas semana — por dia para grafico
-  const fichadasPorDia = (() => {
-    const monDate = new Date(lunesDeLaSemana(0) + "T12:00:00");
-    const dias = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(monDate); d.setDate(d.getDate() + i);
-      const ds = d.toISOString().split("T")[0];
-      const count = fichadasSemanaOp.filter(f => f.fecha === ds).length;
-      dias.push({ fecha: ds, count, label: DIAS_LABEL_SHORT[d.getDay()] });
-    }
-    return dias;
-  })();
-
-  // Top empleados productivos
-  const topProductivos = useMemo(() => {
-    return [...prodF]
-      .filter(r => (parseFloat(r.minutos_productivos) || 0) > 0)
-      .sort((a, b) => (parseFloat(b.pct_productivo) || 0) - (parseFloat(a.pct_productivo) || 0))
-      .slice(0, 5);
-  }, [prodF]);
-
-  // Alertas activas
-  const permisosIngreso = pendientes.filter(s => s.motivo?.includes("\u{1F513}") || s.motivo?.toLowerCase().includes("permiso de ingreso") || s.motivo?.toLowerCase().includes("ingreso por bloqueo"));
-  const alertas = useMemo(() => {
-    const items = [];
-    if (permisosIngreso.length > 0) items.push({ icon: "\u{1F513}", text: `${permisosIngreso.length} permiso${permisosIngreso.length > 1 ? "s" : ""} para entrar sin responder`, urgencia: "alta", target: "solicitudes" });
-    // Asistencia, parados y solicitudes tienen su tarjeta: no se repiten acá
-    const urgentes = notificaciones.filter(n => {
-      if (n.urgencia !== "alta") return false;
-      // Si la notificacion tiene solicitud_id, verificar que siga pendiente
-      if (n.solicitud_id) {
-        const sol = solicitudes.find(s => s.id === n.solicitud_id);
-        if (sol && sol.estado !== "pendiente") return false;
-      }
-      // Si es notificacion de permiso/ingreso, verificar que haya solicitudes pendientes relacionadas
-      if (n.asunto?.includes("permiso") || n.asunto?.includes("ingreso") || n.asunto?.includes("INGRESO")) {
-        if (pendientes.filter(s => s.motivo?.includes("\u{1F513}") || s.motivo?.toLowerCase().includes("permiso de ingreso")).length === 0) return false;
-      }
-      return true;
-    });
-    urgentes.slice(0, 2).forEach(n => {
-      items.push({ icon: "\u{1F534}", text: n.asunto, urgencia: "alta", target: n.asunto.includes("BLOQUEADO") || n.asunto.includes("permiso") || n.asunto.includes("ingreso") ? "solicitudes" : null });
-    });
-    return items;
-  }, [pendientes, notificaciones, permisosIngreso, solicitudes]);
-
-  // Productividad por division
-  const prodPorDiv = useMemo(() => {
-    const map = {};
-    resumenProd.forEach(r => {
-      if (!map[r.division]) map[r.division] = { prod: 0, espera: 0, count: 0 };
-      map[r.division].prod += parseFloat(r.minutos_productivos) || 0;
-      map[r.division].espera += parseFloat(r.minutos_espera) || 0;
-      map[r.division].count++;
-    });
-    return DIVISIONES.filter(d => d.id !== "todas").map(d => {
-      const data = map[d.id] || { prod: 0, espera: 0, count: 0 };
-      const total = data.prod + data.espera;
-      return { ...d, ...data, pct: total > 0 ? Math.round(data.prod * 100 / total) : 0 };
-    });
-  }, [resumenProd]);
-
-
-  /* ─── Datos de instalaciones ─── */
-  // En campo = cualquier empleado que hoy hizo un reporte de obra
-  const legajosConObra = new Set(reportesObra.map(r => r.legajo).filter(Boolean));
-  const enCampoActivos = empActivos.filter(e => legajosConObra.has(e.legajo));
-  const enCampoPresentes = fichadasHoy.filter(f => legajosConObra.has(f.legajo));
-  // Taller: el resto (produccion sin reporte de obra hoy)
-  const tallerProd = resumenProd.filter(r => !legajosConObra.has(r.legajo));
-  const obrasHoy = reportesObra.length;
-  const obrasConFotos = reportesObra.filter(r => r.fotos_urls && r.fotos_urls.length > 0).length;
-  const obrasConFaltantes = reportesObra.filter(r => r.faltantes && r.faltantes.length > 0).length;
-  const obrasConDesvios = reportesObra.filter(r => r.desvios && r.desvios.length > 0).length;
-
-  /* ─── Estado expandido de paneles ─── */
-  const [panelExpanded, setPanelExpanded] = useState(null); // "taller" | "instalaciones" | null
-  // Módulos de la empresa (ítem 36): producción en vivo y trabajo en campo
-  // "En planta" y "Productividad por división" salen del registro de tareas,
-  // que se dejó de usar (2026-10): sin él quedaban en 0
-  const conTareas = conRegistroTareas(empresa);
-  const conObra = tieneModulo(empresa, "obra");
+  const resumenEscaneos = useMemo(() => escaneosPorOt(escaneos || []), [escaneos]);
 
   /* ═══ RENDER ═══ */
   return (
@@ -709,7 +225,7 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
               <span className={`text-[12px] font-bold ${TONO.bien.txt}`}>En vivo</span>
             </div>
             <button
-              onClick={async () => { setRefreshing(true); try { await Promise.all([reload?.(), cargarDatos(), cargarOtYCompras()]) } finally { setNow(new Date()); setRefreshing(false) } }}
+              onClick={async () => { setRefreshing(true); try { await Promise.all([reload?.(), cargarOt(), cargarEscaneos(), cargarFlota()]) } finally { setNow(new Date()); setRefreshing(false) } }}
               aria-label="Actualizar datos"
               className="w-11 h-11 rounded-xl bg-gypi-surface text-gypi-dim border border-gypi-border flex items-center justify-center cursor-pointer shadow-sm"
             >
@@ -719,472 +235,19 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         </div>
       </header>
 
-      {/* ─── Banner de trial / vencimiento ─── */}
+      {/* ─── Avisos del sistema: prueba gratis, primeros pasos, migraciones ─── */}
       {!supervisor && <TrialBanner onUpgrade={() => setShowBilling(true)} reload={reload} />}
       {!isDemo && !supervisor && <ChecklistActivacion empresa={empresa} goto={goto} />}
       {!isDemo && usuario?.rol === "gerencial" && <AvisoMigraciones />}
-      {datosIncompletos && (
-        <div role="alert" className={`mx-[18px] mb-3 p-3 rounded-xl text-[13px] ${TONO.mal.fondo} ${TONO.mal.txt}`}>
-          Hay más datos de los que se pueden mostrar juntos: algunos totales del mes pueden estar incompletos.
-        </div>
-      )}
-      {/* Modal de billing */}
       {showBilling && <BillingScreen onClose={() => setShowBilling(false)} />}
 
-      {/* ─── Alertas activas ─── */}
-      {alertas.length > 0 && (
-        <section aria-label="Alertas activas" className="mb-4">
-          {alertas.map((a, i) => (
-            <button key={i} type="button"
-              className={`w-full flex items-center gap-3 px-3.5 py-3 min-h-12 rounded-[14px] mb-2 cursor-pointer text-left font-body border-[1.5px] ${TONO.mal.fondo} ${TONO.mal.borde}`}
-              onClick={() => {
-                if (a.target) goto?.(a.target);
-                else if (a.text.includes("pedido")) goto?.("solicitudes");
-                else if (a.text.includes("parado")) goto?.("ger-actividad");
-                else if (a.text.includes("BLOQUEADO") || a.text.includes("permiso") || a.text.includes("ingreso")) goto?.("solicitudes");
-              }}
-            >
-              <span className="text-sm" aria-hidden="true">{a.icon}</span>
-              <span className="flex-1 text-[13px] font-semibold text-gypi-text">{a.text}</span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gypi-mute" aria-hidden="true"><polyline points="9 18 15 12 9 6" /></svg>
-            </button>
-          ))}
-        </section>
-      )}
-
-      {/* ─── 📐 Mis planillas (parte 50): solo si quien entra es arquitecta de Diseño y Técnica ─── */}
-      {!isDemo && conOt && <TarjetaMisPlanillas />}
-      {/* ─── 💰 La plata (auditoría 12/11, parte 12): solo el Dueño con Finanzas ─── */}
-      {!isDemo && tieneModulo(empresa, "finanzas") && esDuenoFinanzas(usuario) && <TarjetaPlata goto={goto} />}
-      {!isDemo && tieneModulo(empresa, "finanzas") && <TarjetaMiCaja />}
-
-      {/* ─── Minuta de Buenos Días (parte M5): solo gerencia con el módulo ─── */}
-      {!isDemo && <TarjetaMinuta empresa={empresa} goto={goto} />}
-
-      {/* ─── OT en curso: abiertas con alguna etapa empezada ─── */}
-      {otCurso && (
-        <section aria-label="OT en curso" className="card-hover g-card mb-4">
-          <div className="flex justify-between items-center mb-2">
-            <Titulo>OT en curso</Titulo>
-            <Tag color={MARCA}>{otCurso.length}</Tag>
-          </div>
-          {otCurso.length === 0 ? (
-            <p className="m-0 text-[13px] text-gypi-dim">Ninguna OT tiene etapas empezadas sin terminar.</p>
-          ) : (
-            <>
-              <div className="flex flex-wrap gap-1.5 mb-2.5">
-                {contarPorDivision(otCurso, divisionesCtx || []).map(d => (
-                  <span key={d.nombre} className="px-2.5 py-1 rounded-lg bg-gypi-surf-hi text-[12px] font-semibold text-gypi-text">{d.nombre}: {d.cantidad}</span>
-                ))}
-              </div>
-              <div className="max-h-[240px] overflow-y-auto">
-                {otCurso.map(f => (
-                  <div key={f.proyecto.id ?? f.proyecto.ot} className="flex items-center gap-2.5 py-2 border-b border-gypi-border last:border-b-0">
-                    <span className="min-w-[52px] font-mono text-[13px] font-bold text-gypi-text">{f.proyecto.ot}</span>
-                    <div className="flex-1 min-w-0">
-                      <NombreOt proyecto={f.proyecto} sinCodigo truncar className="block text-[13px] text-gypi-text" />
-                      <div className="text-[12px] text-gypi-dim truncate">
-                        {nombreDivisionOt(divisionesCtx || [], f.proyecto.division)} &middot; {f.cerradas} de {f.celdas.length} etapas cerradas{f.liberada ? "" : " · sin liberar"}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-          <button onClick={() => goto?.("proyectos:ot")}
-            className="w-full mt-3 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-surf-hi border border-gypi-border text-gypi-text"
-          >
-            Ver las OT &rarr;
-          </button>
-        </section>
-      )}
-
-      {/* ─── OT atrasadas: algún proceso del plan confirmado pasó su último día sin completarse (138) ─── */}
-      {otAtrasadasLista && (
-        <section aria-label="OT atrasadas" className={`card-hover g-card mb-4 ${otAtrasadasLista.length ? TONO.mal.borde : ""}`}>
-          <div className="flex justify-between items-center mb-2">
-            <Titulo>⏰ OT atrasadas</Titulo>
-            <Tag color={otAtrasadasLista.length ? "var(--color-red)" : "var(--color-green)"}>{otAtrasadasLista.length}</Tag>
-          </div>
-          {otAtrasadasLista.length === 0 ? (
-            <p className="m-0 text-[13px] text-gypi-dim">✅ Todas las OT del plan llegan a su fecha límite y ninguna se corrió del plan confirmado.</p>
-          ) : (
-            <div className="max-h-[240px] overflow-y-auto">
-              {otAtrasadasLista.map(({ fila: f, dias, corrido, porcentaje, procesos }) => (
-                <button key={f.proyecto.id ?? f.proyecto.ot} type="button" onClick={() => goto?.("proyectos:ot")}
-                  className="w-full flex items-center gap-2.5 py-2 min-h-11 bg-transparent border-0 border-b border-gypi-border last:border-b-0 text-left font-body cursor-pointer">
-                  <span className="min-w-[52px] font-mono text-[13px] font-bold text-gypi-text">{f.proyecto.ot}</span>
-                  <div className="flex-1 min-w-0">
-                    <NombreOt proyecto={f.proyecto} sinCodigo truncar className="block text-[13px] text-gypi-text" />
-                    <div className="text-[12px] text-gypi-dim truncate">
-                      {dias > 0 ? "⚠" : "↪"} {procesos.map((q) => `${q.nombre} (hasta el ${fechaCorta(q.hasta)})`).join(", ")}{porcentaje != null ? ` · ${porcentaje}% hecho` : ""}
-                    </div>
-                  </div>
-                  <span className="shrink-0 flex flex-col items-end gap-0.5">
-                    {dias > 0 && <span className={`px-2 py-1 rounded-lg text-[12px] font-bold ${TONO.mal.fondo} ${TONO.mal.txt}`} title="Días después de su fecha límite (la semana de entrega menos la instalación)">⚠ {textoDias(dias)}</span>}
-                    {corrido > 0 && <span className="px-2 py-1 rounded-lg text-[12px] font-bold bg-gypi-amber/15 text-gypi-amber-ink" title="Días que se corrió del plan confirmado">↪ +{corrido} d</span>}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* ─── Asistencia del día: operarios por división y la llegada de cada uno ─── */}
-      {conFichaje && <section aria-label="Asistencia del día" className="card-hover g-card mb-4">
-        <div className="flex justify-between items-center gap-2 mb-3">
-          <Titulo>Asistencia {verHoy ? "de hoy" : `del ${fechaCorta(diaVer)}`}</Titulo>
-          <div className="flex items-center gap-1">
-            <button type="button" onClick={() => moverDia(-1)} disabled={diaVer <= lunes} aria-label="Día anterior"
-              className="w-11 h-11 rounded-[10px] border border-gypi-border bg-gypi-surface text-gypi-text cursor-pointer disabled:opacity-40 disabled:cursor-default">&#x25C0;</button>
-            <button type="button" onClick={() => moverDia(1)} disabled={verHoy} aria-label="Día siguiente"
-              className="w-11 h-11 rounded-[10px] border border-gypi-border bg-gypi-surface text-gypi-text cursor-pointer disabled:opacity-40 disabled:cursor-default">&#x25B6;</button>
-          </div>
-        </div>
-        <p className="m-0 mb-2.5 text-[12px] text-gypi-dim">Solo operarios con horario ese día. Tarde se cuenta sobre los que vinieron.</p>
-
-        {asistDia.total.esperados === 0 ? (
-          <p className="m-0 mb-1 text-[13px] text-gypi-dim">{verHoy ? "Todavía no se espera a ningún operario hoy." : "Ese día no se esperaba a ningún operario."}</p>
-        ) : (
-          <table className="w-full mb-3 text-[13px] border-collapse">
-            <thead>
-              <tr className="text-left text-[12px] text-gypi-dim">
-                <th className="py-1.5 font-semibold">División</th>
-                <th className="py-1.5 font-semibold text-right">Vinieron</th>
-                <th className="py-1.5 font-semibold text-right">Tarde</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...asistDia.divisiones, { ...asistDia.total, nombre: "Total", esTotal: true }].map(d => {
-                const pv = pct(d.vinieron, d.esperados);
-                const pt = pct(d.tarde, d.vinieron);
-                return (
-                  <tr key={d.nombre} className={`border-t border-gypi-border ${d.esTotal ? "font-bold" : ""}`}>
-                    <td className="py-2 text-gypi-text">{d.nombre}</td>
-                    <td className={`py-2 text-right font-mono ${pv == null ? "text-gypi-dim" : TONO[tonoPct(pv)].txt}`}>{d.vinieron}/{d.esperados} <span className="text-[12px]">({pv ?? 0}%)</span></td>
-                    <td className={`py-2 text-right font-mono ${d.tarde > 0 ? TONO.aviso.txt : "text-gypi-dim"}`}>{d.tarde}/{d.vinieron} <span className="text-[12px]">({pt ?? 0}%)</span></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-
-        {llegadas.length > 0 && (
-          <>
-            <div className="g-label mb-1">Llegada de cada uno</div>
-            <p className="m-0 mb-1 text-[12px] text-gypi-dim">Tocá a alguien para ver sus fichajes.</p>
-            <div className="max-h-[300px] overflow-y-auto">
-              {llegadas.map(l => {
-                const info = {
-                  falta: { tono: "mal", texto: "No vino" },
-                  tarde: { tono: "aviso", texto: `Tarde ${l.minutosTarde} min` },
-                  a_tiempo: { tono: "bien", texto: "A tiempo" },
-                  por_entrar: { tono: "neutro", texto: "Todavía no entra" },
-                  fuera_horario: { tono: "info", texto: "Sin turno ese día" },
-                }[l.estado];
-                const detalle = [l.entra && `entra ${l.entra}`, l.ingreso && `llegó ${l.ingreso}`, l.egreso && `salió ${l.egreso}`].filter(Boolean).join(" · ");
-                return (
-                  <button key={l.id} type="button" onClick={() => goto?.("historial-fichajes", l.legajo)}
-                    aria-label={`${l.nombre}: ${info.texto}${detalle ? `, ${detalle}` : ""}. Ver sus fichajes`}
-                    className="w-full flex items-center gap-2.5 py-2 min-h-11 bg-transparent border-0 border-b border-gypi-border last:border-b-0 text-left font-body cursor-pointer">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[13px] font-semibold text-gypi-text truncate">{l.nombre}</div>
-                      <div className="text-[12px] text-gypi-dim truncate">{l.division}{detalle ? ` · ${detalle}` : ""}</div>
-                    </div>
-                    <span className={`shrink-0 px-2 py-1 rounded-lg text-[12px] font-bold ${TONO[info.tono].fondo} ${TONO[info.tono].txt}`}>{info.texto}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
-      </section>}
-
-      {/* ─── Asistencia de la semana (operarios) ─── */}
-      {conFichaje && <section aria-label="Asistencia semanal" className="card-hover g-card mb-4">
-        <div className="flex justify-between items-center mb-3.5">
-          <Titulo>Asistencia semanal</Titulo>
-          <Tag color={tardesEstaSemana > 0 ? MARCA : "var(--color-green)"}>{tardesEstaSemana} {tardesEstaSemana === 1 ? "llegada tarde" : "llegadas tarde"}</Tag>
-        </div>
-
-        <div className="g-label mb-2">Cuántos operarios ficharon cada día de esta semana</div>
-        <div className="flex justify-center">
-          <MiniBarChart
-            data={fichadasPorDia.map(d => d.count)}
-            maxVal={operariosConTurnoHoy || 20}
-            labels={fichadasPorDia.map(d => d.label)}
-          />
-        </div>
-
-        {promedioHorasDia > 0 && (
-          <div className={`mt-2.5 px-3 py-2 rounded-[10px] flex items-center justify-between ${TONO.info.fondo}`}>
-            <span className="text-[13px] text-gypi-dim font-semibold">Promedio de horas por día</span>
-            <span className={`font-heading text-sm font-bold ${TONO.info.txt}`}>{promedioHorasDia.toFixed(1)} h</span>
-          </div>
-        )}
-      </section>}
-
-      {/* ─── Pedidos de material pendientes (Inventario → Compras) ─── */}
-      {conCompras && pedidosCompra && (
-        <section aria-label="Pedidos de material" className="card-hover g-card mb-4">
-          <div className="flex justify-between items-center mb-2">
-            <Titulo>Pedidos de material</Titulo>
-            <Tag color={MARCA}>{pedidosCompra.length} pendiente{pedidosCompra.length !== 1 ? "s" : ""}</Tag>
-          </div>
-          {pedidosCompra.length === 0 ? (
-            <p className="m-0 text-[13px] text-gypi-dim">No hay pedidos de material pendientes.</p>
-          ) : (
-            <div className="max-h-[240px] overflow-y-auto">
-              {pedidosCompra.map(p => (
-                <div key={p.id} className="flex items-center gap-2.5 py-2 border-b border-gypi-border last:border-b-0">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-semibold text-gypi-text truncate">{p.descripcion}</div>
-                    <div className="text-[12px] text-gypi-dim truncate">
-                      {[p.empleado_nombre, p.otTexto, p.created_at && new Date(p.created_at).toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" })].filter(Boolean).join(" · ")}
-                    </div>
-                  </div>
-                  <span className="font-mono text-[13px] font-bold text-gypi-text shrink-0">{Number(p.cantidad).toLocaleString("es-AR")}{p.unidad ? ` ${p.unidad}` : ""}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          <button onClick={() => goto?.("inventario:compras")}
-            className="w-full mt-3 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-surf-hi border border-gypi-border text-gypi-text"
-          >
-            Ir a Compras &rarr;
-          </button>
-        </section>
-      )}
-
-      {/* ─── Mantenimiento: vehículos y máquinas (Mantenimiento → Flota y Maquinaria) ─── */}
-      {alertasMant && (() => {
-        const paradas = alertasMant.filter(a => a.parada).length;
-        const vencidas = alertasMant.filter(a => a.nivel === "vencido" && !a.parada).length;
-        const pronto = alertasMant.length - paradas - vencidas;
-        const destinos = [conFlota && alertasFlota && { id: "mantenimiento:flota-alertas", texto: "Ir a Flota" }, conMaquinaria && maquinaria?.maquinas.length && { id: "mantenimiento:maquinaria-alertas", texto: "Ir a Maquinaria" }].filter(Boolean);
-        return (
-          <section aria-label="Mantenimiento" className="card-hover g-card mb-4">
-            <div className="flex justify-between items-center mb-2 gap-2">
-              <Titulo>🔧 Mantenimiento</Titulo>
-              <div className="flex gap-1.5 flex-wrap justify-end">
-                {paradas > 0 && <Tag color="var(--color-red)">{paradas} parada{paradas !== 1 ? "s" : ""}</Tag>}
-                {vencidas > 0 && <Tag color="var(--color-red)">{vencidas} vencida{vencidas !== 1 ? "s" : ""}</Tag>}
-                {pronto > 0 && <Tag color={MARCA}>{pronto} para pronto</Tag>}
-              </div>
-            </div>
-            {alertasMant.length === 0 ? (
-              <p className="m-0 text-[13px] text-gypi-dim">✅ Vehículos y máquinas al día.</p>
-            ) : (
-              <div className="max-h-[240px] overflow-y-auto">
-                {alertasMant.slice(0, 10).map(a => (
-                  <button key={a.clave} type="button" onClick={() => goto?.(a.destino)}
-                    className={`w-full flex items-center gap-2.5 py-2 min-h-11 bg-transparent border-0 border-b border-gypi-border last:border-b-0 text-left font-body cursor-pointer ${a.parada ? TONO.mal.txt : "text-gypi-text"}`}>
-                    <span aria-hidden="true">{SEMAFORO[a.nivel].emoji}</span>
-                    <span className={`flex-1 min-w-0 text-[13px] truncate ${a.parada ? "font-bold" : ""}`}>{a.texto}</span>
-                    <span className="font-mono text-[12px] font-bold text-gypi-dim shrink-0">{a.quien}</span>
-                  </button>
-                ))}
-                {alertasMant.length > 10 && <p className="m-0 pt-2 text-[12px] text-gypi-dim">Y {alertasMant.length - 10} más.</p>}
-              </div>
-            )}
-            <div className="flex gap-2 mt-3">
-              {destinos.map(d => (
-                <button key={d.id} onClick={() => goto?.(d.id)}
-                  className="flex-1 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-surf-hi border border-gypi-border text-gypi-text"
-                >
-                  {d.texto} &rarr;
-                </button>
-              ))}
-            </div>
-          </section>
-        );
-      })()}
-
-      {/* ─── Ranking de empleados ─── */}
-      {conFichaje && ranking.length > 0 && (() => {
-        const top3 = ranking.slice(0, 3);
-        const medals = ["\u{1F947}", "\u{1F948}", "\u{1F949}"];
-        return (
-          <button onClick={() => setShowFullRanking(true)} className={`card-hover g-card mb-4 w-full cursor-pointer text-left block ${TONO.aviso.borde}`}>
-            <div className="flex justify-between items-center mb-3">
-              <div className="flex items-center gap-1.5">
-                <span className="text-base" aria-hidden="true">&#x1F3C6;</span>
-                <Titulo>Ranking de empleados</Titulo>
-              </div>
-              <Tag color={MARCA}>Este mes</Tag>
-            </div>
-            <div className="flex flex-col gap-2">
-              {top3.map((e, i) => (
-                <div key={e.id} className="flex items-center gap-2.5 px-1 py-1.5 rounded-lg">
-                  <span className="text-base shrink-0" aria-hidden="true">{medals[i]}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-bold text-gypi-text truncate">{e.nombre}</div>
-                    <div className="text-xs text-gypi-dim mt-px">
-                      {e.division || "Sin división"} &middot; {e.diasTrabajados} días &middot; {e.horasTrabajadas} h &middot; {e.tardanzas === 0 ? "puntual" : `${e.tardanzas} tardanza${e.tardanzas > 1 ? "s" : ""}`}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className={`text-sm font-extrabold font-heading ${TONO.bien.txt}`}>{e.score}</div>
-                    <div className="text-xs text-gypi-dim font-semibold">puntos</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-2.5 text-center text-[13px] text-gypi-amber-ink font-semibold">
-              Ver ranking completo ({ranking.length})
-            </div>
-          </button>
-        );
-      })()}
-      {/* ─── Permisos del personal ─── */}
-      <section aria-label="Permisos del personal" className={`g-card mb-4 ${pendientes.length > 0 ? TONO.aviso.borde : ""}`}>
-          <div className="flex justify-between items-center mb-3">
-            <Titulo>Permisos del personal</Titulo>
-            {pendientes.length > 0 && <Tag color={MARCA}>{pendientes.length} sin responder</Tag>}
-          </div>
-          {pendientes.length === 0 && <p className="m-0 text-[13px] text-gypi-dim">No hay permisos sin responder.</p>}
-
-          {pendientes.slice(0, 5).map(s => (
-            <div key={s.id} className="flex items-center gap-2.5 py-2 border-b border-gypi-border">
-              <div className="w-1.5 h-1.5 rounded-full bg-gypi-amber shrink-0" aria-hidden="true" />
-              <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-semibold text-gypi-text truncate">{s.nombre_empleado}</div>
-                <div className="text-[12px] text-gypi-dim truncate">{s.motivo}</div>
-              </div>
-              <Tag color={MARCA}>{nombreSolicitud(s)}</Tag>
-            </div>
-          ))}
-
-          {pendientes.length > 5 && <div className="mt-2 text-[12px] text-gypi-dim">y {pendientes.length - 5} más</div>}
-          <button onClick={() => goto?.("solicitudes")}
-            className={`w-full mt-3 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 border-none ${pendientes.length > 0 ? "bg-gypi-amber text-gypi-on-amber" : "bg-gypi-surf-hi text-gypi-text"}`}
-          >
-            <Icon name="clipboard" size={14} /> {pendientes.length > 0 ? "Responder permisos" : "Ver permisos"} &rarr;
-          </button>
-        </section>
-
-      {/* ─── Botones En planta / Trabajo en campo (solo con esos módulos) ─── */}
-      {(conTareas || conObra) && (
-        <div className={`grid ${conTareas && conObra ? "grid-cols-2" : "grid-cols-1"} gap-2 mb-3.5`}>
-          {conTareas && <button onClick={() => setPanelExpanded(panelExpanded === "taller" ? null : "taller")}
-            aria-expanded={panelExpanded === "taller"}
-            className={`p-3.5 px-2 min-h-[88px] rounded-[14px] cursor-pointer flex flex-col items-center gap-2 font-body border ${panelExpanded === "taller" ? `${TONO.aviso.fondo} ${TONO.aviso.borde}` : "bg-gypi-surface border-gypi-border"}`}
-          >
-            <div className={`w-9 h-9 rounded-[10px] flex items-center justify-center ${TONO.aviso.fondo} ${TONO.aviso.txt}`} aria-hidden="true"><Icon name="hammer" size={18} /></div>
-            <span className={`text-[13px] font-semibold ${panelExpanded === "taller" ? TONO.aviso.txt : "text-gypi-text"}`}>En planta</span>
-          </button>}
-          {conObra && <button onClick={() => setPanelExpanded(panelExpanded === "instalaciones" ? null : "instalaciones")}
-            aria-expanded={panelExpanded === "instalaciones"}
-            className={`p-3.5 px-2 min-h-[88px] rounded-[14px] cursor-pointer flex flex-col items-center gap-2 font-body border ${panelExpanded === "instalaciones" ? `${TONO.info.fondo} ${TONO.info.borde}` : "bg-gypi-surface border-gypi-border"}`}
-          >
-            <div className={`w-9 h-9 rounded-[10px] flex items-center justify-center ${TONO.info.fondo} ${TONO.info.txt}`} aria-hidden="true"><Icon name="building" size={18} /></div>
-            <span className={`text-[13px] font-semibold ${panelExpanded === "instalaciones" ? TONO.info.txt : "text-gypi-text"}`}>Trabajo en campo</span>
-          </button>}
-        </div>
-      )}
-
-      {/* ─── Panel expandido: En planta ─── */}
-      {conTareas && panelExpanded === "taller" && (
-        <section aria-label="En planta" className={`g-card mb-4 animate-[fadeIn_0.2s_ease] ${TONO.aviso.borde}`}>
-          <div className="flex justify-between items-center mb-3">
-            <Titulo>Producción en vivo</Titulo>
-            <div className="flex items-center gap-1.5">
-              <PulseDot activo={enActividad > 0} chico />
-              <span className="text-[12px] text-gypi-dim">{enActividad} trabajando</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 mb-3">
-            <div className={`g-kpi ${TONO.bien.fondo}`}>
-              <div className={`font-mono text-base font-bold ${TONO.bien.txt}`}>{enActividad}</div>
-              <div className="g-kpi-label">Trabajando</div>
-            </div>
-            <Dato valor={enEspera} etiqueta="Parados" tono={enEspera > 0 ? "mal" : "neutro"} />
-            <Dato valor={sinTarea} etiqueta="Sin tarea" />
-          </div>
-
-          <div className="flex gap-2 mb-3">
-            <Dato valor={fmtMin(totalMinProd)} etiqueta="Tiempo trabajando" tono="bien" />
-            <Dato valor={fmtMin(totalMinEspera)} etiqueta="Tiempo parados" tono={totalMinEspera > 0 ? "mal" : "neutro"} />
-            <Dato valor={`${pctProd}%`} etiqueta="Del tiempo, trabajando" tono={tonoPct(pctProd)} />
-          </div>
-
-          {topProductivos.length > 0 && (
-            <>
-              <div className="g-label mb-2">Los que más trabajaron hoy</div>
-              {topProductivos.map((op, i) => {
-                const pct = parseFloat(op.pct_productivo) || 0;
-                return (
-                  <div key={op.empleado_id} className="flex items-center gap-2.5 py-1.5 border-b border-gypi-border last:border-b-0">
-                    <div className={`w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold font-mono ${i === 0 ? `${TONO.aviso.fondo} ${TONO.aviso.txt}` : "bg-gypi-surf-hi text-gypi-mute"}`}>{i + 1}</div>
-                    <div className="flex-1 text-[13px] font-semibold text-gypi-text truncate">{op.empleado_nombre}</div>
-                    <div className="w-[60px]"><Barra pct={pct} tono={tonoPct(pct)} /></div>
-                    <span className={`font-mono text-xs font-bold w-9 text-right ${TONO[tonoPct(pct)].txt}`}>{Math.round(pct)}%</span>
-                  </div>
-                );
-              })}
-            </>
-          )}
-
-          <button onClick={() => goto?.("ger-actividad")}
-            className="w-full mt-3 p-3 min-h-12 rounded-(--radius-md) font-body text-[14px] font-bold cursor-pointer flex items-center justify-center gap-1.5 bg-gypi-surf-hi border border-gypi-border text-gypi-text"
-          >
-            <Icon name="hammer" size={14} /> Ver detalle por operario &rarr;
-          </button>
-        </section>
-      )}
-
-      {/* ─── Panel expandido: Trabajo en campo ─── */}
-      {conObra && panelExpanded === "instalaciones" && (
-        <section aria-label="Trabajo en campo" className={`g-card mb-4 animate-[fadeIn_0.2s_ease] ${TONO.info.borde}`}>
-          <div className="flex justify-between items-center mb-3">
-            <Titulo>Trabajo en campo hoy</Titulo>
-            <Tag color="var(--color-cyan)">{obrasHoy} reporte{obrasHoy !== 1 ? "s" : ""}</Tag>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            <Dato valor={obrasHoy} etiqueta="Obras reportadas" tono="info" />
-            <Dato valor={obrasConFotos} etiqueta="Con fotos" tono="bien" />
-            <Dato valor={obrasConFaltantes} etiqueta="Con faltantes" tono={obrasConFaltantes > 0 ? "mal" : "bien"} />
-            <Dato valor={obrasConDesvios} etiqueta="Con desvíos" tono={obrasConDesvios > 0 ? "aviso" : "bien"} />
-          </div>
-
-          <div className="flex gap-2 mb-3">
-            <Dato valor={enCampoPresentes.length} etiqueta="Ficharon y están en campo" tono="bien" />
-            <Dato valor={enCampoActivos.length} etiqueta="Reportaron obra hoy" tono="info" />
-          </div>
-
-          <ReportesObraPanel reportesObra={reportesObra} />
-        </section>
-      )}
-
-      {/* ─── Productividad por división (solo con Tareas: sin ellas siempre daba 0%) ─── */}
-      {conTareas && (
-        <section aria-label="Productividad" className="card-hover g-card mb-4">
-          <div className="flex justify-between items-center mb-3.5">
-            <Titulo>Productividad por división</Titulo>
-            <Tag color={pctProd >= 80 ? "var(--color-green)" : pctProd >= 60 ? MARCA : "var(--color-red)"}>{pctProd}% en general</Tag>
-          </div>
-          <p className="m-0 mb-3 text-[13px] text-gypi-dim">Del tiempo con tarea cargada, cuánto estuvieron trabajando (el resto, parados).</p>
-          <div className="flex justify-around flex-wrap gap-3">
-            {prodPorDiv.map(d => (
-              <DonutChart key={d.id} value={d.prod} total={d.prod + d.espera} label={d.label} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ─── Equipo ─── */}
+      {/* ─── 1. Equipo: con qué personal cuenta la empresa ─── */}
       <section aria-label="Equipo" className="card-hover g-card mb-4">
         <div className="flex justify-between items-center mb-3.5">
-          <Titulo>Equipo</Titulo>
-          <Tag color="var(--color-cyan)">{totalEmp} activos</Tag>
+          <Titulo>👥 Equipo</Titulo>
+          <Tag color="var(--color-cyan)">{empActivos.length} activos</Tag>
         </div>
-
-        <div className="flex gap-2 mb-3">
+        <div className="flex gap-2">
           {DIVISIONES.filter(d => d.id !== "todas").map(d => {
             const count = empActivos.filter(e => e.division === d.id).length;
             return (
@@ -1198,122 +261,122 @@ export default function DashboardGerencia({ goto, ctx, reload, logout, empresa, 
         </div>
       </section>
 
-      {/* ─── Footer info ─── */}
-      <footer className="text-center py-2 pb-3">
-        <div className="text-xs text-gypi-mute">
-          Se actualiza sola cada minuto &middot; Última vez: {fmtTime(now)}
-        </div>
-      </footer>
-
-      {/* ─── Ranking completo ─── */}
-      {showFullRanking && ranking.length > 0 && (() => {
-        const len = ranking.length;
-        // Los 3 primeros en verde y los 3 últimos en rojo
-        const tonoFila = (i) => i < 3 ? "bien" : i >= len - 3 ? "mal" : null;
-        const medals = ["\u{1F947}", "\u{1F948}", "\u{1F949}"];
-        return (
-          <div onClick={() => setShowFullRanking(false)}
-            className="fixed inset-0 z-[999] flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease] bg-black/45 backdrop-blur-xs"
-            role="dialog" aria-label="Ranking completo"
-          >
-            <div onClick={ev => ev.stopPropagation()} className="bg-gypi-surface rounded-[20px] w-full max-w-[400px] max-h-[80vh] flex flex-col shadow-lg">
-              <div className="px-5 pt-5 pb-3.5 shrink-0">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div className="g-overline">Este mes</div>
-                    <div className="text-lg font-extrabold text-gypi-text font-heading mt-0.5">Ranking de empleados</div>
-                  </div>
-                  <button onClick={() => setShowFullRanking(false)} aria-label="Cerrar ranking"
-                    className="w-11 h-11 rounded-[10px] border-none bg-gypi-surf-hi cursor-pointer flex items-center justify-center text-base text-gypi-dim"
-                  >&#x2715;</button>
-                </div>
-                <div className="mt-3 text-[12px] text-gypi-dim">
-                  Cómo se arman los puntos: asistencia {PESOS_SCORE.asistencia}%, puntualidad {PESOS_SCORE.puntualidad}%, disponibilidad {PESOS_SCORE.disponibilidad}%, horas extra {PESOS_SCORE.esfuerzo}% y documentación {PESOS_SCORE.documentacion}%.
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto px-3 pb-3 [scrollbar-width:none]">
-                {ranking.map((e, i) => {
-                  const t = tonoFila(i);
-                  return (
-                    <button key={e.id} onClick={() => setScoreDetail(e)}
-                      className={`flex items-center gap-2.5 px-2.5 py-2.5 rounded-[10px] mb-1 w-full text-left cursor-pointer transition-colors duration-150 border font-body ${t ? `${TONO[t].fondo} ${TONO[t].borde}` : "bg-transparent border-gypi-border"}`}
-                    >
-                      <div className={`w-6 text-center shrink-0 font-bold text-gypi-dim ${i < 3 ? "text-base" : "text-xs"}`}>
-                        {i < 3 ? medals[i] : `${i + 1}`}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[13px] font-bold text-gypi-text truncate">{e.nombre}</div>
-                        <div className="text-xs text-gypi-dim mt-px">
-                          {e.division || "Sin división"} &middot; {e.diasTrabajados} días &middot; {e.horasTrabajadas} h &middot; {e.tardanzas === 0 ? "puntual" : `${e.tardanzas} tardanza${e.tardanzas > 1 ? "s" : ""}`}{e.diasPermiso > 0 ? ` · ${e.diasPermiso} con permiso` : ""}
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <div className={`font-heading text-[15px] font-extrabold ${t ? TONO[t].txt : "text-gypi-text"}`}>{e.score}</div>
-                        <div className="text-xs text-gypi-dim font-semibold">puntos</div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+      {/* ─── 2. OT en curso en producción: avance real por escaneo o % a mano ─── */}
+      {otCurso && (
+        <section aria-label="OT en curso" className="card-hover g-card mb-4">
+          <div className="flex justify-between items-center mb-1">
+            <Titulo>🏭 OT en curso en producción</Titulo>
+            <Tag color={MARCA}>{otCurso.length}</Tag>
           </div>
-        );
-      })()}
-
-      {/* ─── Detalle de los puntos ─── */}
-      {scoreDetail && (() => {
-        const d = scoreDetail;
-        const rows = [
-          { label: "Asistencia", pct: d.pAsistencia, weight: `${PESOS_SCORE.asistencia}%`, detail: `Vino ${d.diasTrabajados} de ${d.diasProgramados} días` },
-          { label: "Puntualidad", pct: d.pPuntualidad, weight: `${PESOS_SCORE.puntualidad}%`, detail: d.tardanzas === 0 ? "Sin tardanzas" : `${d.tardanzas} tardanza${d.tardanzas > 1 ? "s" : ""}` },
-          { label: "Disponibilidad", pct: d.pDisponibilidad, weight: `${PESOS_SCORE.disponibilidad}%`, detail: d.diasPermiso === 0 ? "Sin permisos" : `${d.diasPermiso} permiso${d.diasPermiso > 1 ? "s" : ""}` },
-          { label: "Horas extra", pct: d.pEsfuerzo, weight: `${PESOS_SCORE.esfuerzo}%`, detail: `${d.horasExtra} h extra de ${d.horasTrabajadas} h` },
-          { label: "Documentación", pct: d.pDocumentacion, weight: `${PESOS_SCORE.documentacion}%`, detail: d.documentosExigidos === 0 ? "Sin documentos exigidos" : `${d.documentosCompletos} de ${d.documentosExigidos} documentos cargados` },
-        ];
-        return (
-          <div onClick={() => setScoreDetail(null)}
-            className="fixed inset-0 z-[1000] flex items-center justify-center p-5 animate-[fadeIn_0.2s_ease] bg-black/45 backdrop-blur-xs"
-            role="dialog" aria-label="Detalle de los puntos"
-          >
-            <div onClick={ev => ev.stopPropagation()} className="bg-gypi-surface rounded-[20px] p-6 w-full max-w-[360px] shadow-lg">
-              <div className="flex justify-between items-center mb-5">
-                <div>
-                  <div className="g-overline">De dónde salen sus puntos</div>
-                  <div className="text-lg font-extrabold text-gypi-text font-heading mt-0.5">{d.nombre}</div>
-                  <div className="text-[12px] text-gypi-dim mt-0.5">{d.division || "Sin división"} &middot; L-{d.legajo}</div>
-                </div>
-                <div className={`w-14 h-12 rounded-[14px] flex flex-col items-center justify-center ${TONO.aviso.fondo}`}>
-                  <div className={`text-lg font-extrabold font-heading leading-none ${TONO.aviso.txt}`}>{d.score}</div>
-                  <div className="text-xs text-gypi-dim font-bold">puntos</div>
-                </div>
+          <p className="m-0 mb-2.5 text-[12px] text-gypi-dim">Con piezas escaneadas o % cargado a mano, sin llegar al 100 %.</p>
+          {otCurso.length === 0 ? (
+            <p className="m-0 text-[13px] text-gypi-dim">Ninguna OT tiene avance en producción ahora.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-1.5 mb-2.5">
+                {contarPorDivision(otCurso, divisionesCtx || []).map(d => (
+                  <span key={d.nombre} className="px-2.5 py-1 rounded-lg bg-gypi-surf-hi text-[12px] font-semibold text-gypi-text">{d.nombre}: {d.cantidad}</span>
+                ))}
               </div>
-
-              <div className="flex flex-col gap-2">
-                {rows.map((r) => (
-                  <div key={r.label} className={`px-3 py-2.5 rounded-[10px] border ${TONO.neutro.borde}`}>
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[13px] font-bold text-gypi-text">{r.label} <span className="font-medium text-gypi-dim">(vale {r.weight})</span></span>
-                      <span className={`text-sm font-extrabold font-heading ${TONO[tonoPct(r.pct)].txt}`}>{r.pct}%</span>
+              <div className="max-h-[320px] overflow-y-auto">
+                {otCurso.map(f => (
+                  <div key={f.proyecto.id ?? f.proyecto.ot} className="py-2 border-b border-gypi-border last:border-b-0">
+                    <div className="flex items-center gap-2.5">
+                      <span className="min-w-[52px] font-mono text-[13px] font-bold text-gypi-text">{f.proyecto.ot}</span>
+                      <div className="flex-1 min-w-0">
+                        <NombreOt proyecto={f.proyecto} sinCodigo truncar className="block text-[13px] text-gypi-text" />
+                        <div className="text-[12px] text-gypi-dim truncate">{nombreDivisionOt(divisionesCtx || [], f.proyecto.division)}</div>
+                      </div>
+                      <span className="shrink-0 font-mono text-[14px] font-bold text-gypi-text">{f.porcentaje}%</span>
                     </div>
-                    <Barra pct={r.pct} tono={tonoPct(r.pct)} />
-                    <div className="text-xs text-gypi-dim mt-1">{r.detail}</div>
+                    <Barra pct={f.porcentaje} className="mt-1.5" />
                   </div>
                 ))}
               </div>
+            </>
+          )}
+          <BotonIr onClick={() => goto?.("proyectos:ot")}>Ver las OT</BotonIr>
+        </section>
+      )}
 
-              <div className={`mt-3.5 px-3 py-2.5 rounded-[10px] flex justify-between items-center border-[1.5px] ${TONO.aviso.fondo} ${TONO.aviso.borde}`}>
-                <span className="text-[13px] font-bold text-gypi-text">Total (de 0 a 100)</span>
-                <span className={`text-lg font-extrabold font-heading ${TONO.aviso.txt}`}>{d.score} puntos</span>
-              </div>
-
-              <button onClick={() => setScoreDetail(null)}
-                className="mt-4 w-full p-3 min-h-12 rounded-xl border-none bg-gypi-surf-hi text-gypi-text text-sm font-bold cursor-pointer font-body"
-              >Cerrar</button>
-            </div>
+      {/* ─── 3. Escaneos de piezas de hoy: en qué se está avanzando en la fábrica ─── */}
+      {escaneos && (
+        <section aria-label="Escaneos de hoy" className="card-hover g-card mb-4">
+          <div className="flex justify-between items-center mb-1">
+            <Titulo>🧩 Escaneos de hoy</Titulo>
+            <Tag color={MARCA}>{escaneos.length} pieza{escaneos.length !== 1 ? "s" : ""}</Tag>
           </div>
+          <p className="m-0 mb-2.5 text-[12px] text-gypi-dim">Lo último arriba. Se actualiza solo cada minuto.</p>
+          {escaneos.length === 0 ? (
+            <p className="m-0 text-[13px] text-gypi-dim">Todavía no se escaneó ninguna pieza hoy.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-1.5 mb-2.5">
+                {resumenEscaneos.slice(0, 8).map(r => (
+                  <span key={r.ot} className="px-2.5 py-1 rounded-lg bg-gypi-surf-hi text-[12px] font-semibold text-gypi-text">OT {r.ot}: {r.cantidad}</span>
+                ))}
+              </div>
+              <div className="max-h-[320px] overflow-y-auto">
+                {escaneos.slice(0, 100).map(e => (
+                  <div key={e.id} className="flex items-center gap-2.5 py-2 border-b border-gypi-border last:border-b-0">
+                    <span className="min-w-[44px] font-mono text-[12px] font-bold text-gypi-dim">{horaArg(e.hora)}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] text-gypi-text truncate"><span className="font-mono font-bold">{e.ot}</span> &middot; {e.pieza}{e.modulo ? ` (${e.modulo})` : ""}</div>
+                      <div className="text-[12px] text-gypi-dim truncate">{e.proceso}{e.quien ? ` · ${e.quien}` : ""}</div>
+                    </div>
+                  </div>
+                ))}
+                {escaneos.length > 100 && <p className="m-0 pt-2 text-[12px] text-gypi-dim">Y {escaneos.length - 100} más.</p>}
+              </div>
+            </>
+          )}
+        </section>
+      )}
+
+      {/* ─── 4. Flota vehicular: papeles, services y arreglos (Mantenimiento → Flota) ─── */}
+      {alertasFlota && (() => {
+        const vencidas = alertasFlota.filter(a => a.nivel === "vencido").length;
+        const pronto = alertasFlota.length - vencidas;
+        return (
+          <section aria-label="Flota" className="card-hover g-card mb-4">
+            <div className="flex justify-between items-center mb-2 gap-2">
+              <Titulo>🚚 Flota</Titulo>
+              <div className="flex gap-1.5 flex-wrap justify-end">
+                {vencidas > 0 && <Tag color="var(--color-red)">{vencidas} vencida{vencidas !== 1 ? "s" : ""}</Tag>}
+                {pronto > 0 && <Tag color={MARCA}>{pronto} para pronto</Tag>}
+              </div>
+            </div>
+            {alertasFlota.length === 0 ? (
+              <p className="m-0 text-[13px] text-gypi-dim">✅ Vehículos al día.</p>
+            ) : (
+              <div className="max-h-[240px] overflow-y-auto">
+                {alertasFlota.slice(0, 10).map(a => (
+                  <button key={a.clave} type="button" onClick={() => goto?.(a.destino)}
+                    className="w-full flex items-center gap-2.5 py-2 min-h-11 bg-transparent border-0 border-b border-gypi-border last:border-b-0 text-left font-body cursor-pointer text-gypi-text">
+                    <span aria-hidden="true">{SEMAFORO[a.nivel].emoji}</span>
+                    <span className="flex-1 min-w-0 text-[13px] truncate">{a.texto}</span>
+                    <span className="font-mono text-[12px] font-bold text-gypi-dim shrink-0">{a.quien}</span>
+                  </button>
+                ))}
+                {alertasFlota.length > 10 && <p className="m-0 pt-2 text-[12px] text-gypi-dim">Y {alertasFlota.length - 10} más.</p>}
+              </div>
+            )}
+            <BotonIr onClick={() => goto?.("mantenimiento:flota-alertas")}>Ir a Flota</BotonIr>
+          </section>
         );
       })()}
+
+      {/* ─── Atajos personales, al final: solo le aparecen a quien es responsable de una
+           caja (es la única forma de cargar sus gastos) o arquitecta de Diseño y Técnica ─── */}
+      {!isDemo && conOt && <TarjetaMisPlanillas />}
+      {!isDemo && tieneModulo(empresa, "finanzas") && <TarjetaMiCaja />}
+
+      {/* ─── Footer info ─── */}
+      <footer className="text-center py-2 pb-3">
+        <div className="text-xs text-gypi-mute">
+          Los escaneos se actualizan solos cada minuto &middot; Última vez: {fmtTime(now)}
+        </div>
+      </footer>
     </div>
   );
 }

@@ -1,7 +1,7 @@
-// tests/tablero-dueno.test.jsx — Reforma UX R9: el tablero del dueño en 30 s.
-// Arriba 4 números con nombre completo; cada número en un solo lugar; el
-// Pedido de Tadeo (19/10): OT en curso, presentes con quiénes faltan,
-// pedidos de compras y el ranking siempre a la vista.
+// tests/tablero-dueno.test.jsx — Panel de control (Inicio de gerencia).
+// Pedido de Tadeo (23/11): solo cuatro bloques y en este orden: Equipo, OT en
+// curso en producción (avance real: escaneo o % a mano), escaneos de piezas de
+// hoy y Flota. La asistencia todavía no corre por Gypi.
 import "./helpers/domSetup.js";
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -11,151 +11,154 @@ import { render, screen, cleanup, fireEvent, within } from "@testing-library/rea
 const { default: DashboardGerencia } = await import("../app/dashboard_gerencia.jsx");
 const { AuthContext } = await import("../app/context/AuthContext.jsx");
 const { modulosEfectivos } = await import("../app/lib/modulos.js");
+const { otEnProduccion, escaneosDelDia, escaneosPorOt, inicioDelDiaArg } = await import("../app/lib/inicioGerencia.js");
 
 afterEach(() => cleanup());
 
-function tablero({ modulos, solicitudes = [] } = {}) {
-  global.fetch = async () => Response.json({ ok: true, data: [] });
-  const destinos = [];
-  const ctx = { empleados: [], fichadasHoy: [], solicitudes, notificaciones: [] };
-  render(
-    <AuthContext.Provider value={{ divisiones: [], usuario: { rol: "gerencial" } }}>
-      <DashboardGerencia goto={(d) => destinos.push(d)} ctx={ctx} reload={() => {}} logout={() => {}} empresa={{ id: "e-1", nombre: "Acme", modulos }} />
-    </AuthContext.Provider>
-  );
-  return destinos;
-}
+const RESPUESTAS = {
+  proyectos: [
+    { id: 1, ot: "7495", cliente: "CEVT", division: "M" },
+    { id: 2, ot: "7500", cliente: "Terminada", division: "M" },
+    { id: 3, ot: "7600", cliente: "Sin empezar", division: "A" },
+    { id: 4, ot: "7800", cliente: "A mano", division: "A", avance_manual: { activo: true, etapas: { 1: 30 } } },
+  ],
+  // 7495: 4 de 10 piezas en Corte (40 %); 7500: todo escaneado (100 %)
+  v_avance_piezas: [
+    { ot: "7495", etapa: 1, total: 10, pasaron: 4 },
+    { ot: "7500", etapa: 1, total: 5, pasaron: 5 },
+  ],
+  pasos_pieza: [
+    { id: 1, ot: "7495", etapa: 1, created_at: "2026-11-23T11:05:00+00:00", piezas_ot: { nombre: "Lateral izq", modulo: "Bajo 1" }, empleados: { nombre: "Juan" } },
+    { id: 2, ot: "7495", etapa: 1, created_at: "2026-11-23T12:30:00+00:00", piezas_ot: { nombre: "Puerta", modulo: null }, empleados: { nombre: "Ana" } },
+  ],
+  vehiculos: [{ id: "v1", patente: "AB123CD", activo: true }],
+};
 
-const PENDIENTES = [
-  { id: 1, estado: "pendiente", tipo: "vacaciones", nombre_empleado: "Ana", motivo: "Viaje" },
-  { id: 2, estado: "pendiente", tipo: "permiso", nombre_empleado: "Luis", motivo: "Médico" },
-];
-
-test("sin repetidos — sin fila de números arriba: cada dato está en su tarjeta (pedido de Tadeo 19/10)", async () => {
-  const destinos = tablero({ modulos: modulosEfectivos({ plan: "planta_15" }), solicitudes: PENDIENTES });
-  const sol = await screen.findByRole("region", { name: "Permisos del personal" });
-  assert.equal(screen.queryByRole("region", { name: "Resumen de hoy" }), null);
-  assert.ok(within(sol).getByText("2 sin responder"));
-  assert.equal(screen.queryByText(/pedidos? sin responder$/), null);
-  fireEvent.click(within(sol).getByText(/Responder permisos/));
-  assert.deepEqual(destinos, ["solicitudes"]);
-  const src = readFileSync(new URL("../app/dashboard_gerencia.jsx", import.meta.url), "utf8");
-  assert.doesNotMatch(src, /<Stat /);
-  assert.doesNotMatch(src, /Jornadas de hoy/, "la llegada de cada uno reemplaza a las jornadas");
-  assert.doesNotMatch(src, /etiqueta="Cumplimiento"/, "el % de hoy está solo en la asistencia del día");
-  assert.equal((src.match(/<div className="g-kpi-label">Trabajando<\/div>/g) || []).length, 1, "solo en el detalle de En planta, no repetido en Productividad");
-});
-
-test("ranking — siempre a la vista, sin botón para mostrarlo", () => {
-  const src = readFileSync(new URL("../app/dashboard_gerencia.jsx", import.meta.url), "utf8");
-  assert.doesNotMatch(src, /gypi_ver_ranking/);
-  assert.doesNotMatch(src, /Mostrar el ranking del mes/);
-});
-
-const ENTRA = { in: "00:00", out: "23:59" }; // ya empezó a cualquier hora del día de la prueba
-const DIAG = { lun: ENTRA, mar: ENTRA, mie: ENTRA, jue: ENTRA, vie: ENTRA, sab: ENTRA, dom: ENTRA };
-
-function tableroCompleto() {
-  const respuestas = {
-    proyectos: [
-      { id: 1, ot: "7495", cliente: "CEVT", division: "M", liberada_at: null },
-      { id: 2, ot: "7500", cliente: "Otra", division: "A", liberada_at: "2026-10-18T10:00:00Z" },
-      { id: 3, ot: "7600", cliente: "Sin empezar", division: "M", liberada_at: null },
-    ],
-    avance_etapas: [{ ot: "7500", etapa: 1, estado: "terminada" }],
-    registro_actividades: [{ codigo_proyecto: "7495", etapa: 1 }],
-    pedidos_compra: [{ id: 9, descripcion: "Placa melamina blanca 18 mm", cantidad: 12, unidad: "u", ot: "7495", empleado_nombre: "Juan" }],
-  };
+function panel({ modulos = modulosEfectivos({ plan: "planta_15" }), respuestas = RESPUESTAS } = {}) {
+  const pedidos = [];
   global.fetch = async (_url, opts) => {
     const { path } = JSON.parse(opts?.body || "{}");
-    const tabla = String(path || "").split("?")[0];
-    return Response.json({ ok: true, data: respuestas[tabla] || [] });
+    pedidos.push(String(path || ""));
+    return Response.json({ ok: true, data: respuestas[String(path || "").split("?")[0]] || [] });
   };
   const destinos = [];
   const ctx = {
     empleados: [
-      { id: "a", legajo: 1, nombre: "Ana Presente", rol: "operativo", division: "M", activo: true, diagrama: DIAG },
-      { id: "b", legajo: 2, nombre: "Beto Ausente", rol: "operativo", division: "M", activo: true, diagrama: DIAG },
-      { id: "c", legajo: 3, nombre: "Ceci Franco", rol: "operativo", division: "A", activo: true, diagrama: {} },
-      { id: "d", legajo: 4, nombre: "Dani Tarde", rol: "operativo", division: "A", activo: true, diagrama: DIAG },
-      { id: "e", legajo: 5, nombre: "Dueño Sin Horario", rol: "gerencial", division: "M", activo: true, diagrama: DIAG },
+      { id: "a", nombre: "Ana", division: "M", activo: true },
+      { id: "b", nombre: "Beto", division: "A", activo: true },
+      { id: "c", nombre: "Baja", division: "A", activo: false },
     ],
-    fichadasHoy: [
-      { legajo: 1, nombre: "Ana Presente", ingreso: "08:00:00" },
-      { legajo: 4, nombre: "Dani Tarde", ingreso: "08:20:00", llegada_tarde: true, minutos_tarde: 20 },
-    ],
-    solicitudes: [], notificaciones: [],
+    fichadasHoy: [], solicitudes: [{ id: 1, estado: "pendiente", tipo: "permiso" }], notificaciones: [],
   };
-  const divisiones = [
-    { id: "M", label: "Muebles", ruta_etapas: [1, 2] },
-    { id: "A", label: "Aluminio", ruta_etapas: [1, 2] },
-  ];
-  const etapas = [{ codigo: 1, nombre: "Corte", orden: 1 }, { codigo: 2, nombre: "Canto", orden: 2 }];
   render(
-    <AuthContext.Provider value={{ divisiones, etapas, usuario: { rol: "gerencial" } }}>
-      <DashboardGerencia goto={(d) => destinos.push(d)} ctx={ctx} reload={() => {}} logout={() => {}} empresa={{ id: "e-1", nombre: "Acme", modulos: modulosEfectivos({ plan: "planta_15" }) }} />
+    <AuthContext.Provider value={{
+      divisiones: [{ id: "M", label: "Muebles", ruta_etapas: [1] }, { id: "A", label: "Aluminio", ruta_etapas: [1] }],
+      etapas: [{ codigo: 1, nombre: "Corte", orden: 1 }], usuario: { rol: "gerencial" },
+    }}>
+      <DashboardGerencia goto={(d) => destinos.push(d)} ctx={ctx} reload={() => {}} logout={() => {}} empresa={{ id: "e-1", nombre: "Acme", modulos }} />
     </AuthContext.Provider>
   );
-  return destinos;
+  return { destinos, pedidos };
 }
 
-test("panel — OT en curso con su división, y 'Ver las OT' abre Proyectos → OT", async () => {
-  const destinos = tableroCompleto();
+test("panel — solo Equipo, OT en curso, Escaneos de hoy y Flota, en ese orden", async () => {
+  panel();
+  await screen.findByRole("region", { name: "Escaneos de hoy" });
+  await screen.findByRole("region", { name: "Flota" });
+  const regiones = screen.getAllByRole("region").map((r) => r.getAttribute("aria-label"));
+  assert.deepEqual(regiones, ["Equipo", "OT en curso", "Escaneos de hoy", "Flota"]);
+  for (const fuera of ["Asistencia del día", "Asistencia semanal", "Permisos del personal", "Pedidos de material", "OT atrasadas", "Mantenimiento", "Alertas activas"]) {
+    assert.equal(screen.queryByRole("region", { name: fuera }), null, fuera);
+  }
+  assert.equal(screen.queryByLabelText("Cerrar sesion"), null, "cerrar sesión está en Más → Mi cuenta");
+});
+
+test("panel — Equipo cuenta los activos por división", async () => {
+  panel();
+  const eq = await screen.findByRole("region", { name: "Equipo" });
+  assert.ok(within(eq).getByText("2 activos"));
+});
+
+test("panel — OT en curso: solo las que tienen avance real y no llegaron al 100 %", async () => {
+  const { destinos } = panel();
   const ot = await screen.findByRole("region", { name: "OT en curso" });
   await within(ot).findByText("7495");
-  assert.ok(within(ot).getByText("7500"));
-  assert.equal(within(ot).queryByText("7600"), null, "sin etapas empezadas no está en curso");
+  assert.ok(within(ot).getByText("40%"));
+  assert.ok(within(ot).getByText("7800"), "el % cargado a mano también cuenta");
+  assert.ok(within(ot).getByText("30%"));
+  assert.equal(within(ot).queryByText("7500"), null, "al 100 % ya no está en producción");
+  assert.equal(within(ot).queryByText("7600"), null, "sin avance no está en curso");
   assert.ok(within(ot).getByText("Muebles: 1"));
   assert.ok(within(ot).getByText("Aluminio: 1"));
-  assert.ok(within(ot).getByText(/Muebles · 0 de 2 etapas cerradas · sin liberar/));
   fireEvent.click(within(ot).getByText(/Ver las OT/));
   assert.deepEqual(destinos, ["proyectos:ot"]);
 });
 
-test("panel — asistencia del día: solo operarios, por división y total, con la llegada de cada uno", async () => {
-  const destinos = tableroCompleto();
-  const as = await screen.findByRole("region", { name: "Asistencia del día" });
-  const filas = within(as).getAllByRole("row").map((r) => r.textContent.replace(/\s+/g, " ").trim());
-  assert.deepEqual(filas.slice(1), [
-    "Aluminio1/1 (100%)1/1 (100%)",
-    "Muebles1/2 (50%)0/1 (0%)",
-    "Total2/3 (67%)1/2 (50%)",
-  ]);
-  assert.equal(within(as).queryByText("Dueño Sin Horario"), null, "los dueños no cuentan");
-  assert.equal(within(as).queryByText("Ceci Franco"), null, "de franco no aparece");
-  assert.ok(within(as).getByText("No vino"));
-  assert.ok(within(as).getByText("Tarde 20 min"));
-  assert.ok(within(as).getByText("A tiempo"));
-  fireEvent.click(within(as).getByRole("button", { name: /Beto Ausente: No vino/ }));
-  assert.deepEqual(destinos.at(-1), "historial-fichajes");
-  assert.ok(within(as).getByRole("button", { name: "Día siguiente" }).disabled, "no hay días futuros");
+test("panel — escaneos de hoy: lo último arriba, con pieza, proceso y quién", async () => {
+  const { pedidos } = panel();
+  const esc = await screen.findByRole("region", { name: "Escaneos de hoy" });
+  await within(esc).findByText(/Puerta/);
+  assert.ok(within(esc).getByText("2 piezas"));
+  assert.ok(within(esc).getByText("OT 7495: 2"));
+  const filas = within(esc).getAllByText(/· (Juan|Ana)$/).map((n) => n.textContent);
+  assert.deepEqual(filas, ["Corte · Ana", "Corte · Juan"]);
+  assert.ok(within(esc).getByText(/Lateral izq \(Bajo 1\)/));
+  assert.ok(within(esc).getByText("09:30"), "hora de Argentina");
+  const q = pedidos.find((p) => p.startsWith("pasos_pieza?"));
+  assert.match(q, /created_at=gte\.\d{4}-\d{2}-\d{2}T00%3A00%3A00-03%3A00/);
+  assert.match(q, /piezas_ot\(nombre,modulo\),empleados\(nombre\)/);
 });
 
-test("panel — pedidos de compras pendientes con su lista", async () => {
-  const destinos = tableroCompleto();
-  const compras = await screen.findByRole("region", { name: "Pedidos de material" });
-  await within(compras).findByText("Placa melamina blanca 18 mm");
-  assert.ok(within(compras).getByText("1 pendiente"));
-  assert.ok(within(compras).getByText(/^Juan · OT 7495/));
-  fireEvent.click(within(compras).getByText(/Ir a Compras/));
-  assert.deepEqual(destinos, ["inventario:compras"]);
+test("panel — Flota: alertas de los vehículos y 'Ir a Flota'", async () => {
+  const { destinos } = panel();
+  const fl = await screen.findByRole("region", { name: "Flota" });
+  await within(fl).findByText("Falta el primer checklist");
+  assert.ok(within(fl).getAllByText("AB123CD").length >= 1);
+  fireEvent.click(within(fl).getByText(/Ir a Flota/));
+  assert.deepEqual(destinos, ["mantenimiento:flota-alertas"]);
 });
 
-test("panel — el orden que pidió Tadeo", async () => {
-  tableroCompleto();
-  await screen.findByRole("region", { name: "OT en curso" });
-  await screen.findByRole("region", { name: "Pedidos de material" });
-  const orden = ["OT en curso", "Asistencia del día", "Asistencia semanal", "Pedidos de material", "Permisos del personal"];
-  const nodos = orden.map((n) => screen.getByRole("region", { name: n }));
-  for (let i = 1; i < nodos.length; i++) {
-    assert.ok(nodos[i - 1].compareDocumentPosition(nodos[i]) & Node.DOCUMENT_POSITION_FOLLOWING, `${orden[i - 1]} antes de ${orden[i]}`);
+test("panel — sin OT ni Flota contratados, solo queda Equipo", async () => {
+  panel({ modulos: modulosEfectivos({ plan: "asistencia_15" }) });
+  await screen.findByRole("region", { name: "Equipo" });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(screen.getAllByRole("region").map((r) => r.getAttribute("aria-label")), ["Equipo"]);
+});
+
+test("otEnProduccion — avance entre 0 y 100, sin cerradas ni terminadas en la planilla, la más avanzada arriba", () => {
+  const proyectos = [
+    { ot: "1" }, { ot: "2" }, { ot: "3", estado: "cerrado" }, { ot: "4", terminado_planilla: true }, { ot: "5" }, { ot: "6" },
+  ];
+  const piezas = [
+    { ot: "1", etapa: 1, total: 10, pasaron: 2 },
+    { ot: "2", etapa: 1, total: 10, pasaron: 10 }, { ot: "2", etapa: 2, total: 10, pasaron: 5 },
+    { ot: "3", etapa: 1, total: 10, pasaron: 5 },
+    { ot: "4", etapa: 1, total: 10, pasaron: 5 },
+    { ot: "5", etapa: 1, total: 10, pasaron: 0 },
+    { ot: "6", etapa: 1, total: 4, pasaron: 4 },
+  ];
+  assert.deepEqual(otEnProduccion(proyectos, piezas).map((f) => [f.proyecto.ot, f.porcentaje]), [["2", 75], ["1", 20]]);
+});
+
+test("escaneosDelDia / escaneosPorOt — nombres del proceso, el último primero y cuenta por OT", () => {
+  const filas = [
+    { id: 1, ot: "A", etapa: 1, created_at: "2026-11-23T10:00:00+00:00", piezas_ot: { nombre: "P1" } },
+    { id: 2, ot: "B", etapa: 9, created_at: "2026-11-23T11:00:00+00:00" },
+    { id: 3, ot: "A", etapa: 1, created_at: "2026-11-23T12:00:00+00:00", piezas_ot: { nombre: "P3" }, empleados: { nombre: "Eva" } },
+  ];
+  const e = escaneosDelDia(filas, [{ codigo: 1, nombre: "Corte" }]);
+  assert.deepEqual(e.map((x) => [x.id, x.pieza, x.proceso, x.quien]), [[3, "P3", "Corte", "Eva"], [2, "Pieza", "Etapa 9", null], [1, "P1", "Corte", null]]);
+  assert.deepEqual(escaneosPorOt(e), [{ ot: "A", cantidad: 2 }, { ot: "B", cantidad: 1 }]);
+  assert.equal(inicioDelDiaArg("2026-11-23"), "2026-11-23T00:00:00-03:00");
+});
+
+test("panel — sin estilos sueltos ni lo que se sacó del Inicio", () => {
+  const src = readFileSync(new URL("../app/dashboard_gerencia.jsx", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /<Stat /);
+  assert.doesNotMatch(src, /gypi_ver_ranking/);
+  for (const fuera of ["Asistencia del día", "Ranking", "Permisos del personal", "TarjetaMinuta", "TarjetaPlata"]) {
+    assert.ok(!src.includes(fuera), `queda "${fuera}"`);
   }
-});
-
-test("el tablero no tiene 'cerrar sesión' suelto (está en Más → Mi cuenta)", async () => {
-  tablero({ modulos: modulosEfectivos({ plan: "planta_15" }) });
-  await screen.findByRole("region", { name: "Asistencia del día" });
-  assert.equal(screen.queryByLabelText("Cerrar sesion"), null);
 });
 
 test("llegadasDelDia — hoy, quien todavía no entra no cuenta como falta; sin turno que vino, aparte", async () => {
@@ -213,46 +216,4 @@ test("alertasMantenimiento — máquinas paradas arriba, después lo vencido y a
   ]);
   assert.equal(r[0].destino, "mantenimiento:maquinaria-alertas");
   assert.equal(r[1].destino, "mantenimiento:flota-alertas");
-});
-
-test("panel — tarjetas 🔧 Mantenimiento y ⏰ OT atrasadas", async () => {
-  const respuestas = {
-    proyectos: [
-      { id: 1, ot: "7495", cliente: "CEVT", division: "M", semana_objetivo: 2, fecha_objetivo: "2020-01-11", liberada_at: null },
-      { id: 2, ot: "7500", cliente: "A tiempo", division: "M", semana_objetivo: 2, fecha_objetivo: "2099-01-10", liberada_at: null },
-      { id: 3, ot: "7600", cliente: "Sin semana", division: "M", fecha_entrega: "2020-01-10", liberada_at: null },
-    ],
-    maquinas: [{ id: "m1", codigo: "CNC-01", nombre: "CNC 1", estado: "parada", activo: true, criticidad: "A" }],
-    maquina_fallas: [{ id: "f1", maquina_id: "m1", descripcion: "No arranca", parada: true, estado: "pendiente", created_at: "2026-10-24T10:00:00Z" }],
-  };
-  // ⏰ OT atrasadas sale del plan vivo: 7495 va a terminar el Corte mucho después de su semana (2020)
-  const planes = [{ id: 1, tipo: "semana", desde: "2020-01-05", hasta: "2099-01-31", items: [
-    { ot: "7495", etapa: "corte", fecha: "2020-01-10", horas: 4, orden: 0 },
-    { ot: "7500", etapa: "corte", fecha: "2099-01-10", horas: 4, orden: 1 },
-  ] }];
-  global.fetch = async (url, opts) => {
-    if (String(url).startsWith("/api/planificacion")) return Response.json({ ok: true, planes });
-    const { path } = JSON.parse(opts?.body || "{}");
-    return Response.json({ ok: true, data: respuestas[String(path || "").split("?")[0]] || [] });
-  };
-  const destinos = [];
-  render(
-    <AuthContext.Provider value={{ divisiones: [{ id: "M", label: "Muebles", ruta_etapas: [1, 2] }], etapas: [{ codigo: 1, nombre: "Corte", orden: 1 }, { codigo: 2, nombre: "Canto", orden: 2 }], usuario: { rol: "gerencial" } }}>
-      <DashboardGerencia goto={(d) => destinos.push(d)} ctx={{ empleados: [], fichadasHoy: [], solicitudes: [], notificaciones: [] }} reload={() => {}} logout={() => {}} empresa={{ id: "e-1", nombre: "Acme", modulos: modulosEfectivos({ plan: "planta_15" }) }} />
-    </AuthContext.Provider>
-  );
-  const atr = await screen.findByRole("region", { name: "OT atrasadas" });
-  await within(atr).findByText("7495");
-  assert.equal(within(atr).queryByText("7500"), null, "la que vence más adelante no está atrasada");
-  assert.equal(within(atr).queryByText("7600"), null, "sin plan no cuenta como atrasada");
-  assert.ok(within(atr).getByText(/⚠ Corte \(hasta el .*\) · 0% hecho/));
-  assert.ok(within(atr).getByText(/^⚠ \d+ días$/), "días después de su semana");
-  const mant = await screen.findByRole("region", { name: "Mantenimiento" });
-  await within(mant).findByText("Parada: No arranca");
-  assert.ok(within(mant).getByText("1 parada"));
-  assert.equal(screen.queryByRole("region", { name: "Flota" }), null, "🔧 Mantenimiento reemplaza a 🚚 Flota");
-  fireEvent.click(within(mant).getByText(/Ir a Maquinaria/));
-  assert.deepEqual(destinos, ["mantenimiento:maquinaria-alertas"]);
-  const ot = screen.getByRole("region", { name: "OT en curso" });
-  assert.ok(ot.compareDocumentPosition(atr) & Node.DOCUMENT_POSITION_FOLLOWING, "OT atrasadas va después de OT en curso");
 });
