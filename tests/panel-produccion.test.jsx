@@ -159,6 +159,10 @@ test("en proceso — OT por etapa, esperando y cuello de botella", () => {
   assert.deepEqual(r.cuello, { id: "canteado", nombre: "Canteado", esperando: 2, horasEspera: 16 });
   assert.equal(r.etapas.find((e) => e.id === "canteado").esperaPromedio, 8);
   assert.equal(enProceso([{ id: "corte", nombre: "Corte", tarjetas: [t("1", "en_curso", 1)] }]).cuello, null);
+  // Instalación no es producción: aunque tenga más OT esperando, no es el cuello
+  const conInstalacion = [...columnas, { id: "instalacion", nombre: "Instalación", tarjetas: [t("6", "esperando", 5), t("7", "esperando", 5), t("8", "esperando", 5)] }];
+  assert.equal(enProceso(conInstalacion).cuello.id, "canteado");
+  assert.equal(enProceso([{ id: "instalacion", nombre: "Instalación", tarjetas: [t("6", "esperando", 5)] }]).cuello, null);
 });
 
 test("atrasadas y pausadas — las del plan vivo que terminan tarde y las OT en pausa hoy", () => {
