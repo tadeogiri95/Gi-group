@@ -146,6 +146,14 @@ export function EspejoCompleto({ cfg, onCambio }) {
   );
 }
 
+/** El último respaldo semanal en Drive (14/11). */
+function Respaldo({ r }) {
+  if (!r?.at) return <p className="m-0 text-[12px] text-gypi-dim">💾 Respaldo semanal en Drive: todavía no se hizo. Se activa al pegar el código nuevo y ejecutar instalarLibroGypi.</p>;
+  if (r.error) return <p role="alert" className="m-0 text-[13px] text-gypi-red">💾 El último respaldo ({fechaHora(r.at)}) no se pudo guardar en Drive: {r.error}</p>;
+  const mb = (r.bytes / 1048576).toLocaleString("es-AR", { maximumFractionDigits: 1 });
+  return <p className="m-0 text-[12px] text-gypi-green">💾 Último respaldo en tu Drive: {fechaHora(r.at)} · {r.nombre} ({mb} MB) en la carpeta «{r.carpeta}». Se hace solo cada domingo y quedan los últimos 8.</p>;
+}
+
 export default function FinanzasLibroScript() {
   const [cfg, setCfg] = useState(undefined);
   const [script, setScript] = useState(null);
@@ -203,6 +211,7 @@ export default function FinanzasLibroScript() {
       {estado && <div className={`text-xs ${cfg?.ultima_lectura ? "text-gypi-green" : "text-gypi-dim"}`}>{estado}</div>}
       {cfg?.hash && <EstadoDelPase estado={cfg.estado} pedidos={cfg.borrar} onCambio={cargar} />}
       <EspejoCompleto cfg={cfg} onCambio={cargar} />
+      {cfg?.hash && <Respaldo r={cfg.respaldo} />}
       {!script ? (
         <button type="button" onClick={generar} disabled={generando} className="g-btn g-btn-primary w-full disabled:opacity-50">
           {generando ? "Generando…" : cfg?.hash ? "Generar un código nuevo" : "Generar el código"}

@@ -181,6 +181,14 @@ export function estadoValido(d = {}) {
   };
 }
 
+/** Lo que el script cuenta del respaldo, limpio para guardar. */
+export function respaldoValido(d = {}) {
+  return {
+    nombre: txt(d.nombre, 120), carpeta: txt(d.carpeta, 120), error: txt(d.error, 500),
+    bytes: Math.max(0, Math.trunc(Number(d.bytes) || 0)), at: new Date().toISOString(),
+  };
+}
+
 /**
  * Código para pegar en Apps Script del libro (Extensiones → Apps Script).
  * instalarLibroGypi() se corre una vez: pide permiso, deja la tarea de cada
@@ -211,6 +219,9 @@ export function scriptLibro({ url, clave }) {
 // no entra solo. En cada vuelta se le manda a Gypi, que muestra lo que le
 // falta para incorporarlo o ignorarlo; acá esos renglones quedan con la celda
 // referencia_externa en amarillo y la nota "No viene de Gypi".
+// Respaldo (14/11): una vez por semana (domingo de madrugada) guarda en tu
+// Google Drive, en la carpeta "Gypi - respaldos", un .zip con todos los datos
+// de Gypi (un archivo por tabla, se abren con Excel). Quedan los últimos 8.
 // Pegalo en un archivo nuevo de Apps Script, guardá y ejecutá
 // instalarLibroGypi una sola vez. Después corre solo cada 15 minutos.
 // La clave es privada: no compartas este código.
@@ -236,12 +247,48 @@ var GYPI_FECHAS = { fecha: 1, fecha_transac: 1, fecha_emision: 1, vencimiento: 1
 var GYPI_COLS_MANUAL = ${JSON.stringify(COLUMNAS_MANUAL)};
 var GYPI_NOTA_MANUAL = ${JSON.stringify(NOTA_MANUAL)};
 
+var GYPI_CARPETA_RESPALDOS = "Gypi - respaldos";
+var GYPI_RESPALDOS_QUEDAN = 8;
+
 function instalarLibroGypi() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === "pasarLibroGypi") ScriptApp.deleteTrigger(t);
+    var f = t.getHandlerFunction();
+    if (f === "pasarLibroGypi" || f === "respaldarGypi") ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger("pasarLibroGypi").timeBased().everyMinutes(15).create();
+  ScriptApp.newTrigger("respaldarGypi").timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(3).create();
   pasarLibroGypi();
+  respaldarGypi();
+}
+
+// El respaldo semanal: baja el .zip de Gypi y lo deja en Drive (quedan los últimos 8)
+function respaldarGypi() {
+  var r = { accion: "respaldo", carpeta: GYPI_CARPETA_RESPALDOS };
+  try {
+    var res = UrlFetchApp.fetch(GYPI_LIBRO_URL + "?respaldo=1", { method: "get", headers: { Authorization: "Bearer " + GYPI_LIBRO_CLAVE }, muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) throw new Error("Gypi respondió " + res.getResponseCode() + ": " + res.getContentText().slice(0, 200));
+    var nombre = "gypi-respaldo-" + Utilities.formatDate(new Date(), "America/Argentina/Buenos_Aires", "yyyy-MM-dd") + ".zip";
+    var blob = res.getBlob().setName(nombre).setContentType("application/zip");
+    var carpetas = DriveApp.getFoldersByName(GYPI_CARPETA_RESPALDOS);
+    var carpeta = carpetas.hasNext() ? carpetas.next() : DriveApp.createFolder(GYPI_CARPETA_RESPALDOS);
+    carpeta.createFile(blob);
+    r.nombre = nombre;
+    r.bytes = blob.getBytes().length;
+    // Quedan los últimos
+    var archivos = [];
+    var it = carpeta.getFiles();
+    while (it.hasNext()) archivos.push(it.next());
+    archivos.sort(function (a, b) { return b.getDateCreated().getTime() - a.getDateCreated().getTime(); });
+    archivos.slice(GYPI_RESPALDOS_QUEDAN).forEach(function (f) { f.setTrashed(true); });
+  } catch (e) {
+    r.error = String(e && e.message || e);
+  }
+  try {
+    UrlFetchApp.fetch(GYPI_LIBRO_URL, {
+      method: "post", contentType: "application/json", muteHttpExceptions: true,
+      headers: { Authorization: "Bearer " + GYPI_LIBRO_CLAVE }, payload: JSON.stringify(r),
+    });
+  } catch (e2) { /* Gypi no contestó: se ve en la próxima */ }
 }
 
 function pasarLibroGypi() {
