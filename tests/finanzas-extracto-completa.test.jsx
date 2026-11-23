@@ -65,6 +65,17 @@ test("pendientes — cheque por debitar, cheque depositado, orden por transferen
   assert.equal(lejos.size, 0, "fuera de los días de margen");
 });
 
+test("pendientes — 23/11: la orden marcada pagada sin registrar sigue esperando su renglón del banco", () => {
+  const marcada = { ...ORDENES[1], id: 9, numero: 17, pagada_fecha: "2026-10-09", generado: { sin_registro: true, operaciones: [] } };
+  const m = pendientesDelExtracto([{ fecha: "2026-10-10", importe: -3000 }], { ordenes: [marcada], cuenta: BANCO });
+  assert.equal(m.get(0).clase, "orden");
+  assert.deepEqual(m.get(0).accion, { url: "/api/finanzas/pagos", body: { accion: "pagar", id: 9, fecha: "2026-10-10" } });
+  assert.equal(m.get(0).boton, "Registrar el pago de la orden");
+  assert.match(m.get(0).texto, /N° 17 .*marcada pagada, sin registrar/);
+  const registrada = { ...marcada, generado: { operaciones: [70] } };
+  assert.equal(pendientesDelExtracto([{ fecha: "2026-10-10", importe: -3000 }], { ordenes: [registrada], cuenta: BANCO }).size, 0, "ya registrada no espera nada");
+});
+
 test("resumen de la carga — entra, sale y cómo queda contra el banco", () => {
   const r = resumenDeCarga([{ importe: 100 }, { importe: -30.5 }], { saldoGypi: 1000, saldoBanco: 1069.5 });
   assert.deepEqual(r, { n: 2, entra: 100, sale: 30.5, queda: 1069.5, diferencia: 0, cierra: true });

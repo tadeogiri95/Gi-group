@@ -11,7 +11,7 @@
 // También: el resumen de lo que se va a cargar (cuánto entra, cuánto sale y
 // cómo queda el saldo contra el del banco) y qué renglones de una carga se
 // pueden deshacer (migración 188).
-import { FORMAS_PAGO } from "./finanzasPagos";
+import { FORMAS_PAGO, sinRegistrar } from "./finanzasPagos";
 
 const centavos = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const dias = (a, b) => Math.round((Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86400000);
@@ -49,17 +49,19 @@ function candidatos({ cheques = [], ordenes = [], plazos = [], cuenta }) {
     }
   }
   for (const o of ordenes) {
-    if (["pagada", "anulada"].includes(o.estado)) continue;
+    // 23/11: la marcada pagada sin registrar sigue esperando su movimiento del banco
+    const marcada = sinRegistrar(o);
+    if (!marcada && ["pagada", "anulada"].includes(o.estado)) continue;
     const formas = Array.isArray(o.formas) ? o.formas : [];
     const transf = formas.filter((x) => x?.forma === "transferencia" && x.cuenta === cuenta);
     if (!transf.length) continue;
     const otras = formas.length - transf.length;
     const importe = -centavos(transf.reduce((s, x) => s + (Number(x.importe) || 0), 0));
     out.push({
-      clase: "orden", id: Number(o.id), importe, fecha: o.fecha, margen: [-3, 60],
-      texto: `Orden de pago N° ${o.numero} a ${o.proveedor_nombre} por ${FORMAS_PAGO.transferencia.toLowerCase()}${otras ? ` (la orden tiene ${otras === 1 ? "otra forma de pago, que también se registra" : `otras ${otras} formas de pago, que también se registran`})` : ""}`,
+      clase: "orden", id: Number(o.id), importe, fecha: marcada && o.pagada_fecha ? o.pagada_fecha : o.fecha, margen: [-3, 60],
+      texto: `Orden de pago N° ${o.numero} a ${o.proveedor_nombre} por ${FORMAS_PAGO.transferencia.toLowerCase()}${marcada ? " (marcada pagada, sin registrar)" : ""}${otras ? ` (la orden tiene ${otras === 1 ? "otra forma de pago, que también se registra" : `otras ${otras} formas de pago, que también se registran`})` : ""}`,
       accion: { url: "/api/finanzas/pagos", body: { accion: "pagar", id: Number(o.id) } },
-      boton: "Marcar la orden pagada",
+      boton: marcada ? "Registrar el pago de la orden" : "Marcar la orden pagada",
     });
   }
   for (const p of plazos) {

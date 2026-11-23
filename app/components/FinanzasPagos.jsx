@@ -22,7 +22,7 @@ import { apiFetch } from "../lib/supabase";
 import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import { numeroWhatsapp } from "../lib/compras";
 import {
-  ESTADOS_ORDEN, FORMAS_PAGO, SIN_PAGAR, accionesOrden, adjuntosDe, comprobantesFactura, cuentasParaPagar, fechaCorta, imprimirOrdenPago, mandadaAlCfo, sumasPagos, textoForma, textoPlazo, textoWhatsappCfo, vistaPorCfo,
+  ESTADOS_ORDEN, FORMAS_PAGO, SIN_PAGAR, accionesOrden, adjuntosDe, comprobantesFactura, cuentasParaPagar, fechaCorta, imprimirOrdenPago, mandadaAlCfo, sinRegistrar, sumasPagos, textoForma, textoPlazo, textoWhatsappCfo, vistaPorCfo,
 } from "../lib/finanzasPagos";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -278,7 +278,8 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
   const [elegir, setElegir] = useState(null);
   const [unir, setUnir] = useState({});
   const est = ESTADOS_ORDEN[orden.estado] || { nombre: orden.estado, icono: "" };
-  const acciones = accionesOrden(orden.estado);
+  const acciones = accionesOrden(orden.estado, orden);
+  const marcada = sinRegistrar(orden);
 
   async function hacer(accion, extra = {}) {
     setError(null);
@@ -289,7 +290,7 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
       const pago = d.unidas
         ? `Pago registrado. ${d.unidas === 1 ? "Se unió con el movimiento que ya estaba en el banco" : `Se unió con ${d.unidas} movimientos que ya estaban en el banco`}: no quedó repetido`
         : "Pago registrado: se generaron las operaciones y los cheques";
-      toast.success({ mandar: "Abrimos WhatsApp con el link para el CFO", pagar: pago, anular: "Orden anulada", comprobante: extra.url ? "Comprobante guardado" : "Comprobante quitado", adjuntos: "Adjuntos guardados" }[accion]);
+      toast.success({ mandar: "Abrimos WhatsApp con el link para el CFO", pagar: pago, marcar_pagada: "Orden marcada pagada. No se registró nada: el movimiento entra con el extracto o la caja", anular: "Orden anulada", comprobante: extra.url ? "Comprobante guardado" : "Comprobante quitado", adjuntos: "Adjuntos guardados" }[accion]);
       setElegir(null);
       onCambio();
     } catch (e) {
@@ -351,7 +352,12 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
         ) : mandadaAlCfo(orden) ? (
           <p className="m-0 text-[13px] text-gypi-dim">📲 Mandada al CFO{orden.enviada_at ? ` el ${fechaCorta(String(orden.enviada_at).slice(0, 10))}` : ""}. Todavía no apretó 👍 Visto.</p>
         ) : null}
-        {orden.estado === "pagada" && (
+        {marcada && (
+          <p className="m-0 text-[13px] text-gypi-amber-ink">
+            ✓ Marcada pagada el {fechaCorta(orden.pagada_fecha)}{orden.pagada_por_nombre ? ` por ${orden.pagada_por_nombre}` : ""}, sin registrar. El movimiento entra con el extracto del banco o la planilla de caja: al subir el extracto, Gypi te ofrece unirlo con esta orden. Si hace falta, registralo ahora con 💸 Registrar pago.
+          </p>
+        )}
+        {orden.estado === "pagada" && !marcada && (
           <p className="m-0 text-[13px] text-gypi-dim">
             💸 Pagada el {fechaCorta(orden.pagada_fecha)}{orden.pagada_por_nombre ? ` por ${orden.pagada_por_nombre}` : ""}. Las operaciones están en Movimientos y los cheques en Cheques.
           </p>
@@ -379,6 +385,15 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
             <button type="button" className="g-btn g-btn-primary flex-1" disabled={!!haciendo} onClick={() => hacer("pagar", { fecha, ...(elegir ? { unir } : {}) })}>
               {haciendo === "pagar" ? "Registrando…" : "💸 Registrar pago"}
             </button>
+            {/* 23/11: pagada sin registrar; el movimiento llega con el extracto o la caja */}
+            {acciones.includes("marcar_pagada") && (
+              <button type="button" className="g-btn g-btn-secondary flex-1" disabled={!!haciendo} onClick={() => hacer("marcar_pagada", { fecha })}>
+                {haciendo === "marcar_pagada" ? "Marcando…" : "✓ Marcar pagada (sin registrar)"}
+              </button>
+            )}
+            {acciones.includes("marcar_pagada") && (
+              <p className="basis-full m-0 text-[12px] text-gypi-dim">&quot;Marcar pagada&quot; no crea movimientos, ni e-cheq, ni entrega cheques de terceros: el pago se registra cuando subís el extracto del banco o la planilla de caja.</p>
+            )}
             {elegir && (
               <div role="group" aria-label="Qué movimiento del banco es este pago" className="basis-full flex flex-col gap-2 p-2 rounded-lg bg-gypi-amber/10 border border-gypi-amber/40 text-[13px]">
                 <p className="m-0">Este pago ya puede estar en el banco (por ejemplo, del extracto). Elegí cuál es, así no queda repetido, y apretá de nuevo 💸 Registrar pago.</p>
@@ -405,7 +420,9 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
         {confirmarAnular ? (
           <div className="flex flex-col gap-2 p-2 rounded-lg border border-gypi-red">
             <p className="m-0 text-[13px]">
-              {orden.estado === "pagada"
+              {orden.estado === "pagada" && marcada
+                ? "¿Anular la orden? Estaba marcada pagada sin registrar, así que no hay movimientos para deshacer."
+                : orden.estado === "pagada"
                 ? "¿Anular la orden pagada? Se anulan sus operaciones, los e-cheq que emitió y los cheques de terceros vuelven a la cartera. Lo que se unió con el extracto del banco queda como estaba antes."
                 : "¿Anular la orden? El link del CFO deja de servir."}
             </p>
@@ -838,7 +855,7 @@ export default function FinanzasPagos() {
                   <span className="font-mono font-semibold">{plata(o.total, "ARS")}</span>
                 </span>
                 <span className={`block text-[12px] ${o.estado === "pagada" ? "text-gypi-green font-semibold" : "text-gypi-dim"}`}>
-                  {est.icono} {est.nombre}{o.estado === "pagada" && vistaPorCfo(o) ? " · 👍 vista por el CFO" : ""} · {fechaCorta(o.fecha)}
+                  {est.icono} {est.nombre}{sinRegistrar(o) ? " · sin registrar" : ""}{o.estado === "pagada" && vistaPorCfo(o) ? " · 👍 vista por el CFO" : ""} · {fechaCorta(o.fecha)}
                 </span>
               </button>
             </li>

@@ -100,7 +100,8 @@ async function loQueSeEspera(sesion) {
   const e = sesion.empresa_id;
   const [cheques, ordenes, plazos] = await Promise.all([
     leer(sesion, `fin_cheques?empresa_id=eq.${e}&estado=in.(pendiente,en_cartera)&select=id,clase,estado,numero,beneficiario,recibido_de,librador,fecha_pago,importe,cuenta_banco`, 5000).catch(() => []),
-    leer(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&estado=in.(borrador,para_aprobar,aprobada,rechazada)&select=id,numero,proveedor_nombre,fecha,estado,formas`, 2000).catch(() => []),
+    // 23/11: también las marcadas pagadas sin registrar (esperan el extracto)
+    leer(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&or=(estado.in.(borrador,para_aprobar,aprobada,rechazada),generado->>sin_registro.eq.true)&estado=neq.anulada&select=id,numero,proveedor_nombre,fecha,estado,formas,generado,pagada_fecha`, 2000).catch(() => []),
     (async () => {
       const hoy = hoyAr();
       const [tesoreria, cfg] = await Promise.all([

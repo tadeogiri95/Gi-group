@@ -75,8 +75,10 @@ test("validar — proveedor, formas, la caja en dólares no y el cheque una sola
 
 test("estados — qué se puede hacer en cada uno", () => {
   // 13/11: se paga sin esperar al CFO; mandárselo es solo para que sepa
-  for (const e of ["borrador", "para_aprobar", "aprobada", "rechazada"]) assert.deepEqual(accionesOrden(e), ["pagar", "mandar", "anular"], e);
+  for (const e of ["borrador", "para_aprobar", "aprobada", "rechazada"]) assert.deepEqual(accionesOrden(e), ["pagar", "marcar_pagada", "mandar", "anular"], e);
   assert.deepEqual(accionesOrden("pagada"), ["mandar", "anular"]);
+  // 23/11: la marcada pagada sin registrar todavía se puede registrar
+  assert.deepEqual(accionesOrden("pagada", { estado: "pagada", generado: { sin_registro: true } }), ["pagar", "mandar", "anular"]);
   assert.deepEqual(accionesOrden("anulada"), []);
   assert.ok(slugReservado("op"), "/op/ no puede ser el slug de una empresa");
 });
@@ -242,6 +244,63 @@ test("/api/finanzas/pagos — pagar sin esperar al CFO; genera operaciones, e-ch
   assert.match(entrega.url, /estado=eq\.en_cartera/);
   const { generado } = await res.json();
   assert.deepEqual([generado.operaciones.length, generado.cheques_emitidos, generado.cheques_entregados], [2, [60], [11]]);
+});
+
+test("/api/finanzas/pagos — 23/11: marcar pagada sin registrar no crea movimientos ni cheques; después se puede registrar", async () => {
+  const { orden } = validarOrden({ proveedor_id: 5, fecha: "2026-11-09", formas: FORMAS }, CTX);
+  const { escrito } = mockApi({ ordenes: [{ ...ORDEN, ...orden, estado: "para_aprobar" }] });
+  const res = await pedir("gerencial", "POST", { accion: "marcar_pagada", id: 9, fecha: "2026-11-10" });
+  assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
+  assert.deepEqual(escrito.map((x) => x.tabla), ["fin_ordenes_pago"], "solo cambia la orden");
+  const [marca] = escrito;
+  assert.match(marca.url, /estado=eq\.para_aprobar/);
+  assert.deepEqual([marca.body.estado, marca.body.pagada_fecha, marca.body.pagada_por_nombre, marca.body.generado.sin_registro], ["pagada", "2026-11-10", "Tadeo", true]);
+
+  const marcada = { ...ORDEN, ...orden, estado: "pagada", pagada_fecha: "2026-11-10", generado: marca.body.generado };
+  mockApi({ ordenes: [marcada] });
+  const otraVez = await pedir("gerencial", "POST", { accion: "marcar_pagada", id: 9 });
+  assert.equal(otraVez.status, 400);
+  assert.match((await otraVez.json()).error, /ya está pagada/);
+
+  const r2 = mockApi({ ordenes: [marcada] });
+  const reg = await pedir("gerencial", "POST", { accion: "pagar", id: 9 });
+  assert.equal(reg.status, 200, JSON.stringify(await reg.clone().json()));
+  const [toma] = r2.escrito;
+  assert.match(toma.url, /estado=eq\.pagada&generado->>sin_registro=eq\.true/, "dos clics no registran dos veces");
+  assert.equal(toma.body.generado.sin_registro, undefined);
+  const ops = r2.escrito.filter((x) => x.tabla === "fin_operaciones" && x.metodo === "POST").flatMap((x) => (Array.isArray(x.body) ? x.body : [x.body]));
+  assert.ok(ops.length > 0 && ops.every((o) => o.fecha === "2026-11-10"), "se registra con la fecha en que se marcó");
+
+  const r3 = mockApi({ ordenes: [marcada] });
+  const anu = await pedir("gerencial", "POST", { accion: "anular", id: 9 });
+  assert.equal(anu.status, 200);
+  assert.deepEqual(r3.escrito.map((x) => x.tabla), ["fin_ordenes_pago"], "anular una marcada no tiene nada que deshacer");
+});
+
+test("pantalla — 23/11: ✓ Marcar pagada (sin registrar) y la orden marcada lo avisa", async () => {
+  const sinPagar = { ...ORDEN, estado: "borrador", formas: [{ forma: "transferencia", importe: 1000000, cuenta_nombre: "Banco Credicoop" }] };
+  const datos = { tesoreria: TESORERIA, proveedores: PROVEEDORES, cheques: [], empresa: { nombre: "Gi" }, cfo: { nombre: "Juan", telefono: "" }, links: {}, ordenes: [sinPagar] };
+  const enviados = [];
+  global.fetch = async (url, o = {}) => {
+    if (o.method === "POST") { enviados.push(JSON.parse(o.body)); return new Response(JSON.stringify({ ok: true, orden: { ...sinPagar, estado: "pagada" } }), { status: 200 }); }
+    return new Response(JSON.stringify(datos), { status: 200 });
+  };
+  render(<FinanzasPagos />);
+  fireEvent.click(await screen.findByText("EGGER ARGENTINA"));
+  assert.ok(screen.getByText(/no crea movimientos, ni e-cheq, ni entrega cheques de terceros/));
+  fireEvent.click(await screen.findByRole("button", { name: "✓ Marcar pagada (sin registrar)" }));
+  await waitFor(() => assert.equal(enviados.length, 1));
+  assert.deepEqual([enviados[0].accion, enviados[0].id], ["marcar_pagada", 9]);
+  cleanup();
+
+  datos.ordenes = [{ ...sinPagar, estado: "pagada", pagada_fecha: "2026-11-10", pagada_por_nombre: "Tadeo", generado: { sin_registro: true } }];
+  render(<FinanzasPagos />);
+  fireEvent.click(await screen.findByRole("button", { name: /^Pagadas/ }));
+  assert.ok(await screen.findByText(/· sin registrar/));
+  fireEvent.click(screen.getByText("EGGER ARGENTINA"));
+  assert.ok(await screen.findByText(/Marcada pagada el .* por Tadeo, sin registrar/));
+  assert.ok(screen.getByRole("button", { name: "💸 Registrar pago" }), "todavía se puede registrar a mano");
+  assert.equal(screen.queryByRole("button", { name: "✓ Marcar pagada (sin registrar)" }), null);
 });
 
 test("/api/finanzas/pagos — anular una pagada deshace todo; no si el e-cheq ya se debitó", async () => {

@@ -206,16 +206,27 @@ export function textoForma(x) {
   return [`Cheque${x.banco ? ` ${x.banco}` : " de terceros"}${x.numero ? ` N° ${x.numero}` : ""}`, x.fecha_pago ? `vence el ${fechaCorta(x.fecha_pago)}` : null, x.librador].filter(Boolean).join(" · ");
 }
 
-/** Lo que se puede hacer con la orden según su estado. Pagar no espera al CFO. */
-export function accionesOrden(estado) {
+/**
+ * Lo que se puede hacer con la orden según su estado. Pagar no espera al CFO.
+ * 23/11: "marcar_pagada" la deja pagada sin generar nada (el movimiento entra
+ * después con el extracto del banco o la planilla de caja). Una orden así
+ * todavía se puede registrar ("pagar") si hace falta.
+ * @param {string} estado
+ * @param {object} [orden]  la orden entera, para saber si se pagó sin registrar
+ */
+export function accionesOrden(estado, orden = null) {
+  if (estado === "pagada" && sinRegistrar(orden)) return ["pagar", "mandar", "anular"];
   return {
-    borrador: ["pagar", "mandar", "anular"],
-    para_aprobar: ["pagar", "mandar", "anular"],
-    aprobada: ["pagar", "mandar", "anular"],
-    rechazada: ["pagar", "mandar", "anular"],
+    borrador: ["pagar", "marcar_pagada", "mandar", "anular"],
+    para_aprobar: ["pagar", "marcar_pagada", "mandar", "anular"],
+    aprobada: ["pagar", "marcar_pagada", "mandar", "anular"],
+    rechazada: ["pagar", "marcar_pagada", "mandar", "anular"],
     pagada: ["mandar", "anular"],
   }[estado] || [];
 }
+
+/** 23/11: se marcó pagada sin registrar movimientos (y todavía no se registró). */
+export const sinRegistrar = (o) => o?.estado === "pagada" && o?.generado?.sin_registro === true;
 
 /** Estados en los que la orden todavía no se pagó (ni se anuló). */
 export const SIN_PAGAR = ["borrador", "para_aprobar", "aprobada", "rechazada"];
