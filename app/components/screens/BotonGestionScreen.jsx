@@ -69,7 +69,8 @@ const ReportesScreen = dynamic(() => import("../../reportes_screen"), { ssr: fal
 // dentro de 💰 Tesorería (13/11) y el Panel de control abre Flota o Maquinaria
 // directo en 🔔 Alertas.
 // Clientes y Proveedores quedaron juntos en 📒 Cuentas corrientes (19/11).
-const ALIAS = { "fin-clientes": "fin-cuentas", "fin-proveedores": "fin-cuentas", "fin-movimientos": "fin-tesoreria", "flota-alertas": "flota", "maquinaria-alertas": "maquinaria" };
+// La pestaña Instalaciones de Producción se sacó (23/11): los enlaces viejos abren OT.
+const ALIAS = { instalaciones: "ot", "fin-clientes": "fin-cuentas", "fin-proveedores": "fin-cuentas", "fin-movimientos": "fin-tesoreria", "flota-alertas": "flota", "maquinaria-alertas": "maquinaria" };
 
 export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlanes, seccion = null, onSeccion = null, onIr = null }) {
   const OPCIONES = opcionesBoton(boton, empresa, usuario);
@@ -110,7 +111,6 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {bloqueado && <ModuloBloqueado modulo={actual.modulo} empresa={empresa} rol={usuario?.rol} onVerPlanes={onVerPlanes} />}
         {!bloqueado && actual.id === "vivo" && <GerenciaActividadScreen empresaId={empresaId} />}
         {!bloqueado && actual.id === "ot" && <ProyectosScreen empresaId={empresaId} onPlanillas={onPlanillas} />}
-        {!bloqueado && actual.id === "instalaciones" && <ProyectosScreen empresaId={empresaId} onPlanillas={onPlanillas} vistaInicial="gantt" ganttTipo="instalacion" />}
         {!bloqueado && actual.id === "stock" && <StockScreen empresa={empresa} empresaId={empresaId} usuario={usuario} onPlanillas={onPlanillas} onCargar={conMovimientos ? irACargar : null} />}
         {!bloqueado && actual.id === "inventario-valorizado" && <InventarioScreen empresa={empresa} usuario={usuario} onCargar={conMovimientos ? irACargar : null} />}
         {!bloqueado && actual.id === "movimientos" && <MovimientosScreen usuario={usuario} />}

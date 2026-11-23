@@ -1,5 +1,5 @@
 'use client';
-// app/components/TableroEtapas.jsx — Producción → OT → 🗂️ Etapas (Tadeo,
+// app/components/TableroEtapas.jsx — Producción → OT → 🗂️ Trello (Tadeo,
 // 22/11): tablero tipo Trello con una columna por proceso (Corte, Canteado,
 // Mecanizado, Armado), Instalación y Terminadas. Cada OT está en la etapa en
 // que va, con cuánto lleva ahí en horas de jornada; al tocarla se ve el
@@ -65,7 +65,7 @@ function Tarjeta({ t, onAbrir }) {
     <button type="button" onClick={() => onAbrir(t)} data-tarjeta-ot={t.ot} data-estado={t.estado}
       data-paralelo={paralelo ? "si" : undefined} data-fuera-gantt={t.fueraDelGantt ? "si" : undefined}
       aria-label={`OT ${t.ot}: ver el registro de sus etapas`}
-      className={`w-full text-left bg-gypi-surface rounded-xl p-2.5 cursor-pointer ${borde} ${t.estado === "esperando" ? "opacity-80" : ""}`}>
+      className={`w-full min-w-0 overflow-hidden whitespace-normal break-words text-left bg-gypi-surface rounded-xl p-2.5 cursor-pointer ${borde} ${t.estado === "esperando" ? "opacity-80" : ""}`}>
       <div className="flex items-start justify-between gap-2">
         <span className="font-mono text-[13px] font-bold text-gypi-amber-ink">OT {t.ot}</span>
         <span className="text-[13px] font-bold text-gypi-text shrink-0" data-lleva>
@@ -200,10 +200,12 @@ export default function TableroEtapas({ proyectos = [], empresaId, etapas = [], 
           {cargando ? "Actualizando…" : "🔄 Actualizar"}
         </button>
       </div>
-      <div className="fila-desliza flex gap-2.5 overflow-x-auto pb-2 snap-x" role="list" aria-label="Etapas">
+      {/* Sin .fila-desliza (23/11): esconde la barra y no deja cortar el texto en renglones.
+          En la computadora las 6 columnas se reparten el ancho; si no entran, barra para deslizar */}
+      <div className="flex gap-2 overflow-x-auto pb-2 snap-x" role="list" aria-label="Trello de OT por etapa" data-tablero-etapas>
         {tablero.columnas.map((c) => (
           <section key={c.id} role="listitem" aria-label={c.nombre} data-columna={c.id}
-            className="snap-start shrink-0 w-[78vw] max-w-[280px] md:w-[240px] bg-gypi-surf-lo rounded-2xl border border-gypi-border p-2 flex flex-col">
+            className="snap-start shrink-0 w-[78vw] max-w-[280px] md:shrink md:flex-1 md:w-auto md:min-w-[170px] md:max-w-none min-w-0 bg-gypi-surf-lo rounded-2xl border border-gypi-border p-2 flex flex-col">
             <div className="flex items-center gap-1.5 mb-2 px-0.5">
               <span className={`w-2.5 h-2.5 rounded-full ${COLOR_COLUMNA[c.id]}`} aria-hidden="true" />
               <h3 className="m-0 text-[14px] font-bold text-gypi-text font-heading flex-1">{c.nombre}</h3>

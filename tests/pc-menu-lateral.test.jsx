@@ -18,13 +18,13 @@ test("menú — los botones con sus opciones, lo no contratado con candado, y Em
   const g = gruposMenu(empresa, gerente, 3);
   assert.deepEqual(g.map((x) => x.titulo || x.id), ["inicio", "Producción", "Materiales", "Personal", "Empresa"], "sin Mantenimiento: no tiene flota ni maquinaria");
   const prod = g.find((x) => x.id === "proyectos").items;
-  assert.deepEqual(prod.map((i) => i.label), ["OT", "Reportes", "Panel de producción", "Instalaciones", "Planificación", "Minuta"]);
+  assert.deepEqual(prod.map((i) => i.label), ["OT", "Reportes", "Panel de producción", "Planificación", "Minuta"]);
   const mat = g.find((x) => x.id === "inventario").items;
   assert.deepEqual(mat.map((i) => [i.label, !!i.bloqueado]), [["Stock", false], ["Inventario valorizado", false], ["Movimientos", false], ["Compras", true]]);
   assert.equal(g.find((x) => x.id === "personal").items.find((i) => i.label === "Permisos").badge, 3);
   // Planificación y Minuta son solo del dueño
   const admin = gruposMenu(empresa, { rol: "administrativo" }).find((x) => x.id === "proyectos").items;
-  assert.deepEqual(admin.map((i) => i.label), ["OT", "Reportes", "Instalaciones"]);
+  assert.deepEqual(admin.map((i) => i.label), ["OT", "Reportes"]);
 });
 
 test("menú — la opción abierta es la elegida o la primera que la empresa tiene", () => {
