@@ -48,15 +48,18 @@ test("Finanzas en el celular: sin pestañas en su Inicio; afuera, Inicio y las d
   assert.equal(pestanasCelular("proyectos", prod, "ot"), prod, "los otros botones no cambian");
 });
 
-test("Personal con grupo propio e Instalaciones en Producción", () => {
+test("Personal con grupo propio; Producción sin la pestaña Instalaciones (23/11)", () => {
   const g = gruposMenu(empresa, dueno, 4, "home");
   const personal = g.find((x) => x.id === "personal");
   assert.deepEqual(personal.items.map((i) => [i.label, i.destino]), [["Equipo y horarios", "equipo"], ["Permisos", "solicitudes"]]);
   assert.equal(personal.items[1].badge, 4);
-  assert.ok(opcionesBoton("proyectos", empresa, { rol: "administrativo" }).some((o) => o.id === "instalaciones"));
+  assert.equal(opcionesBoton("proyectos", empresa, { rol: "administrativo" }).some((o) => o.id === "instalaciones"), false);
   assert.deepEqual(partirDestino("planta:instalaciones"), { pantalla: "proyectos", seccion: "instalaciones" });
   const boton = leer("components/screens/BotonGestionScreen.jsx");
-  assert.match(boton, /actual\.id === "instalaciones" && <ProyectosScreen [^>]*vistaInicial="gantt" ganttTipo="instalacion"/);
+  // Los enlaces viejos a la pestaña abren OT; el Gantt de instalación sigue en OT → 📅 Gantt
+  assert.match(boton, /const ALIAS = \{ instalaciones: "ot",/);
+  assert.doesNotMatch(boton, /actual\.id === "instalaciones"/);
+  assert.match(leer("components/GanttOt.jsx"), /onClick=\{\(\) => cambiar\("instalacion"\)\}>🔧 Instalación/);
   assert.match(leer("components/GanttOt.jsx"), /if \(props\.tipoInicial\) return props\.tipoInicial;/);
 });
 

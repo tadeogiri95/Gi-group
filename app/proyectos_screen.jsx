@@ -179,8 +179,8 @@ function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
 }
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
-// vistaInicial / ganttTipo: Producción → 🔧 Instalaciones abre directo el
-// Gantt de instalación (auditoría 12/11, parte 13)
+// vistaInicial / ganttTipo: abrir directo una vista o un tipo de Gantt
+// (lo usaba la pestaña Instalaciones, sacada el 23/11)
 export default function ProyectosScreen({ empresaId, onPlanillas = null, vistaInicial = "lista", ganttTipo = null }) {
   const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, checklistLiberacion, checklistCarga, checklistInstalacion, defectos, empresa, updateEmpresa, usuario } = useAuth();
   // Costo de la hora: solo el dueño (OP parte 8)
@@ -597,8 +597,9 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null, vistaIn
         <Chip active={vista === "etapas"} onClick={() => setVista("etapas")}>🗂️ Etapas</Chip>
         <Chip active={vista === "gantt"} onClick={() => setVista("gantt")}>📅 Gantt</Chip>
         <Chip active={vista === "calidad"} onClick={() => setVista("calidad")}>No conformes</Chip>
-        {/* Reportes escritos de los instaladores (antes en Reportes → Obra; Tadeo, 22/11) */}
-        {ganttTipo === "instalacion" && tieneModulo(empresa, "obra") && <Chip active={vista === "obra"} onClick={() => setVista("obra")}>🏗️ Reportes de obra</Chip>}
+        {/* Reportes escritos de los instaladores (antes en Reportes → Obra; Tadeo, 22/11).
+            Desde el 23/11 sin la pestaña Instalaciones: van acá, en OT */}
+        {tieneModulo(empresa, "obra") && <Chip active={vista === "obra"} onClick={() => setVista("obra")}>🏗️ Reportes de obra</Chip>}
       </div>
 
       {vista === "obra" ? (
