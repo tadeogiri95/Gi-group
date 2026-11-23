@@ -1,6 +1,8 @@
 // app/lib/ot.js — Encontrar la OT al iniciar una tarea (F4-11, D8, ítem 20):
 // por el código escaneado y por las usadas hace poco en este dispositivo.
 
+import { materialProduccion, MARCA_MRP } from "./materialMrp";
+
 const soloDigitos = (s) => String(s ?? "").replace(/\D/g, "");
 
 /**
@@ -57,15 +59,22 @@ export function fechaCorta(iso) {
 }
 
 // Material de producción de la OT (136): placas, fondos, cantos y mecanizados
-// del Plan de trabajo. Solo los datos que trae la planilla.
+// del Plan de trabajo. Lo que el Plan no trae se completa con las necesidades
+// del MRP (202, app/lib/materialMrp.js) y lleva la marca "📦 del MRP".
 const MATERIAL_OT = [
-  { campo: "placas", label: "Placas 18", unidad: "" },
-  { campo: "fondos", label: "Fondos", unidad: "" },
-  { campo: "metros_canto", label: "Cantos", unidad: " m" },
+  { campo: "placas", mrp: "placas", label: "Placas 18", unidad: "" },
+  { campo: "fondos", mrp: "fondos", label: "Fondos", unidad: "" },
+  { campo: "metros_canto", mrp: "metros", label: "Cantos", unidad: " m" },
   { campo: "placas_mecanizadas", label: "Mecanizados", unidad: "" },
 ];
 export function materialOt(proyecto) {
+  const mat = materialProduccion(proyecto);
+  const fmt = (v) => (Math.round(Number(v) * 10) / 10).toLocaleString("es-AR");
   return MATERIAL_OT
-    .filter((m) => proyecto?.[m.campo] != null && proyecto[m.campo] !== "")
-    .map((m) => ({ label: m.label, valor: `${Number(proyecto[m.campo]).toLocaleString("es-AR")}${m.unidad}` }));
+    .map((m) => {
+      if (proyecto?.[m.campo] != null && proyecto[m.campo] !== "") return { label: m.label, valor: `${Number(proyecto[m.campo]).toLocaleString("es-AR")}${m.unidad}` };
+      if (m.mrp && mat.delMrp[m.mrp]) return { label: m.label, valor: `${fmt(mat[m.mrp])}${m.unidad} ${MARCA_MRP}`, delMrp: true };
+      return null;
+    })
+    .filter(Boolean);
 }
