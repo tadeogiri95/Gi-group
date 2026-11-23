@@ -165,12 +165,13 @@ test("menú — Finanzas solo para el Dueño: ni el Supervisor ni la oficina", (
   assert.equal(esDuenoFinanzas(DUENO), true);
   assert.equal(esDuenoFinanzas(SUPERVISOR), false);
   assert.deepEqual(opcionesBoton("finanzas", empresa, DUENO).map((o) => o.id), [
-    // 14/11 (etapa 4): Inicio · Tesorería · Cuentas corrientes · Contabilidad · Informes · Ajustes
-    "fin-inicio", "fin-tesoreria", "fin-cheques", "fin-inversiones",
-    "fin-clientes", "fin-cuenta-ot", "fin-proveedores", "fin-pagos", "fin-sueldos", "fin-personas", "fin-unificados",
-    "fin-mayor", "fin-devengamiento", "fin-sos", "fin-libro",
-    "fin-resultados", "fin-patrimonio", "fin-flujo", "fin-reporte",
-    "fin-config", "fin-cierre",
+    // 19/11 (menú nuevo): Inicio · Pagar y cobrar · Saldos · Informes · Cierre y ajustes
+    "fin-inicio", "fin-pagos", "fin-cheques", "fin-sueldos",
+    "fin-tesoreria", "fin-cuentas", "fin-inversiones", "fin-personas",
+    "fin-resultados", "fin-patrimonio", "fin-flujo", "fin-cxp", "fin-reporte", "fin-informe-tesoreria", "fin-mayor",
+    "fin-devengamiento", "fin-cierre", "fin-libro", "fin-sos", "fin-config",
+    // Se abren desde otras pantallas, no están en el menú
+    "fin-cuenta-ot", "fin-unificados",
   ]);
   for (const u of [SUPERVISOR, OFICINA, null]) {
     assert.equal(conBoton("finanzas", empresa, u), false);

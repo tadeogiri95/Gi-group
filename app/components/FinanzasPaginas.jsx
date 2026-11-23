@@ -31,8 +31,8 @@ export function VentanaComoPagina({ id, onIr }) {
   const volver = (a) => () => onIr?.(a);
   return (
     <ModalEnPagina.Provider value={true}>
-      {id === "fin-cuenta-ot" && <FinanzasOtClientes onCerrar={volver("fin-clientes")} />}
-      {id === "fin-sos" && <FinanzasSos onCerrar={volver("fin-devengamiento")} onImportado={volver("fin-proveedores")} />}
+      {id === "fin-cuenta-ot" && <FinanzasOtClientes onCerrar={volver("fin-cuentas")} />}
+      {id === "fin-sos" && <FinanzasSos onCerrar={volver("fin-devengamiento")} onImportado={volver("fin-cuentas")} />}
       {id === "fin-unificados" && <FinanzasUnificados onCerrar={volver("fin-personas")} onCambio={() => {}} />}
     </ModalEnPagina.Provider>
   );

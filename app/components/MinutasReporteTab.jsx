@@ -132,7 +132,7 @@ export default function MinutasReporteTab({ empresa = null }) {
     return () => { vivo = false; };
   }, [desde, hasta]);
 
-  const inf = useMemo(() => (datos ? { ...informeMinutas({ minutas: datos.minutas || [], items: datos.items || [], precios: datos.precios || {}, hoy, modo, hasta, anterior: datos.feedbackAnterior || null }), porOt: mapaOts(datos.ots || []) } : null), [datos, hoy, modo, hasta]);
+  const inf = useMemo(() => (datos ? { ...informeMinutas({ minutas: datos.minutas || [], items: datos.items || [], precios: datos.precios || {}, estimadas: datos.estimadas || [], hoy, modo, hasta, anterior: datos.feedbackAnterior || null }), porOt: mapaOts(datos.ots || []) } : null), [datos, hoy, modo, hasta]);
   const siguiente = moverInforme(modo, fecha, 1);
   const nombreEmpresa = empresa?.razon_social || empresa?.nombre || empresa?.nombre_corto || "";
 
@@ -281,14 +281,14 @@ function Informe({ inf }) {
               <Renglon key={i} tono="verde">
                 <div className="flex justify-between gap-2">
                   <span className="min-w-0"><b>{nombreOt(t)}</b> <span className="text-gypi-dim">· {t.seccion === "prod_terminada" ? "producción" : "instalación"}{dia ? "" : ` · ${ddmm(t.fecha)}`}</span></span>
-                  <span className="font-mono font-bold shrink-0">{t.valor == null ? "sin precio" : fmtPesos(t.valor)}</span>
+                  <span className="font-mono font-bold shrink-0">{t.valor == null ? "sin precio" : t.estimado ? `≈ ${fmtPesos(t.valor)} estimado` : fmtPesos(t.valor)}</span>
                 </div>
                 {t.texto && <div className="text-gypi-dim mt-0.5">{t.texto}</div>}
               </Renglon>
             ))}
           </div>
         )}
-        {terminado.items.some((t) => t.valor == null) && <div className="text-[12px] text-gypi-dim mt-1 px-1">El valor sale de la columna PRECIO del Plan de trabajo; las que dicen "sin precio" no lo tienen cargado.</div>}
+        {terminado.items.some((t) => t.valor == null || t.estimado) && <div className="text-[12px] text-gypi-dim mt-1 px-1">El valor sale de la columna PRECIO del Plan de trabajo; si no tiene, se estima por los materiales de la OT (≈ estimado). Las que dicen "sin precio" no tienen ni precio ni materiales.</div>}
       </Bloque>
 
       {/* 4. En curso */}

@@ -13,7 +13,7 @@ import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../lib/auth";
 import { validateBody, safeErrorMessage } from "../../lib/validate";
 import { planInstalacionBody } from "../../lib/schemas";
-import { sbGet, sbPost, sbDelete } from "../../lib/sbHelpers";
+import { sbGet, sbGetAll, sbPost, sbDelete } from "../../lib/sbHelpers";
 import { ROLES_GESTION } from "../../lib/dataPolicy";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan } from "../../lib/planEnforcement";
@@ -63,7 +63,7 @@ export async function GET(request) {
         if (!mios.length) return json({ ok: true, dias: [] });
         const fechas = [...new Set(mios.map((i) => i.fecha))];
         const [juntos, proyectos] = await Promise.all([
-          sbGet(`plan_instalacion_items?empresa_id=eq.${e}&plan_id=in.(${ids})&fecha=in.(${fechas.join(",")})&select=obra,fecha,medio,empleado_id&limit=5000`, opts),
+          sbGetAll(`plan_instalacion_items?empresa_id=eq.${e}&plan_id=in.(${ids})&fecha=in.(${fechas.join(",")})&select=obra,fecha,medio,empleado_id&order=id.asc`, { ...opts, maxFilas: 5000 }).then((r) => r.data),
           sbGet(`proyectos?empresa_id=eq.${e}&ot=in.(${[...new Set(mios.flatMap((i) => i.ots))].map((o) => `"${String(o).replace(/"/g, "")}"`).join(",")})&select=ot,cliente,obra,descripcion`, opts),
         ]);
         const otros = [...new Set((juntos || []).map((j) => j.empleado_id).filter((id) => id && id !== sesion.empleado_id))];
@@ -78,7 +78,8 @@ export async function GET(request) {
         }));
         return json({ ok: true, dias });
       }
-      const items = (await sbGet(`plan_instalacion_items?empresa_id=eq.${e}&plan_id=in.(${ids})&select=plan_id,obra,ots,fecha,medio,empleado_id,orden&order=fecha.asc,medio.asc&limit=20000`, opts)) || [];
+      // 19/11: Supabase corta cada respuesta en 1000 renglones: se lee de a páginas
+      const items = (await sbGetAll(`plan_instalacion_items?empresa_id=eq.${e}&plan_id=in.(${ids})&select=plan_id,obra,ots,fecha,medio,empleado_id,orden&order=fecha.asc,medio.asc,id.asc`, { ...opts, maxFilas: 20000 })).data || [];
       return json({ ok: true, planes: planes.map((p) => ({ ...p, items: items.filter((i) => i.plan_id === p.id) })) });
     } catch (err) {
       if (faltaMigracion(err)) return json({ ok: true, planes: [], dias: [], falta_migracion: true });

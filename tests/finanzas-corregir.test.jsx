@@ -5,7 +5,7 @@ import { test, before, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
-import { operacionCorregida, plazosRepetidos, puedeAnular, puedeCorregir, dondeSeCambia } from "../app/lib/finanzasCorregir.js";
+import { chequesRepetidos, operacionCorregida, plazosRepetidos, puedeAnular, puedeCorregir, dondeSeCambia } from "../app/lib/finanzasCorregir.js";
 import { estadoDePlazos } from "../app/lib/finanzasPlazosFijos.js";
 
 before(() => {
@@ -90,6 +90,37 @@ test("plazosRepetidos — cada operación de Gypi con su igual del libro (mismas
   assert.deepEqual(plazosRepetidos(OPS_PF.filter((o) => o.id !== 3 && o.id !== 4)), [], "sin la del libro no hay repetidas");
 });
 
+test("plazosRepetidos — 16/11: el interés del extracto con otro tipo y el renglón con capital e interés juntos", () => {
+  const gypi = OPS_PF.slice(0, 2);
+  const interesExtracto = { id: 7, fecha: "2026-11-04", tipo: "COBRO INTERESES", total: 257958.48, cuenta_debe: BANCO, cuenta_haber: PF, origen: "banco", descripcion: "Interes plazo fijo" };
+  const capitalExtracto = { id: 8, fecha: "2026-11-02", tipo: "PLAZO FIJO", total: 5777788.72, cuenta_debe: BANCO, cuenta_haber: PF, origen: "banco", descripcion: "Acred. plazo fijo" };
+  assert.deepEqual(plazosRepetidos([...gypi, capitalExtracto, interesExtracto], { cuentasPf: [PF] }).map((p) => [p.gypi.id, p.otra.id]), [[1, 8], [2, 7]]);
+  const juntos = { id: 9, fecha: "2026-11-02", tipo: "PLAZO FIJO", total: 6035747.2, cuenta_debe: BANCO, cuenta_haber: PF, origen: "banco", descripcion: "Acred. plazo fijo" };
+  assert.deepEqual(plazosRepetidos([...gypi, juntos], { cuentasPf: [PF] }).map((p) => [p.gypi.id, p.otra.id]), [[1, 9], [2, 9]]);
+  assert.deepEqual(plazosRepetidos([...gypi, { ...interesExtracto, cuenta_haber: "04.09.99" }], { cuentasPf: [PF] }), [], "contra otra cuenta cualquiera no");
+});
+
+test("chequesRepetidos — 16/11: el débito que cargó Gypi y el del extracto semanas después; queda el del banco", () => {
+  const cheques = [
+    { id: 1, estado: "debitado", fecha_pago: "2026-10-05", op_cierre_id: 10 },
+    { id: 2, estado: "debitado", fecha_pago: "2026-10-05", op_cierre_id: 11 },
+    { id: 3, estado: "depositado", fecha_pago: "2026-10-10", op_cierre_id: 12 },
+    // Otro cheque ya unido al movimiento 21: no se usa
+    { id: 4, estado: "otro", op_cierre_id: 21 },
+  ];
+  const ops = [
+    { id: 10, fecha: "2026-10-05", total: 1000, cuenta_debe: "02.01", cuenta_haber: BANCO, origen: "cheque" },
+    { id: 11, fecha: "2026-10-05", total: 2000, cuenta_debe: "02.01", cuenta_haber: BANCO, origen: "cheque" },
+    { id: 12, fecha: "2026-10-10", total: 3000, cuenta_debe: BANCO, cuenta_haber: "01.03", origen: "cheque" },
+    { id: 20, fecha: "2026-10-27", total: 1000, cuenta_debe: "02.01", cuenta_haber: BANCO, origen: "banco", descripcion: "ECHEQ pago camara" },
+    { id: 21, fecha: "2026-10-06", total: 2000, cuenta_debe: "02.01", cuenta_haber: BANCO, origen: "banco" },
+    { id: 22, fecha: "2026-11-30", total: 3000, cuenta_debe: BANCO, cuenta_haber: "01.03", origen: "banco" },
+  ];
+  assert.deepEqual(chequesRepetidos(cheques, ops).map((p) => [p.cheque.id, p.gypi.id, p.otra.id]), [[1, 10, 20]],
+    "el 2 tiene su igual ya unido a otro cheque; el 3 está a más de 35 días");
+  assert.deepEqual(chequesRepetidos(cheques, ops.map((o) => (o.id === 10 ? { ...o, anulada_at: "x" } : o))), [], "si ya se anuló, nada");
+});
+
 test("estadoDePlazos — el rescate del libro sin certificado se reconoce por el capital y la fecha", () => {
   const plazo = { certificado: "17529123", depositado: 1410199.31, interes: 22879.42, vencimiento: "2026-11-02" };
   const libro = [
@@ -111,14 +142,14 @@ const pedir = async (mod, ruta, rol, metodo, body) => mod[metodo](new Request(`h
   method: metodo, headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token(rol)}` }, ...(body ? { body: JSON.stringify(body) } : {}),
 }));
 
-function mockApi({ op = manual, ops = OPS_PF, falla = false } = {}) {
+function mockApi({ op = manual, ops = OPS_PF, falla = false, cfg = [], patchVacio = false } = {}) {
   const escrito = [];
   global.fetch = createFetchMock([
     ...authPassHandlers(),
     { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
     { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
     { match: (u) => u.includes("/rest/v1/empleados?"), respond: () => ({ status: 200, body: [{ id: EMP, nombre: "Tadeo" }] }) },
-    { match: (u) => u.includes("/rest/v1/config_sistema"), respond: () => ({ status: 200, body: [] }) },
+    { match: (u) => u.includes("/rest/v1/config_sistema"), respond: () => ({ status: 200, body: cfg }) },
     { match: (u) => u.includes("/rest/v1/fin_tesoreria"), respond: () => ({ status: 200, body: [{ cuenta: BANCO, nombre: "Banco Credicoop CTA CTE", tipo: "banco", moneda: "ARS", activa: true }, { cuenta: PF, nombre: "Plazo Fijo Credicoop", tipo: "plazo_fijo", moneda: "ARS", activa: true }] }) },
     { match: (u) => u.includes("/rest/v1/fin_cuentas"), respond: () => ({ status: 200, body: CUENTAS }) },
     {
@@ -128,6 +159,7 @@ function mockApi({ op = manual, ops = OPS_PF, falla = false } = {}) {
           const body = JSON.parse(o.body);
           escrito.push({ url: decodeURIComponent(u), metodo: o.method, body });
           if (o.method === "POST" && falla) return { status: 500, body: { message: "se cortó" } };
+          if (o.method === "PATCH" && patchVacio) return { status: 200, body: [] };
           return { status: 201, body: [{ id: 99, ...body }] };
         }
         if (/[?&]id=eq\./.test(u)) return { status: 200, body: op ? [op] : [] };
@@ -166,7 +198,7 @@ test("/api/finanzas/operaciones corregir — anula la vieja como corregida y car
 test("/api/finanzas/operaciones anular — ahora también plazos fijos, extracto y Mi caja; nunca lo de una factura", async () => {
   const { escrito } = mockApi();
   assert.equal((await pedir(api, "operaciones", "gerencial", "POST", { accion: "anular", id: 7 })).status, 200);
-  assert.match(escrito[0].url, /origen=in\.\(manual,plazo_fijo,banco,mi_caja,fci,titulos,libro,saldo_inicial,entrega_estimada\)/);
+  assert.match(escrito[0].url, /origen=in\.\(manual,plazo_fijo,banco,mi_caja,fci,titulos,libro,saldo_inicial,entrega_estimada,ajuste_saldo\)/);
   const varias = mockApi();
   assert.equal((await pedir(api, "operaciones", "gerencial", "POST", { accion: "anular_varias", ids: [1, 2, 2] })).status, 200);
   assert.match(varias.escrito[0].url, /id=in\.\(1,2\)/);
@@ -184,7 +216,7 @@ test("/api/finanzas/plazos-fijos — muestra los repetidos y anula solo las de G
   assert.equal(r2.status, 200);
   assert.equal(escrito.length, 1);
   assert.match(escrito[0].url, /origen=eq\.plazo_fijo&anulada_at=is\.null&id=in\.\(1,2\)/);
-  assert.equal(escrito[0].body.anulada_por_nombre, "Tadeo (repetida con el libro)");
+  assert.equal(escrito[0].body.anulada_por_nombre, "Tadeo (repetida con el libro o el extracto)");
 });
 
 // ─── Pantalla ───
@@ -218,4 +250,71 @@ test("Detalle — lo del libro se anula en Gypi (no se corrige); la corregida di
   render(<Detalle op={{ ...manual, origen: "plazo_fijo", anulada_at: "2026-11-12T10:00:00Z", anulada_por_nombre: "Tadeo (corregida)" }} datos={DATOS} onCerrar={() => {}} onAnulada={() => {}} />);
   assert.ok(screen.getByText(/Corregida por Tadeo/));
   assert.ok(screen.getByText(/Plazos fijos/), "dice de dónde salió");
+});
+
+// ─── 19/11 (punto 12, migración 199): corregir en el lugar, con historial ───
+
+const conHistorial = { ...manual, historial: [], updated_at: "2026-11-05T10:00:00.123456+00:00", created_at: "2026-11-05T10:00:00Z", cargada_por_nombre: "Felipe" };
+const ESPEJO = [{ valor: { hash: "x", espejo_completo_at: "2026-11-19T12:00:00Z" } }];
+
+test("operacionCorregida — 199: lo que se pisa y qué cambió; con el libro como copia, lo del libro también", () => {
+  const { campos, detalle, errores } = operacionCorregida(manual, { total: 2420, descripcion: "Comisión de octubre" }, { cuentas: CUENTAS });
+  assert.deepEqual(errores, []);
+  assert.equal(campos.total, 2420);
+  assert.equal(campos.iva, 420);
+  assert.equal(campos.neto, 2000);
+  assert.ok(!("origen" in campos) && !("origen_id" in campos), "el origen y su clave quedan");
+  assert.deepEqual(detalle, [
+    { campo: "total", antes: 1210, despues: 2420 },
+    { campo: "descripcion", antes: "Comisión", despues: "Comisión de octubre" },
+  ]);
+  for (const origen of ["libro", "saldo_inicial"]) {
+    assert.ok(!puedeCorregir({ origen }), origen);
+    assert.ok(puedeCorregir({ origen }, { espejo: true }), `${origen} con espejo`);
+  }
+  assert.ok(!puedeCorregir({ origen: "cheque" }, { espejo: true }), "lo de un cheque sigue yendo a Cheques");
+  assert.match(dondeSeCambia({ origen: "libro" }, { espejo: true }), /Corregir/);
+  assert.deepEqual(operacionCorregida({ ...manual, origen: "libro" }, { total: 5 }, { cuentas: CUENTAS, espejo: true }).errores, []);
+});
+
+test("/api/finanzas/operaciones corregir — 199: en su lugar, con el historial y sin cargar otra", async () => {
+  const { escrito } = mockApi({ op: conHistorial });
+  const res = await pedir(api, "operaciones", "gerencial", "POST", { accion: "corregir", id: 7, cambios: { total: 2420 } });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).en_su_lugar, true);
+  assert.equal(escrito.length, 1, "un solo cambio, ninguna nueva");
+  assert.equal(escrito[0].metodo, "PATCH");
+  assert.match(escrito[0].url, /id=eq\.7&.*anulada_at=is\.null&updated_at=eq\.2026-11-05T10:00:00\.123456\+00:00/);
+  assert.equal(escrito[0].body.total, 2420);
+  assert.equal(escrito[0].body.anulada_at, undefined);
+  assert.equal(escrito[0].body.historial.length, 1);
+  assert.equal(escrito[0].body.historial[0].por, "Tadeo");
+  assert.equal(escrito[0].body.historial[0].accion, "corregida");
+  assert.deepEqual(escrito[0].body.historial[0].cambios, [{ campo: "total", antes: 1210, despues: 2420 }]);
+  // Si otro la cambió recién, no se pisa
+  mockApi({ op: conHistorial, patchVacio: true });
+  assert.equal((await pedir(api, "operaciones", "gerencial", "POST", { accion: "corregir", id: 7, cambios: { total: 2420 } })).status, 409);
+  // Con el libro como copia completa de Gypi, lo del libro se corrige acá
+  const libro = mockApi({ op: { ...conHistorial, origen: "libro" }, cfg: ESPEJO });
+  assert.equal((await pedir(api, "operaciones", "gerencial", "POST", { accion: "corregir", id: 7, cambios: { total: 2420 } })).status, 200);
+  assert.equal(libro.escrito[0].body.total, 2420);
+});
+
+test("Detalle — 🕓 Historial con cada cambio; con el libro como copia, lo del libro tiene ✏ Corregir", () => {
+  const op = {
+    ...conHistorial, total: 2420,
+    historial: [{ at: "2026-11-19T15:30:00Z", por: "Tadeo", accion: "corregida", cambios: [{ campo: "cuenta_haber", antes: BANCO, despues: CAJA }, { campo: "fecha", antes: "2026-11-05", despues: "2026-11-04" }] }],
+  };
+  render(<Detalle op={op} datos={DATOS} onCerrar={() => {}} onAnulada={() => {}} />);
+  const hist = screen.getByRole("region", { name: "Historial de cambios" });
+  assert.match(hist.textContent, /Cargada por Felipe/);
+  assert.match(hist.textContent, /Corregida por Tadeo · 19\/11\/2026 12:30/);
+  assert.match(hist.textContent, /Haber: Banco Credicoop CTA CTE → Caja Principal/);
+  assert.match(hist.textContent, /Fecha: 05\/11\/2026 → 04\/11\/2026/);
+  cleanup();
+  render(<Detalle op={{ ...conHistorial, origen: "libro" }} datos={{ ...DATOS, espejo_completo: true }} onCerrar={() => {}} onAnulada={() => {}} />);
+  assert.ok(screen.getByRole("button", { name: "✏ Corregir" }));
+  assert.equal(screen.queryByRole("region", { name: "Historial de cambios" }), null, "sin cambios no hay historial que mostrar");
+  fireEvent.click(screen.getByRole("button", { name: "Anular operación" }));
+  assert.ok(screen.getByText(/El libro borra su renglón solo/));
 });

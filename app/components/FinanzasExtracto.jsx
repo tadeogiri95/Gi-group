@@ -67,15 +67,15 @@ const ORIGEN_CORTO = { libro: "del libro", banco: "del extracto", manual: "a man
 const origenCorto = (o) => ORIGEN_CORTO[o?.origen || "manual"] || o?.origen || "";
 
 /** Cómo se arma el saldo de Gypi y la diferencia con el banco (12/11). */
-function SaldoGypi({ saldo, banco, hasta, dice = "el banco" }) {
+function SaldoGypi({ saldo, banco, hasta, dice = "el banco", moneda = "ARS" }) {
   if (!saldo) return null;
   const dif = banco == null ? null : Math.round((saldo.saldo - banco) * 100) / 100;
   const mal = dif != null && Math.abs(dif) >= 0.01;
   return (
     <details className={`rounded-lg border p-2 text-[13px] ${mal ? "border-gypi-red/40 bg-gypi-red/5" : "border-gypi-border"}`} open={mal}>
       <summary className="cursor-pointer font-semibold">
-        🔎 Saldo de Gypi al {fechaCorta(hasta)}: {plata(saldo.saldo, "ARS")}
-        {banco != null && (mal ? <span className="text-gypi-red"> · {dice} dice {plata(banco, "ARS")} (diferencia {plata(dif, "ARS")})</span> : <span className="text-gypi-green"> · igual que {dice} ✓</span>)}
+        🔎 Saldo de Gypi al {fechaCorta(hasta)}: {plata(saldo.saldo, moneda)}
+        {banco != null && (mal ? <span className="text-gypi-red"> · {dice} dice {plata(banco, moneda)} (diferencia {plata(dif, moneda)})</span> : <span className="text-gypi-green"> · igual que {dice} ✓</span>)}
       </summary>
       <p className="m-0 mt-2 text-gypi-dim">De dónde sale el saldo de Gypi (todas las operaciones de esta cuenta hasta esa fecha):</p>
       <table className="mt-1 text-[13px] border-collapse" aria-label="Saldo por origen">
@@ -84,7 +84,7 @@ function SaldoGypi({ saldo, banco, hasta, dice = "el banco" }) {
             <tr key={o.origen} className="border-t border-gypi-border">
               <td className="py-0.5 pr-3">{o.nombre}</td>
               <td className="py-0.5 pr-3 text-gypi-dim text-right">{o.n} mov.</td>
-              <td className={`py-0.5 text-right font-mono ${o.saldo < 0 ? "text-gypi-red" : "text-gypi-text"}`}>{plata(o.saldo, "ARS")}</td>
+              <td className={`py-0.5 text-right font-mono ${o.saldo < 0 ? "text-gypi-red" : "text-gypi-text"}`}>{plata(o.saldo, moneda)}</td>
             </tr>
           ))}
         </tbody>
@@ -95,7 +95,7 @@ function SaldoGypi({ saldo, banco, hasta, dice = "el banco" }) {
 }
 
 /** Operaciones de la cuenta que parecen cargadas dos veces: se elige cuáles anular. */
-export function Repetidos({ grupos, onVer, onAnuladas, titulo = "🔁 Posibles repetidos en Gypi", abierto = false }) {
+export function Repetidos({ grupos, onVer, onAnuladas, titulo = "🔁 Posibles repetidos en Gypi", abierto = false, moneda = "ARS" }) {
   const toast = useToast();
   const [elegidas, setElegidas] = useState(() => new Set());
   const [anulando, setAnulando] = useState(false);
@@ -126,7 +126,7 @@ export function Repetidos({ grupos, onVer, onAnuladas, titulo = "🔁 Posibles r
           <li key={g.ops.map((o) => o.id).join("-")} className="border-t border-gypi-border pt-1">
             {/* 13/11: 🔴 si hay dos el mismo día, 🟡 si están a pocos días */}
             {g.ops.some((o, i) => g.ops.findIndex((x) => x.fecha === o.fecha) !== i) ? "🔴 " : "🟡 "}
-            <b className="font-mono">{plata(g.importe, "ARS")}</b> · {g.ops.length} veces
+            <b className="font-mono">{plata(g.importe, moneda)}</b> · {g.ops.length} veces
             <ul className="list-none m-0 p-0">
               {g.ops.map((o) => (
                 <li key={o.id} className="flex items-start gap-2">
@@ -163,7 +163,7 @@ function AvisoSospecha({ f, caja, onVer }) {
       {f.sospecha.motivo === "extracto"
         ? "hay otro renglón igual (misma fecha e importe) en este mismo extracto."
         : p
-          ? <>en Gypi ya hay {plata(movimientoEnCuenta(p, caja.cuenta), "ARS")} el {fechaCorta(p.fecha)} · {p.tipo} ({origenCorto(p)}).</>
+          ? <>en Gypi ya hay {plata(movimientoEnCuenta(p, caja.cuenta, caja.moneda === "USD"), caja.moneda === "USD" ? "USD" : "ARS")} el {fechaCorta(p.fecha)} · {p.tipo} ({origenCorto(p)}).</>
           : "en Gypi ya hay un movimiento por el mismo importe en esos días."}
       {" "}No se carga salvo que tildes la casilla: <b>es otro distinto</b>.
       {p && <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[12px] ml-1" onClick={() => onVer(p)}>Ver</button>}
@@ -253,7 +253,7 @@ export function CargasAnteriores({ caja, recargar = 0, onDeshecho }) {
                           <label className="flex items-start gap-2 cursor-pointer">
                             <input type="checkbox" className="mt-0.5" aria-label={`Deshacer el movimiento ${o.id}`} disabled={Boolean(o.anulada_at)} checked={elegidos.has(o.id)}
                               onChange={() => setElegidos((s) => { const n = new Set(s); if (n.has(o.id)) n.delete(o.id); else n.add(o.id); return n; })} />
-                            <span><span className="font-mono">{fechaCorta(o.fecha)}</span> <b className="font-mono">{plata(movimientoEnCuenta(o, caja.cuenta), "ARS")}</b> {o.tipo}{o.entidad ? ` · ${o.entidad}` : ""}{o.descripcion ? ` · ${o.descripcion}` : ""}</span>
+                            <span><span className="font-mono">{fechaCorta(o.fecha)}</span> <b className="font-mono">{plata(movimientoEnCuenta(o, caja.cuenta, caja.moneda === "USD"), caja.moneda === "USD" ? "USD" : "ARS")}</b> {o.tipo}{o.entidad ? ` · ${o.entidad}` : ""}{o.descripcion ? ` · ${o.descripcion}` : ""}</span>
                           </label>
                         </li>
                       ))}
@@ -286,6 +286,8 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
   const [error, setError] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [verYa, setVerYa] = useState(false);
+  // 20/11: lo de un extracto anterior que el banco ya no muestra se anula al cargar (manda el banco)
+  const [ajustar, setAjustar] = useState(true);
   // El archivo subido: después de corregir o anular algo se vuelve a leer, así se ve cómo quedó
   const [archivo, setArchivo] = useState(null);
   const [detalle, setDetalle] = useState(null);
@@ -297,6 +299,11 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
   const etiquetaCuenta = (c) => (c ? `${c} · ${nombreCuenta.get(c) || ""}` : "");
   // Una caja se pone al día con una planilla; un banco, con su extracto
   const planilla = (caja.tipo || "banco") !== "banco";
+  // 20/11: una cuenta en dólares: el extracto, los saldos y los importes en dólares, y el tipo de cambio para los informes en pesos
+  const usd = caja.moneda === "USD";
+  const mon = usd ? "USD" : "ARS";
+  const [tc, setTc] = useState("");
+  const tcValido = !usd || (Number(String(tc).replace(",", ".")) >= 100 && Number(String(tc).replace(",", ".")) <= 100000);
   const dice = planilla ? "la planilla" : "el banco";
 
   function bajarEjemplo() {
@@ -322,6 +329,7 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || "No se pudo leer el extracto");
       setRes(d);
+      if (d.tipo_cambio?.valor) setTc(String(d.tipo_cambio.valor));
       setFilas(d.filas.map((f, i) => ({
         ...f, i,
         // 13/11: lo sospechoso (igual a algo de Gypi) no se tilda solo
@@ -381,7 +389,10 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
   const ya = filas.filter((f) => f.op);
   const elegidas = pendientes.filter((f) => f.elegida);
   const incompletas = elegidas.filter((f) => !f.tipo || !nombreCuenta.has(codigoDe(f.contra)));
-  const resumen = res ? resumenDeCarga(elegidas, { saldoGypi: res.saldo_gypi?.saldo || 0, saldoBanco: res.control?.final ?? null }) : null;
+  const sobran = ajustar ? (res?.sin_banco || []).filter((o) => o.del_banco) : [];
+  const anular = [...elegidas.filter((f) => f.reemplaza).map((f) => f.reemplaza), ...sobran];
+  const saldoSinAnuladas = (res?.saldo_gypi?.saldo || 0) - anular.reduce((t, o) => t + movimientoEnCuenta(o, caja.cuenta, usd), 0);
+  const resumen = res ? resumenDeCarga(elegidas, { saldoGypi: saldoSinAnuladas, saldoBanco: res.control?.final ?? null }) : null;
 
   // 🔗 Completar lo pendiente (el cheque, la orden o el plazo fijo) con su propia pantalla
   async function completar(f) {
@@ -427,11 +438,17 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
         filas: elegidas.map((f) => ({
           fecha: f.fecha, descripcion: f.descripcion, comprobante: f.comprobante, importe: f.importe, marca: f.marca,
           tipo: f.tipo, contra: codigoDe(f.contra), entidad: f.entidad || null, proveedor_id: f.proveedor_id, cliente_id: f.cliente_id,
-          forzar: Boolean(f.sospecha),
+          forzar: Boolean(f.sospecha), reemplaza: f.reemplaza?.id || null,
         })),
+        // 20/11: lo que ya tiene su renglón no cuenta como repetido; lo que sobra según el banco se anula
+        emparejadas: ya.map((f) => f.op.id),
+        tipo_cambio: usd ? Number(String(tc).replace(",", ".")) : null,
+        anular: sobran.map((o) => o.id),
       });
-      toast.success(`Se cargaron ${d.cargadas} movimientos${d.repetidas ? ` (${d.repetidas} ya estaban)` : ""}`);
+      toast.success(`Se cargaron ${d.cargadas} movimientos${d.repetidas ? ` (${d.repetidas} ya estaban)` : ""}${d.anuladas ? ` y se anularon ${d.anuladas} que el banco corrigió o ya no muestra` : ""}`);
       if (d.aviso) toast.error(d.aviso);
+      // 20/11: el interés de los plazos fijos que volvieron con el capital se registra solo
+      if (d.plazos?.intereses) toast.success(`Plazos fijos: se registró aparte el interés ganado ($ ${Number(d.plazos.interes || 0).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}), así cuenta en Resultados y en el flujo`);
       onCargado();
     } catch (e) {
       // 13/11: el servidor encontró algo igual que la pantalla no vio (se cargó recién): esos quedan sospechosos y sin tildar
@@ -474,12 +491,19 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
             {res.control && (
               <p className={`m-0 text-[13px] ${res.control.ok ? "text-gypi-green" : "text-gypi-red"}`}>
                 {res.control.ok
-                  ? `✓ El saldo cierra con el de ${dice}: ${plata(res.control.final, "ARS")}`
-                  : `⚠ El saldo no cierra: ${dice} dice ${plata(res.control.final, "ARS")} y los movimientos leídos dan ${plata(res.control.calculado, "ARS")}. Revisá que el archivo esté completo.`}
+                  ? `✓ El saldo cierra con el de ${dice}: ${plata(res.control.final, mon)}`
+                  : `⚠ El saldo no cierra: ${dice} dice ${plata(res.control.final, mon)} y los movimientos leídos dan ${plata(res.control.calculado, mon)}. Revisá que el archivo esté completo.`}
               </p>
             )}
-            <SaldoGypi saldo={res.saldo_gypi} banco={res.control?.final ?? null} hasta={res.hasta} dice={dice} />
-            <Repetidos grupos={res.repetidos} onVer={setDetalle} onAnuladas={releer} />
+            <SaldoGypi saldo={res.saldo_gypi} banco={res.control?.final ?? null} hasta={res.hasta} dice={dice} moneda={mon} />
+            <Repetidos grupos={res.repetidos} onVer={setDetalle} onAnuladas={releer} moneda={mon} />
+            {usd && (
+              <label className="flex flex-wrap items-center gap-2 text-[13px]">
+                <span><b>Tipo de cambio</b> para pasar los dólares a pesos en los informes:</span>
+                <input className="g-input w-[120px]" inputMode="decimal" aria-label="Tipo de cambio" value={tc} onChange={(e) => setTc(e.target.value)} />
+                <span className="text-gypi-dim">{res.tipo_cambio ? `Dólar oficial BNA del ${fechaCorta(res.tipo_cambio.fecha)}; podés cambiarlo.` : "No encontré la cotización: escribila."}</span>
+              </label>
+            )}
             {!res.reglas && <p className="m-0 text-[13px] text-gypi-amber-ink">Todavía no aprendí cómo cargás {planilla ? "esta caja" : "este banco"}: subí el libro con &quot;📘 Aprender del libro&quot; y las sugerencias salen solas.</p>}
           </>
         )}
@@ -522,9 +546,15 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
                     <td className="py-1 min-w-[220px]">
                       <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(f.fecha)}</span> {f.descripcion}
                       {f.sospecha && <AvisoSospecha f={f} caja={caja} onVer={setDetalle} />}
+                      {f.reemplaza && (
+                        <span className="block mt-1 p-1.5 rounded bg-gypi-surface border border-gypi-border text-[12px] text-gypi-text">
+                          🔄 Corrige lo de un extracto anterior: en Gypi dice {plata(movimientoEnCuenta(f.reemplaza, caja.cuenta, usd), mon)} y {dice} ahora dice {plata(f.importe, mon)}. Al cargar queda el del banco y se anula el viejo.
+                        </span>
+                      )}
                       {f.pendiente && (
                         <span className="block mt-1 p-1.5 rounded bg-gypi-green/10 text-[12px] text-gypi-text">
                           🔗 Completa algo pendiente: {f.pendiente.texto}. No hace falta cargarlo nuevo.
+                          {f.pendiente.aviso && <span className="block mt-1 text-gypi-dim">{f.pendiente.aviso}</span>}
                           <span className="flex flex-wrap gap-1.5 mt-1">
                             <button type="button" className="g-btn g-btn-primary !py-0.5 !px-2 text-[12px]" disabled={completando === f.i} onClick={() => completar(f)}>
                               {completando === f.i ? "Registrando…" : f.pendiente.boton}
@@ -535,7 +565,7 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
                       {f.entidad && <span className="block text-[12px] text-gypi-dim">{f.entidad}{f.sugerencia?.por === "cuit" ? " · por CUIT" : ""}</span>}
                       {f.parecido && (
                         <span className="block mt-1 p-1.5 rounded bg-gypi-amber/10 text-[12px] text-gypi-text">
-                          ¿Es esta de Gypi? {plata(movimientoEnCuenta(f.parecido, caja.cuenta), "ARS")} el {fechaCorta(f.parecido.fecha)} · {f.parecido.tipo} ({origenCorto(f.parecido)})
+                          ¿Es esta de Gypi? {plata(movimientoEnCuenta(f.parecido, caja.cuenta, usd), mon)} el {fechaCorta(f.parecido.fecha)} · {f.parecido.tipo} ({origenCorto(f.parecido)})
                           <span className="flex flex-wrap gap-1.5 mt-1">
                             {puedeCorregir(f.parecido) && (
                               <button type="button" className="g-btn g-btn-primary !py-0.5 !px-2 text-[12px]" disabled={corrigiendo === f.parecido.id} onClick={() => comoElBanco(f.parecido, f)}>
@@ -547,7 +577,7 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
                         </span>
                       )}
                     </td>
-                    <td className={`py-1 text-right font-mono whitespace-nowrap ${f.importe < 0 ? "text-gypi-red" : "text-gypi-green"}`}>{plata(f.importe, "ARS")}</td>
+                    <td className={`py-1 text-right font-mono whitespace-nowrap ${f.importe < 0 ? "text-gypi-red" : "text-gypi-green"}`}>{plata(f.importe, mon)}</td>
                     <td className="py-1">
                       <input className="g-input w-full min-w-[170px]" list="fin-tipos" aria-label={`Tipo del renglón ${f.i + 1}`} value={f.tipo} onChange={(e) => elegirTipo(f, e.target.value)} />
                     </td>
@@ -570,7 +600,7 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
                 {ya.map((f) => (
                   <li key={f.i} className="text-gypi-dim flex flex-wrap items-start gap-x-2 gap-y-1">
                     <span className="flex-1 min-w-[200px]">
-                      ✓ <span className="font-mono">{fechaCorta(f.fecha)}</span> {plata(f.importe, "ARS")} · {f.descripcion} → <b className="text-gypi-text">{f.op.tipo}</b>{f.op.entidad ? ` (${f.op.entidad})` : ""} · {origenCorto(f.op)}{f.ya ? " · de un extracto anterior" : ""}
+                      ✓ <span className="font-mono">{fechaCorta(f.fecha)}</span> {plata(f.importe, mon)} · {f.descripcion} → <b className="text-gypi-text">{f.op.tipo}</b>{f.op.entidad ? ` (${f.op.entidad})` : ""} · {origenCorto(f.op)}{f.ya ? " · de un extracto anterior" : ""}
                       {f.op.fecha !== f.fecha && <span className="text-gypi-amber-ink"> · en Gypi dice {fechaCorta(f.op.fecha)}</span>}
                     </span>
                     {f.op.fecha !== f.fecha && puedeCorregir(f.op) && (
@@ -584,15 +614,33 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
           </div>
         )}
 
-        {res?.sin_banco?.length > 0 && (
+        {res?.sin_banco?.some((o) => o.del_banco) && (
+          <div className="p-3 rounded-lg border border-gypi-border bg-gypi-surface text-[13px]">
+            <label className="flex items-start gap-2 font-semibold">
+              <input type="checkbox" checked={ajustar} onChange={(e) => setAjustar(e.target.checked)} aria-label="Ajustar Gypi al banco" />
+              <span>Ajustar Gypi al banco: anular {res.sin_banco.filter((o) => o.del_banco).length} de un extracto anterior que {dice} ya no muestra</span>
+            </label>
+            <p className="m-0 mt-0.5 text-gypi-dim">Se cargaron de un extracto anterior (por ejemplo el impuesto del día subido a la mañana) y en este extracto no están. Manda el banco: al cargar se anulan. Si deshacés la carga, vuelven.</p>
+            <ul className="list-none m-0 mt-1 p-0 flex flex-col gap-0.5" aria-label={`Ya no están en ${dice}`}>
+              {res.sin_banco.filter((o) => o.del_banco).slice(0, 100).map((o) => (
+                <li key={o.id} className="flex flex-wrap items-start gap-x-2 gap-y-1">
+                  <span className="flex-1 min-w-[200px]"><span className="font-mono">{fechaCorta(o.fecha)}</span> <b className="font-mono">{plata(movimientoEnCuenta(o, caja.cuenta, usd), mon)}</b> {o.tipo}{o.descripcion ? ` · ${o.descripcion}` : ""}</span>
+                  <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[12px]" onClick={() => setDetalle(o)}>Ver</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {res?.sin_banco?.some((o) => !o.del_banco) && (
           <div className="p-3 rounded-lg border border-gypi-amber/40 bg-gypi-amber/10 text-[13px]">
-            <b className="text-gypi-amber-ink">En Gypi pero no en {dice} ({res.sin_banco.length}):</b>
+            <b className="text-gypi-amber-ink">En Gypi pero no en {dice} ({res.sin_banco.filter((o) => !o.del_banco).length}):</b>
             <p className="m-0 mt-0.5 text-gypi-dim">{planilla ? "Si la planilla está completa," : "El extracto suele estar bien:"} si alguna de estas está mal o sobra, corregila o anulala acá.</p>
             <ul className="list-none m-0 mt-1 p-0 flex flex-col gap-0.5" aria-label={`No están en ${dice}`}>
-              {res.sin_banco.slice(0, 100).map((o) => (
+              {res.sin_banco.filter((o) => !o.del_banco).slice(0, 100).map((o) => (
                 <li key={o.id} className="flex flex-wrap items-start gap-x-2 gap-y-1">
                   <span className="flex-1 min-w-[200px]">
-                    <span className="font-mono">{fechaCorta(o.fecha)}</span> <b className="font-mono">{plata(movimientoEnCuenta(o, caja.cuenta), "ARS")}</b> {o.tipo}{o.entidad ? ` · ${o.entidad}` : ""}{o.descripcion ? ` · ${o.descripcion}` : ""} · {origenCorto(o)}
+                    <span className="font-mono">{fechaCorta(o.fecha)}</span> <b className="font-mono">{plata(movimientoEnCuenta(o, caja.cuenta, usd), mon)}</b> {o.tipo}{o.entidad ? ` · ${o.entidad}` : ""}{o.descripcion ? ` · ${o.descripcion}` : ""} · {origenCorto(o)}
                     {repetidas.has(o.id) && <span className="text-gypi-red font-semibold"> · 🔁 parece repetida</span>}
                   </span>
                   <button type="button" className="g-btn g-btn-secondary !py-0.5 !px-2 text-[12px]" onClick={() => setDetalle(o)}>✏ Corregir o anular</button>
@@ -602,13 +650,13 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
           </div>
         )}
 
-        {res && resumen && resumen.n > 0 && (
+        {res && resumen && (resumen.n > 0 || anular.length > 0) && (
           <section aria-label="Resumen de la carga" className="rounded-lg border border-gypi-border bg-gypi-surface p-2 text-[13px] text-gypi-text">
-            <p className="m-0">Vas a cargar <b>{resumen.n}</b> movimientos: entran <b className="font-mono text-gypi-green">{plata(resumen.entra, "ARS")}</b> y salen <b className="font-mono text-gypi-red">{plata(resumen.sale, "ARS")}</b>.</p>
-            <p className="m-0">Al {fechaCorta(res.hasta)}, Gypi queda en <b className="font-mono">{plata(resumen.queda, "ARS")}</b>
+            <p className="m-0">Vas a cargar <b>{resumen.n}</b> movimientos: entran <b className="font-mono text-gypi-green">{plata(resumen.entra, mon)}</b> y salen <b className="font-mono text-gypi-red">{plata(resumen.sale, mon)}</b>{anular.length > 0 && <>, y se anulan <b>{anular.length}</b> de un extracto anterior que {dice} corrigió o ya no muestra</>}.</p>
+            <p className="m-0">Al {fechaCorta(res.hasta)}, Gypi queda en <b className="font-mono">{plata(resumen.queda, mon)}</b>
               {resumen.diferencia == null ? "." : resumen.cierra
                 ? <span className="text-gypi-green"> ✓ igual que {dice}.</span>
-                : <span className="text-gypi-red"> y {dice} dice {plata(res.control.final, "ARS")}: diferencia de {plata(resumen.diferencia, "ARS")}.</span>}
+                : <span className="text-gypi-red"> y {dice} dice {plata(res.control.final, mon)}: diferencia de {plata(resumen.diferencia, mon)}.</span>}
             </p>
           </section>
         )}
@@ -618,8 +666,8 @@ export default function SubirExtracto({ caja, datos, onCerrar, onCargado, onCamb
           {res && <button type="button" className="g-btn g-btn-secondary" onClick={() => { setRes(null); setFilas([]); }}>Subir otro</button>}
           <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cerrar</button>
           {res && (
-            <button type="button" className="g-btn g-btn-primary" disabled={guardando || !elegidas.length || incompletas.length > 0} onClick={cargar}>
-              {guardando ? "Cargando…" : incompletas.length ? `Faltan ${incompletas.length} sin tipo o cuenta` : `Cargar ${elegidas.length} movimientos`}
+            <button type="button" className="g-btn g-btn-primary" disabled={guardando || (!elegidas.length && !anular.length) || incompletas.length > 0 || (elegidas.length > 0 && !tcValido)} onClick={cargar}>
+              {guardando ? "Cargando…" : elegidas.length > 0 && !tcValido ? "Falta el tipo de cambio" : incompletas.length ? `Faltan ${incompletas.length} sin tipo o cuenta` : elegidas.length ? `Cargar ${elegidas.length} movimientos` : `Ajustar Gypi al banco (anular ${anular.length})`}
             </button>
           )}
         </div>

@@ -15,10 +15,13 @@ import { BotonPdfOt, LinkPdfOt } from "./components/PdfOt";
 import LinkClienteOt from "./components/LinkClienteOt";
 import { usePdfsOt } from "./hooks/usePdfsOt";
 import { indicePdfs } from "./lib/pdfOt";
-import { puedeVerPrecios, leerPrecios } from "./lib/valorizacion";
+import { puedeVerPrecios, leerPrecios, textoValorOt } from "./lib/valorizacion";
 import { fmtPesos } from "./lib/costo";
 import TableroOt from "./components/TableroOt";
 import GanttOt from "./components/GanttOt";
+import TableroEtapas from "./components/TableroEtapas";
+import ReportesObra from "./components/ReportesObra";
+import { tieneModulo } from "./lib/modulos";
 import NoConformidades from "./components/NoConformidades";
 import SueltosOt from "./components/SueltosOt";
 import CargaOt from "./components/CargaOt";
@@ -176,19 +179,21 @@ function ModalCSVPreview({ filas, onClose, onConfirm, saving, progreso }) {
 }
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
-// vistaInicial / ganttTipo: Producción → 🔧 Instalaciones abre directo el
-// Gantt de instalación (auditoría 12/11, parte 13)
+// vistaInicial / ganttTipo: abrir directo una vista o un tipo de Gantt
+// (lo usaba la pestaña Instalaciones, sacada el 23/11)
 export default function ProyectosScreen({ empresaId, onPlanillas = null, vistaInicial = "lista", ganttTipo = null }) {
   const { divisiones: divisionesCtx, etapas: etapasCtx, causasParada, checklistLiberacion, checklistCarga, checklistInstalacion, defectos, empresa, updateEmpresa, usuario } = useAuth();
   // Costo de la hora: solo el dueño (OP parte 8)
   const costoHora = useCostoHora(comoDueno(usuario));
   // Precio de cada OT (142): solo Dueño y Administración
   const verPrecios = puedeVerPrecios(usuario);
+  // Valor de cada OT (23/11): el PRECIO del Plan o, si no tiene, estimado por materiales
   const [precios, setPrecios] = useState(() => new Map());
+  const [estimadas, setEstimadas] = useState(() => new Set());
   useEffect(() => {
     if (!verPrecios || !empresaId) return;
     let vivo = true;
-    leerPrecios().then((m) => { if (vivo) setPrecios(m); });
+    leerPrecios().then((v) => { if (vivo) { setPrecios(v.precios); setEstimadas(v.estimadas); } });
     return () => { vivo = false; };
   }, [verPrecios, empresaId]);
   const divisiones = getDivisionesConSinAsignar(divisionesCtx);
@@ -588,19 +593,31 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null, vistaIn
         )}
       </div>
 
-      <div className="flex gap-1.5 mb-3" role="group" aria-label="Cómo ver las OT">
+      <div className="flex flex-wrap gap-1.5 mb-3" role="group" aria-label="Cómo ver las OT">
         <Chip active={vista === "lista"} onClick={() => setVista("lista")}>Lista</Chip>
         <Chip active={vista === "tablero"} onClick={() => setVista("tablero")}>Tablero</Chip>
+        <Chip active={vista === "etapas"} onClick={() => setVista("etapas")}>🗂️ Trello</Chip>
         <Chip active={vista === "gantt"} onClick={() => setVista("gantt")}>📅 Gantt</Chip>
         <Chip active={vista === "calidad"} onClick={() => setVista("calidad")}>No conformes</Chip>
+        {/* Reportes escritos de los instaladores (antes en Reportes → Obra; Tadeo, 22/11).
+            Desde el 23/11 sin la pestaña Instalaciones: van acá, en OT */}
+        {tieneModulo(empresa, "obra") && <Chip active={vista === "obra"} onClick={() => setVista("obra")}>🏗️ Reportes de obra</Chip>}
       </div>
 
-      {vista === "calidad" && !loading ? (
+      {vista === "obra" ? (
+        <ReportesObra empresaId={empresaId} />
+      ) : vista === "etapas" && !loading ? (
+        // Tablero tipo Trello por etapa (Tadeo, 22/11): con las cerradas, para Terminadas
+        <TableroEtapas proyectos={proyectos} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []}
+          pausas={pausas} onVerDetalle={setDetalle} />
+      ) : vista === "calidad" && !loading ? (
         <NoConformidades empresaId={empresaId} proyectos={proyectos} etapas={etapasCtx || []} defectos={defectos || []} />
       ) : vista === "gantt" && !loading ? (
         <GanttOt
           tipoInicial={ganttTipo}
-          proyectos={filtrados.filter(p => p.estado !== "cerrado")}
+          // Todas las abiertas, sin los filtros de la lista (19/11): con un filtro
+          // puesto, el Gantt perdía OT y "Confirmar orden" las sacaba del plan
+          proyectos={proyectos.filter(p => p.estado !== "cerrado")}
           etapas={etapasCtx || []}
           divisiones={divisionesCtx || []}
           avanceHoras={avanceHoras}
@@ -710,7 +727,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null, vistaIn
                       {claseDeOt(p).clase}{claseDeOt(p).sinDatos ? <span className="text-gypi-mute font-normal">?</span> : null}
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-gypi-dim">{textoEntrega(p, modoObjetivo).replace(/^Entrega /, "") || "—"}</td>
-                    {verPrecios && <td className="px-3 py-2.5 text-right font-mono whitespace-nowrap">{precios.has(String(p.ot)) ? fmtPesos(precios.get(String(p.ot))) : "—"}</td>}
+                    {verPrecios && <td className="px-3 py-2.5 text-right font-mono whitespace-nowrap">{precios.has(String(p.ot)) ? <span title={estimadas.has(String(p.ot)) ? "Sin PRECIO en el Plan: estimado por los materiales de la OT" : undefined} className={estimadas.has(String(p.ot)) ? "text-gypi-dim" : undefined}>{textoValorOt(precios.get(String(p.ot)), estimadas.has(String(p.ot)), fmtPesos)}</span> : "—"}</td>}
                     <td className="px-2 py-1.5 text-right whitespace-nowrap">
                       <LinkPdfOt ot={p.ot} indice={indicePdf} />
                       <button type="button" onClick={(e) => { e.stopPropagation(); setAcciones(p); }} aria-label={`Acciones de la OT ${p.ot}`}
@@ -750,7 +767,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null, vistaIn
                 )}
                 {(pct != null || entrega || (verPrecios && precios.has(String(p.ot)))) && (
                   <div className="flex items-center justify-between gap-2 text-[13px] text-gypi-dim">
-                    <span>{pct != null ? `🧩 ${pct} %` : ""}{verPrecios && precios.has(String(p.ot)) ? `${pct != null ? " · " : ""}${fmtPesos(precios.get(String(p.ot)))}` : ""}</span>
+                    <span>{pct != null ? `🧩 ${pct} %` : ""}{verPrecios && precios.has(String(p.ot)) ? `${pct != null ? " · " : ""}${textoValorOt(precios.get(String(p.ot)), estimadas.has(String(p.ot)), fmtPesos)}` : ""}</span>
                     <span className="whitespace-nowrap">{entrega}</span>
                   </div>
                 )}
@@ -778,7 +795,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null, vistaIn
         <SueltosOt proyecto={sueltos} empresaId={empresaId} esGestion={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setSueltos(null)} />
       )}
       {detalle && (
-        <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} verCostos={comoDueno(usuario)} precio={verPrecios ? precios.get(String(detalle.ot)) : undefined}
+        <DetalleOp proyecto={detalle} empresaId={empresaId} etapas={etapasCtx || []} divisiones={divisionesCtx || []} causas={causasParada || []} defectos={defectos || []} costoHora={costoHora} verCostos={comoDueno(usuario)} precio={verPrecios ? precios.get(String(detalle.ot)) : undefined} precioEstimado={verPrecios && estimadas.has(String(detalle.ot))} puedeVerPrecio={verPrecios}
           modoObjetivo={modoObjetivo} puedeCambiarSemana={usuario?.rol === "gerencial" || usuario?.rol === "administrativo"} onClose={() => setDetalle(null)}
           pausas={pausas} usuarioNombre={usuario?.nombre || null} onPausaCambiada={leerPausas}
           onProyectoActualizado={(p) => setProyectos(prev => prev.map(x => x.id === p.id ? { ...x, ...p } : x))} />

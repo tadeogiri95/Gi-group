@@ -12,7 +12,8 @@
 //     Con clave (eligió un parecido) usa ese renglón de la agenda.
 //
 // Pueden dar de alta proveedores el Dueño, administración (compras) y quien
-// tiene una caja a cargo (Mi caja). Clientes, solo el Dueño (Finanzas).
+// tiene una caja a cargo (Mi caja). Clientes, el Dueño (Finanzas) y quien
+// tiene una caja a cargo (el cobro de Mi caja, 19/11).
 // La agenda tiene datos personales (hoja PERSONAS) que solo ve el Dueño, por
 // eso va con la clave del servidor y filtro de empresa explícito, y a la
 // pantalla vuelve solo el nombre, el CUIT y los ids.
@@ -35,12 +36,17 @@ const leer = (path) => sbGetAll(path, { maxFilas: 10000 }).then((r) => r.data ||
   throw err;
 });
 
-/** ¿Puede dar de alta? Dueño y administración siempre; los demás si tienen una caja a cargo. */
-async function puedeDarAlta(sesion) {
-  if (esDuenoFinanzas(sesion) || puedeComprar(sesion.rol)) return true;
+/** ¿Tiene una caja a cargo (Mi caja)? */
+async function tieneCaja(sesion) {
   if (!sesion.empleado_id) return false;
   const cajas = await sbGet(`fin_tesoreria?empresa_id=eq.${sesion.empresa_id}&responsable_id=eq.${sesion.empleado_id}&activa=eq.true&select=cuenta&limit=1`, { silent: true, fallback: [] });
   return !!cajas?.length;
+}
+
+/** ¿Puede dar de alta? Dueño y administración siempre; los demás si tienen una caja a cargo. */
+async function puedeDarAlta(sesion) {
+  if (esDuenoFinanzas(sesion) || puedeComprar(sesion.rol)) return true;
+  return tieneCaja(sesion);
 }
 
 async function cargarAgenda(e) {
@@ -110,7 +116,8 @@ export async function POST(request) {
     if (!d || typeof d !== "object") return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
     const { errores, alta } = validarAlta(d);
     if (errores.length) return NextResponse.json({ error: errores[0], errores }, { status: 400 });
-    if (alta.rol === "cliente" && !esDuenoFinanzas(sesion)) return NextResponse.json({ error: "Los clientes los da de alta el dueño" }, { status: 403 });
+    // 19/11: también quien tiene una caja a cargo, para el cobro de Mi caja
+    if (alta.rol === "cliente" && !esDuenoFinanzas(sesion) && !(await tieneCaja(sesion))) return NextResponse.json({ error: "Los clientes los da de alta el dueño o quien tiene una caja a cargo" }, { status: 403 });
     if (!(await puedeDarAlta(sesion))) return NextResponse.json({ error: "No tenés permiso para dar de alta proveedores" }, { status: 403 });
 
     const e = sesion.empresa_id;

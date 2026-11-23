@@ -237,3 +237,24 @@ test("Reporte financiero — ◀ ▶ pasan de mes y Entre fechas pide desde y ha
   await waitFor(() => assert.ok(screen.getByTitle("Reporte financiero")));
   assert.match(pedidos[0], /tipo=rango&fecha=2026-09-01&hasta=2026-10-31/);
 });
+
+test("reporte — suma las entregas estimadas (OT sin precio) en un renglón celeste aparte (18/11)", () => {
+  const estimadas = [
+    { proyecto_id: 7, ot: "M-7001", fecha: "2026-10-20", valor: 100000 },
+    { proyecto_id: 8, ot: "M-7002", fecha: "2026-11-05", valor: 999999 }, // fuera del período
+  ];
+  const r = reporteFinanciero({ ...base, proyectos: [{ id: 7, division: "MUEBLES" }, { id: 8, division: "MUEBLES" }], tipo: "mes", fecha: "2026-10-15", entregasEstimadas: estimadas });
+  assert.equal(r.resumen.entregas, 400000, "300.000 con precio + 100.000 estimado");
+  const est = r.resultados.find((f) => f.tipo === "estimada");
+  assert.equal(est.total, 100000);
+  assert.deepEqual(r.entregas_estimadas, { ot: 1, total: 100000 });
+  const i = r.resultados.indexOf(est);
+  assert.ok(i > 0 && r.resultados.slice(0, i).some((f) => f.id === "ING"), "va dentro de Ingresos");
+  const html = htmlReporte(r, { empresa: "Gi" });
+  assert.match(html, /class="est"><td>Entregas con valor estimado \(OT sin precio en el Plan\)/);
+  assert.match(html, /1 OT terminada sin precio en el Plan/);
+  // Sin estimadas, ni renglón ni nota
+  const sin = reporteFinanciero({ ...base, tipo: "mes", fecha: "2026-10-15" });
+  assert.ok(!sin.resultados.some((f) => f.tipo === "estimada"));
+  assert.doesNotMatch(htmlReporte(sin, { empresa: "Gi" }), /valor estimado \(renglón celeste\)/);
+});

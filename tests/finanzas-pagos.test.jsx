@@ -9,6 +9,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/re
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
   validarOrden, generarPago, textoForma, accionesOrden, datosParaCfo, textoWhatsappCfo, htmlOrdenPago, cuentasParaPagar,
+  movimientosParaUnir, cambioAlUnir,
 } from "../app/lib/finanzasPagos.js";
 import { slugReservado } from "../app/lib/slugs.js";
 
@@ -74,8 +75,10 @@ test("validar — proveedor, formas, la caja en dólares no y el cheque una sola
 
 test("estados — qué se puede hacer en cada uno", () => {
   // 13/11: se paga sin esperar al CFO; mandárselo es solo para que sepa
-  for (const e of ["borrador", "para_aprobar", "aprobada", "rechazada"]) assert.deepEqual(accionesOrden(e), ["pagar", "mandar", "anular"], e);
+  for (const e of ["borrador", "para_aprobar", "aprobada", "rechazada"]) assert.deepEqual(accionesOrden(e), ["pagar", "marcar_pagada", "mandar", "anular"], e);
   assert.deepEqual(accionesOrden("pagada"), ["mandar", "anular"]);
+  // 23/11: la marcada pagada sin registrar todavía se puede registrar
+  assert.deepEqual(accionesOrden("pagada", { estado: "pagada", generado: { sin_registro: true } }), ["pagar", "mandar", "anular"]);
   assert.deepEqual(accionesOrden("anulada"), []);
   assert.ok(slugReservado("op"), "/op/ no puede ser el slug de una empresa");
 });
@@ -129,7 +132,7 @@ const pedir = async (rol, metodo, body, query = "") => api[metodo](new Request(`
   method: metodo, headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token(rol)}` }, ...(body ? { body: JSON.stringify(body) } : {}),
 }));
 
-function mockApi({ ordenes = [], cheques = [CARTERA], sin175 = false } = {}) {
+function mockApi({ ordenes = [], cheques = [CARTERA], sin175 = false, enBanco = [] } = {}) {
   const escrito = [];
   let opId = 70;
   global.fetch = createFetchMock([
@@ -174,7 +177,14 @@ function mockApi({ ordenes = [], cheques = [CARTERA], sin175 = false } = {}) {
     {
       match: (u) => u.includes("/rest/v1/fin_operaciones"),
       respond: (u, o) => {
+        // Lo que ya está en las cajas y bancos (el extracto)
+        if (!o?.method || o.method === "GET") return { status: 200, body: enBanco };
         const body = o?.body ? JSON.parse(o.body) : null;
+        if (o.method === "PATCH") {
+          escrito.push({ tabla: "fin_operaciones", url: u, metodo: "PATCH", body });
+          const ya = enBanco.find((x) => u.includes(`id=eq.${x.id}&`));
+          return { status: 200, body: [{ ...(ya || { id: Number(u.match(/id=eq\.(\d+)/)?.[1]) }), ...body }] };
+        }
         escrito.push({ tabla: "fin_operaciones", url: u, metodo: o?.method || "GET", body });
         const lista = Array.isArray(body) ? body : [body];
         return { status: 201, body: lista.map((b) => ({ id: opId++, ...b })) };
@@ -234,6 +244,63 @@ test("/api/finanzas/pagos — pagar sin esperar al CFO; genera operaciones, e-ch
   assert.match(entrega.url, /estado=eq\.en_cartera/);
   const { generado } = await res.json();
   assert.deepEqual([generado.operaciones.length, generado.cheques_emitidos, generado.cheques_entregados], [2, [60], [11]]);
+});
+
+test("/api/finanzas/pagos — 23/11: marcar pagada sin registrar no crea movimientos ni cheques; después se puede registrar", async () => {
+  const { orden } = validarOrden({ proveedor_id: 5, fecha: "2026-11-09", formas: FORMAS }, CTX);
+  const { escrito } = mockApi({ ordenes: [{ ...ORDEN, ...orden, estado: "para_aprobar" }] });
+  const res = await pedir("gerencial", "POST", { accion: "marcar_pagada", id: 9, fecha: "2026-11-10" });
+  assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
+  assert.deepEqual(escrito.map((x) => x.tabla), ["fin_ordenes_pago"], "solo cambia la orden");
+  const [marca] = escrito;
+  assert.match(marca.url, /estado=eq\.para_aprobar/);
+  assert.deepEqual([marca.body.estado, marca.body.pagada_fecha, marca.body.pagada_por_nombre, marca.body.generado.sin_registro], ["pagada", "2026-11-10", "Tadeo", true]);
+
+  const marcada = { ...ORDEN, ...orden, estado: "pagada", pagada_fecha: "2026-11-10", generado: marca.body.generado };
+  mockApi({ ordenes: [marcada] });
+  const otraVez = await pedir("gerencial", "POST", { accion: "marcar_pagada", id: 9 });
+  assert.equal(otraVez.status, 400);
+  assert.match((await otraVez.json()).error, /ya está pagada/);
+
+  const r2 = mockApi({ ordenes: [marcada] });
+  const reg = await pedir("gerencial", "POST", { accion: "pagar", id: 9 });
+  assert.equal(reg.status, 200, JSON.stringify(await reg.clone().json()));
+  const [toma] = r2.escrito;
+  assert.match(toma.url, /estado=eq\.pagada&generado->>sin_registro=eq\.true/, "dos clics no registran dos veces");
+  assert.equal(toma.body.generado.sin_registro, undefined);
+  const ops = r2.escrito.filter((x) => x.tabla === "fin_operaciones" && x.metodo === "POST").flatMap((x) => (Array.isArray(x.body) ? x.body : [x.body]));
+  assert.ok(ops.length > 0 && ops.every((o) => o.fecha === "2026-11-10"), "se registra con la fecha en que se marcó");
+
+  const r3 = mockApi({ ordenes: [marcada] });
+  const anu = await pedir("gerencial", "POST", { accion: "anular", id: 9 });
+  assert.equal(anu.status, 200);
+  assert.deepEqual(r3.escrito.map((x) => x.tabla), ["fin_ordenes_pago"], "anular una marcada no tiene nada que deshacer");
+});
+
+test("pantalla — 23/11: ✓ Marcar pagada (sin registrar) y la orden marcada lo avisa", async () => {
+  const sinPagar = { ...ORDEN, estado: "borrador", formas: [{ forma: "transferencia", importe: 1000000, cuenta_nombre: "Banco Credicoop" }] };
+  const datos = { tesoreria: TESORERIA, proveedores: PROVEEDORES, cheques: [], empresa: { nombre: "Gi" }, cfo: { nombre: "Juan", telefono: "" }, links: {}, ordenes: [sinPagar] };
+  const enviados = [];
+  global.fetch = async (url, o = {}) => {
+    if (o.method === "POST") { enviados.push(JSON.parse(o.body)); return new Response(JSON.stringify({ ok: true, orden: { ...sinPagar, estado: "pagada" } }), { status: 200 }); }
+    return new Response(JSON.stringify(datos), { status: 200 });
+  };
+  render(<FinanzasPagos />);
+  fireEvent.click(await screen.findByText("EGGER ARGENTINA"));
+  assert.ok(screen.getByText(/no crea movimientos, ni e-cheq, ni entrega cheques de terceros/));
+  fireEvent.click(await screen.findByRole("button", { name: "✓ Marcar pagada (sin registrar)" }));
+  await waitFor(() => assert.equal(enviados.length, 1));
+  assert.deepEqual([enviados[0].accion, enviados[0].id], ["marcar_pagada", 9]);
+  cleanup();
+
+  datos.ordenes = [{ ...sinPagar, estado: "pagada", pagada_fecha: "2026-11-10", pagada_por_nombre: "Tadeo", generado: { sin_registro: true } }];
+  render(<FinanzasPagos />);
+  fireEvent.click(await screen.findByRole("button", { name: /^Pagadas/ }));
+  assert.ok(await screen.findByText(/· sin registrar/));
+  fireEvent.click(screen.getByText("EGGER ARGENTINA"));
+  assert.ok(await screen.findByText(/Marcada pagada el .* por Tadeo, sin registrar/));
+  assert.ok(screen.getByRole("button", { name: "💸 Registrar pago" }), "todavía se puede registrar a mano");
+  assert.equal(screen.queryByRole("button", { name: "✓ Marcar pagada (sin registrar)" }), null);
 });
 
 test("/api/finanzas/pagos — anular una pagada deshace todo; no si el e-cheq ya se debitó", async () => {
@@ -323,4 +390,175 @@ test("pantalla — una orden sin mandar al CFO ya se puede pagar (💸 Registrar
   await waitFor(() => assert.equal(enviados.length, 1));
   assert.deepEqual([enviados[0].accion, enviados[0].id], ["pagar", 9]);
   assert.equal(screen.queryByText(/Aprobar|aprobad/), null);
+});
+
+// ─── 19/11: la orden se une con lo que ya trajo el extracto ───
+
+const BANCO = "01.01.01.003.002";
+const SALIDA = (id, extra = {}) => ({ id, fecha: "2026-11-11", tipo: "TRANSFERENCIA", total: 200000, total_ars: 200000, cuenta_debe: "05.09.09.001.001", cuenta_haber: BANCO, proveedor_id: null, entidad: "", referencia: null, descripcion: "TRANSF. EGGER", origen: "banco", ...extra });
+
+test("movimientosParaUnir — uno solo se une solo; varios se preguntan; no otro proveedor, otra orden ni lejos", () => {
+  const pago = { fecha: "2026-11-10", total: 200000, total_ars: 200000, cuenta_haber: BANCO };
+  const uno = movimientosParaUnir([pago], [SALIDA(1)], { proveedorId: 5 });
+  assert.equal(uno.unir.get(0)?.id, 1);
+  assert.equal(uno.dudas.length, 0);
+  const fuera = [
+    SALIDA(2, { proveedor_id: 8 }), SALIDA(3, { referencia: "OP 2" }), SALIDA(4, { fecha: "2026-11-20" }),
+    SALIDA(5, { total: 200000.5, total_ars: 200000.5 }), SALIDA(6, { cuenta_haber: "01.01.01.001.001.01" }), SALIDA(7, { origen: "plazo_fijo" }),
+    SALIDA(8, { anulada_at: "2026-11-12" }), SALIDA(9, { cuenta_haber: "05.01", cuenta_debe: BANCO }),
+  ];
+  const nada = movimientosParaUnir([pago], fuera, { proveedorId: 5 });
+  assert.deepEqual([nada.unir.size, nada.dudas.length], [0, 0]);
+  const varios = movimientosParaUnir([pago], [SALIDA(1), SALIDA(2, { fecha: "2026-11-09" })], { proveedorId: 5 });
+  assert.equal(varios.unir.size, 0);
+  assert.deepEqual(varios.dudas[0].opciones.map((o) => o.id), [1, 2]);
+  assert.equal(movimientosParaUnir([pago], [SALIDA(1), SALIDA(2)], { proveedorId: 5, elegidas: { 0: 2 } }).unir.get(0).id, 2);
+  assert.equal(movimientosParaUnir([pago], [SALIDA(1), SALIDA(2)], { proveedorId: 5, elegidas: { 0: "nueva" } }).unir.size, 0);
+  const dos = movimientosParaUnir([pago, pago], [SALIDA(1)], { proveedorId: 5 });
+  assert.deepEqual([dos.unir.size, dos.unir.has(0)], [1, true], "un movimiento sirve para un solo pago");
+});
+
+test("cambioAlUnir — queda contra Proveedores con el proveedor y la orden; guarda cómo estaba", () => {
+  const { orden } = validarOrden({ proveedor_id: 5, fecha: "2026-11-09", formas: FORMAS }, CTX);
+  const pago = generarPago({ ...ORDEN, ...orden }, CTX, "2026-11-10").operaciones[1];
+  const c = cambioAlUnir(SALIDA(1), pago);
+  assert.deepEqual([c.cambios.cuenta_debe, c.cambios.proveedor_id, c.cambios.referencia, c.cambios.tipo], ["02.01.02.001.001", 5, "OP 4", "PAGO A PROVEEDORES"]);
+  assert.match(c.cambios.descripcion, /Orden de pago N° 4 .* · TRANSF\. EGGER/);
+  assert.deepEqual(c.antes, { tipo: "TRANSFERENCIA", cuenta_debe: "05.09.09.001.001", proveedor_id: null, entidad: "", referencia: null, descripcion: "TRANSF. EGGER" });
+});
+
+test("/api/finanzas/pagos — pagar se une con el extracto; con varios pregunta; anular lo deja como estaba", async () => {
+  const { orden } = validarOrden({ proveedor_id: 5, fecha: "2026-11-09", formas: FORMAS }, CTX);
+  const libre = { ...ORDEN, ...orden, estado: "borrador", token: null };
+  const { escrito } = mockApi({ ordenes: [libre], enBanco: [SALIDA(1)] });
+  const res = await pedir("gerencial", "POST", { accion: "pagar", id: 9, fecha: "2026-11-10" });
+  assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
+  const d = await res.json();
+  assert.equal(d.unidas, 1);
+  const nuevas = escrito.filter((x) => x.tabla === "fin_operaciones" && x.metodo === "POST").flatMap((x) => (Array.isArray(x.body) ? x.body : [x.body]));
+  assert.equal(nuevas.some((o) => o.origen_id === "9:1"), false, "la transferencia no se carga otra vez");
+  assert.equal(nuevas.some((o) => o.origen_id === "9:0"), true, "el efectivo sí");
+  const union = escrito.find((x) => x.tabla === "fin_operaciones" && x.metodo === "PATCH");
+  assert.match(union.url, /id=eq\.1&/);
+  assert.deepEqual([union.body.cuenta_debe, union.body.proveedor_id], ["02.01.02.001.001", 5]);
+  assert.deepEqual(d.generado.unidas.map((u) => [u.id, u.antes.cuenta_debe]), [[1, "05.09.09.001.001"]]);
+
+  const varios = mockApi({ ordenes: [libre], enBanco: [SALIDA(1), SALIDA(2, { fecha: "2026-11-12" })] });
+  const r2 = await pedir("gerencial", "POST", { accion: "pagar", id: 9, fecha: "2026-11-10" });
+  assert.equal(r2.status, 409);
+  const j2 = await r2.json();
+  assert.deepEqual(j2.elegir.map((x) => [x.i, x.opciones.map((o) => o.id)]), [[1, [1, 2]]]);
+  assert.equal(varios.escrito.length, 0, "no se tocó nada");
+  const r3 = await pedir("gerencial", "POST", { accion: "pagar", id: 9, fecha: "2026-11-10", unir: { 1: 2 } });
+  assert.equal(r3.status, 200);
+  assert.ok(varios.escrito.some((x) => x.metodo === "PATCH" && x.tabla === "fin_operaciones" && x.url.includes("id=eq.2&")));
+
+  const pagada = { ...ORDEN, estado: "pagada", generado: { operaciones: [70], cheques_emitidos: [], cheques_entregados: [], unidas: [{ id: 1, antes: { tipo: "TRANSFERENCIA", cuenta_debe: "05.09.09.001.001", proveedor_id: null, entidad: "", referencia: null, descripcion: "TRANSF. EGGER" } }] } };
+  const an = mockApi({ ordenes: [pagada], cheques: [] });
+  assert.equal((await pedir("gerencial", "POST", { accion: "anular", id: 9 })).status, 200);
+  const patches = an.escrito.filter((x) => x.tabla === "fin_operaciones" && x.metodo === "PATCH");
+  assert.ok(patches.some((x) => x.url.includes("id=eq.70&") && x.body.anulada_at), "lo que cargó la orden se anula");
+  const vuelta = patches.find((x) => x.url.includes("id=eq.1&"));
+  assert.equal(vuelta.body.anulada_at, undefined, "el renglón del banco no se anula");
+  assert.deepEqual([vuelta.body.cuenta_debe, vuelta.body.descripcion], ["05.09.09.001.001", "TRANSF. EGGER"]);
+});
+
+test("pantalla — si hay varios movimientos del banco, se elige cuál es el pago", async () => {
+  const datos = {
+    tesoreria: TESORERIA, proveedores: PROVEEDORES, cheques: [], empresa: { nombre: "Gi" }, cfo: { nombre: "Juan", telefono: "" }, links: {},
+    ordenes: [{ ...ORDEN, estado: "borrador", formas: [{ forma: "transferencia", importe: 200000, cuenta: BANCO, cuenta_nombre: "Banco Credicoop CTA CTE" }] }],
+  };
+  const enviados = [];
+  global.fetch = async (url, o = {}) => {
+    if (o.method === "POST") {
+      const b = JSON.parse(o.body);
+      enviados.push(b);
+      if (!b.unir) return new Response(JSON.stringify({ error: "Hay más de un movimiento", elegir: [{ i: 0, importe: 200000, opciones: [{ id: 1, fecha: "2026-11-11", tipo: "TRANSFERENCIA", descripcion: "TRANSF. EGGER" }, { id: 2, fecha: "2026-11-12", tipo: "TRANSFERENCIA", descripcion: "TRANSF. OTRA" }] }] }), { status: 409 });
+      return new Response(JSON.stringify({ ok: true, unidas: 1, orden: { ...ORDEN, estado: "pagada" } }), { status: 200 });
+    }
+    return new Response(JSON.stringify(datos), { status: 200 });
+  };
+  render(<FinanzasPagos />);
+  fireEvent.click(await screen.findByText("EGGER ARGENTINA"));
+  fireEvent.click(await screen.findByRole("button", { name: "💸 Registrar pago" }));
+  const grupo = await screen.findByRole("group", { name: "Qué movimiento del banco es este pago" });
+  assert.match(grupo.textContent, /TRANSF\. OTRA/);
+  fireEvent.click(screen.getByLabelText(/TRANSF\. OTRA/));
+  fireEvent.click(screen.getByRole("button", { name: "💸 Registrar pago" }));
+  await waitFor(() => assert.equal(enviados.length, 2));
+  assert.deepEqual(enviados[1].unir, { 0: "2" });
+});
+
+// ─── 19/11 (migración 198): facturas y presupuestos adjuntos a la orden ───
+
+const BASE_ADJ = `https://test.supabase.co/storage/v1/object/public/reportes-obra/${E}/`;
+const FACTURA_PDF = { url: `${BASE_ADJ}0b9e3c1a-1111-4222-8333-444455556666.pdf`, nombre: "Factura A 0003-0001234.pdf" };
+const PRESUPUESTO = { url: `${BASE_ADJ}0b9e3c1a-1111-4222-8333-444455557777.jpg`, nombre: "Presupuesto" };
+
+test("adjuntos de la orden — se ven en el link del CFO, el resumen y el PDF (solo https)", async () => {
+  const { adjuntosDe } = await import("../app/lib/finanzasPagos.js");
+  const { datosResumenParaCfo } = await import("../app/lib/finanzasResumenPago.js");
+  const o = { ...ORDEN, adjuntos: [FACTURA_PDF, PRESUPUESTO, { url: "javascript:alert(1)", nombre: "malo" }] };
+  assert.deepEqual(adjuntosDe(o).map((a) => [a.nombre, a.tipo]), [["Factura A 0003-0001234.pdf", "pdf"], ["Presupuesto", "foto"]]);
+  assert.deepEqual(adjuntosDe({}), []);
+  assert.equal(datosParaCfo(o).adjuntos.length, 2);
+  assert.equal(datosResumenParaCfo({ numero: 1 }, [o]).ordenes[0].adjuntos.length, 2);
+  const html = htmlOrdenPago({ empresa: {}, orden: o });
+  assert.match(html, /Facturas y presupuestos adjuntos/);
+  assert.match(html, /Factura A 0003-0001234\.pdf/);
+  assert.doesNotMatch(html, /javascript:/);
+});
+
+test("migración 198 — adjuntos jsonb, lista de hasta 10, en el chequeo de la base", async () => {
+  const sql = readFileSync(new URL("../supabase/migrations/198_adjuntos_orden_pago.sql", import.meta.url), "utf8");
+  assert.match(sql, /do \$mig\$/);
+  assert.match(sql, /add column if not exists adjuntos jsonb not null default '\[\]'::jsonb/);
+  assert.match(sql, /jsonb_array_length\(adjuntos\) <= 10/);
+  const { MIGRACIONES } = await import("../app/lib/esquemaMigraciones.js");
+  assert.ok(MIGRACIONES.some((m) => m.n === 198 && m.tablas.fin_ordenes_pago.includes("adjuntos")));
+});
+
+test("/api/finanzas/pagos — crear con la factura adjunta; archivos de afuera no", async () => {
+  let { escrito } = mockApi({ ordenes: [{ ...ORDEN, numero: 3 }] });
+  let res = await pedir("gerencial", "POST", { accion: "crear", orden: { proveedor_id: 5, fecha: "2026-11-09", formas: FORMAS, adjuntos: [FACTURA_PDF, FACTURA_PDF, PRESUPUESTO] } });
+  assert.equal(res.status, 200);
+  assert.deepEqual(escrito[0].body.adjuntos.map((a) => [a.nombre, a.tipo]), [["Factura A 0003-0001234.pdf", "pdf"], ["Presupuesto", "foto"]], "sin repetir");
+
+  ({ escrito } = mockApi({ ordenes: [{ ...ORDEN, numero: 3 }] }));
+  res = await pedir("gerencial", "POST", { accion: "crear", orden: { proveedor_id: 5, fecha: "2026-11-09", formas: FORMAS, adjuntos: [{ url: "https://otro.com/x.pdf" }] } });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /Un archivo no es válido/);
+  assert.equal(escrito.length, 0);
+
+  ({ escrito } = mockApi({ ordenes: [{ ...ORDEN, numero: 3 }] }));
+  res = await pedir("gerencial", "POST", { accion: "crear", orden: { proveedor_id: 5, fecha: "2026-11-09", formas: FORMAS } });
+  assert.equal("adjuntos" in escrito[0].body, false, "sin adjuntos no manda la columna (anda sin la 198)");
+});
+
+test("/api/finanzas/pagos — cambiar los adjuntos de una orden; sin la 198 avisa", async () => {
+  let { escrito } = mockApi({ ordenes: [{ ...ORDEN, estado: "pagada" }] });
+  let res = await pedir("gerencial", "POST", { accion: "adjuntos", id: 9, lista: [PRESUPUESTO] });
+  assert.equal(res.status, 200);
+  assert.deepEqual(escrito[0].body.adjuntos, [{ ...PRESUPUESTO, tipo: "foto" }], "también en una pagada");
+
+  mockApi({ ordenes: [{ ...ORDEN, estado: "anulada" }] });
+  res = await pedir("gerencial", "POST", { accion: "adjuntos", id: 9, lista: [] });
+  assert.equal(res.status, 400);
+
+  // Sin la columna: el PATCH falla y se avisa qué migración correr
+  ({ escrito } = mockApi({ ordenes: [{ ...ORDEN }] }));
+  const original = global.fetch;
+  global.fetch = async (url, o = {}) => {
+    if (String(url).includes("/rest/v1/fin_ordenes_pago") && (o.method === "PATCH" || o.method === "POST") && String(o.body).includes("adjuntos")) {
+      return new Response(JSON.stringify({ code: "PGRST204", message: "Could not find the 'adjuntos' column of 'fin_ordenes_pago' in the schema cache" }), { status: 400 });
+    }
+    return original(url, o);
+  };
+  res = await pedir("gerencial", "POST", { accion: "adjuntos", id: 9, lista: [PRESUPUESTO] });
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /migración 198/);
+  res = await pedir("gerencial", "POST", { accion: "crear", orden: { proveedor_id: 5, fecha: "2026-11-09", formas: FORMAS, adjuntos: [PRESUPUESTO] } });
+  assert.equal(res.status, 200, "la orden se guarda igual");
+  assert.match((await res.json()).aviso, /migración 198/);
+  assert.equal("adjuntos" in escrito.at(-1).body, false);
 });

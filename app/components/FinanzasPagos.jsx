@@ -14,13 +14,15 @@
 // comprobante de cada una (foto, opcional) y la suma de lo inmediato
 // (efectivo y transferencia) y de los cheques. Se lo invita al CFO por
 // WhatsApp (/op/resumen/<token>, solo para mirar) o se exporta en PDF.
+// 20/11: cada e-cheq puede llevar el plazo fijo nuevo que lo calza (🏦); la
+// orden y el resumen muestran "A rescatar del FCI" (transferencias + plazos).
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import { numeroWhatsapp } from "../lib/compras";
 import {
-  ESTADOS_ORDEN, FORMAS_PAGO, SIN_PAGAR, accionesOrden, cuentasParaPagar, fechaCorta, imprimirOrdenPago, mandadaAlCfo, textoForma, textoWhatsappCfo, vistaPorCfo,
+  ESTADOS_ORDEN, FORMAS_PAGO, SIN_PAGAR, accionesOrden, adjuntosDe, comprobantesFactura, cuentasParaPagar, fechaCorta, imprimirOrdenPago, mandadaAlCfo, sinRegistrar, sumasPagos, textoForma, textoPlazo, textoWhatsappCfo, vistaPorCfo,
 } from "../lib/finanzasPagos";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -30,13 +32,15 @@ import {
   ESTADOS_RESUMEN, imprimirResumenPago, puedeEntrar, renglonesResumen, textoWhatsappResumen, totalesResumen,
 } from "../lib/finanzasResumenPago";
 import { fotoBase64, subirImagen } from "../lib/foto";
+import Comprobantes from "./FinanzasComprobantes";
+import RescateFci from "./RescateFci";
 
 const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 async function postPagos(body) {
   const res = await apiFetch("/api/finanzas/pagos", { method: "POST", body: JSON.stringify(body) });
   const d = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(d.error || "No se pudo guardar");
+  if (!res.ok) throw Object.assign(new Error(d.error || "No se pudo guardar"), { datos: d });
   return d;
 }
 
@@ -48,7 +52,7 @@ function mandarWhatsapp(orden, url, datos) {
 }
 
 /** Abre WhatsApp invitando al CFO a ver el resumen. */
-function mandarWhatsappResumen(resumen, ordenes, url, datos) {
+export function mandarWhatsappResumen(resumen, ordenes, url, datos) {
   const texto = textoWhatsappResumen(resumen, ordenes, url, { empresa: datos.empresa?.nombre || "", cfo: datos.cfo?.nombre || "" });
   const tel = numeroWhatsapp(datos.cfo?.telefono);
   window.open(`https://wa.me/${tel || ""}?text=${encodeURIComponent(texto)}`, "_blank", "noopener");
@@ -86,7 +90,7 @@ function campo(label, input) {
 
 /* ─── Nueva orden ────────────────────────────────────────────────────── */
 
-const FORMA_VACIA = { efectivo: { cuenta: "", importe: "" }, transferencia: { cuenta: "", importe: "" }, echeq: { importe: "", fecha_pago: "", numero: "" }, cheque_tercero: { cheque_id: "" } };
+const FORMA_VACIA = { efectivo: { cuenta: "", importe: "" }, transferencia: { cuenta: "", importe: "" }, echeq: { importe: "", fecha_pago: "", numero: "", pf: false, pf_importe: "", pf_vence: "" }, cheque_tercero: { cheque_id: "" } };
 
 /**
  * @param {{ datos: object, proveedorId?: number, pendientes?: { op: object, falta: number }[], onCerrar: Function, onGuardada: Function }} props
@@ -100,6 +104,8 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
   const [elegidas, setElegidas] = useState(() => new Set());
   const [formas, setFormas] = useState([]);
   const [notas, setNotas] = useState("");
+  // 19/11 (198): la factura o el presupuesto que se paga, en PDF o foto
+  const [adjuntos, setAdjuntos] = useState([]);
   const [error, setError] = useState(null);
   const [guardando, setGuardando] = useState(false);
 
@@ -117,6 +123,14 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
     ...(forma !== "cheque_tercero" && aPagar - total > 0 ? { importe: String(Math.round((aPagar - total) * 100) / 100).replace(".", ",") } : {}),
   }]);
   const cambiar = (i, k) => (e) => setFormas((x) => x.map((f, j) => (j === i ? { ...f, [k]: e.target.value } : f)));
+  // 🏦 Plazo fijo que calza el e-cheq: al tildarlo propone el importe y la fecha del cheque
+  const tildarPlazo = (i) => (e) => setFormas((x) => x.map((f, j) => (j !== i ? f : {
+    ...f, pf: e.target.checked,
+    ...(e.target.checked && !f.pf_importe ? { pf_importe: f.importe } : {}),
+    ...(e.target.checked && !f.pf_vence ? { pf_vence: f.fecha_pago } : {}),
+  })));
+  const plazosNuevos = formas.filter((f) => f.forma === "echeq" && f.pf).reduce((s, f) => s + (numero(f.pf_importe) || 0), 0);
+  const transferencias = formas.filter((f) => f.forma === "transferencia").reduce((s, f) => s + (numero(f.importe) || 0), 0);
   const quitar = (i) => setFormas((x) => x.filter((_, j) => j !== i));
   const elegir = (id) => setElegidas((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
@@ -129,9 +143,14 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
         orden: {
           proveedor_id: proveedor ? Number(proveedor) : null, fecha, notas,
           facturas: pendientes.filter((p) => elegidas.has(p.op.id)).map((p) => ({ op_id: p.op.id, fecha: p.op.fecha, detalle: [p.op.tipo, p.op.descripcion].filter(Boolean).join(" · "), importe: p.falta })),
-          formas: formas.map((f) => ({ ...f, importe: f.forma === "cheque_tercero" ? undefined : numero(f.importe) })),
+          formas: formas.map(({ pf, pf_importe: pfImporte, pf_vence: pfVence, ...f }) => ({
+            ...f, importe: f.forma === "cheque_tercero" ? undefined : numero(f.importe),
+            ...(f.forma === "echeq" && pf ? { plazo_fijo: { importe: numero(pfImporte), vencimiento: pfVence } } : {}),
+          })),
+          ...(adjuntos.length ? { adjuntos } : {}),
         },
       });
+      if (d.aviso) toast.info(d.aviso);
       if (mandar && d.url) mandarWhatsapp(d.orden, d.url, datos);
       toast.success(mandar ? `Orden N° ${d.orden.numero} guardada y mandada al CFO. Ya la podés pagar.` : `Orden N° ${d.orden.numero} guardada. Ya la podés pagar.`);
       onGuardada(d.orden);
@@ -189,6 +208,20 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
                   {campo("N° (si ya lo tenés)", <input className="g-input w-[130px]" aria-label="Número del e-cheq" value={f.numero} maxLength={40} onChange={cambiar(i, "numero")} />)}
                 </>
               )}
+              {f.forma === "echeq" && (
+                <div className="order-last w-full flex flex-col gap-2">
+                  <label className="flex items-center gap-2 text-[13px] min-h-[36px] cursor-pointer">
+                    <input type="checkbox" checked={!!f.pf} onChange={tildarPlazo(i)} aria-label="Agregar el plazo fijo que calza este e-cheq" />
+                    🏦 Plazo fijo que lo calza (opcional)
+                  </label>
+                  {f.pf && (
+                    <div className="flex flex-wrap items-end gap-2 pl-6">
+                      {campo("Monto a depositar", <input className="g-input w-[150px] text-right font-mono" inputMode="decimal" aria-label="Monto del plazo fijo" placeholder="Importe" value={f.pf_importe} onChange={cambiar(i, "pf_importe")} />)}
+                      {campo("Vence el", <input type="date" className="g-input" aria-label="Vencimiento del plazo fijo" value={f.pf_vence} max={f.fecha_pago || undefined} onChange={cambiar(i, "pf_vence")} />)}
+                    </div>
+                  )}
+                </div>
+              )}
               {f.forma === "cheque_tercero" ? (
                 <SelectBuscable className="g-input flex-1 min-w-[220px]" aria-label="Cheque de la cartera" value={f.cheque_id} onChange={cambiar(i, "cheque_id")}>
                   <option value="">Elegí un cheque en cartera</option>
@@ -211,12 +244,14 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
         </div>
 
         <p className="m-0 text-[16px]">Total de la orden: <b className="font-mono">{plata(total, "ARS")}</b></p>
+        {plazosNuevos > 0 && <RescateFci compacto transferencia={transferencias} plazos={plazosNuevos} cantidadPlazos={formas.filter((f) => f.forma === "echeq" && f.pf).length} rescatar={Math.round((transferencias + plazosNuevos) * 100) / 100} />}
         {pendientes.length > 0 && elegidas.size > 0 && Math.abs(diferencia) >= 0.01 && (
           <p className="m-0 text-[13px] text-gypi-amber-ink">
             {diferencia > 0 ? `Pagás ${plata(diferencia, "ARS")} más que lo elegido: queda a cuenta.` : `Faltan ${plata(-diferencia, "ARS")} para cubrir lo elegido: queda un pago parcial.`}
           </p>
         )}
         {campo("Nota (opcional, la ve el CFO)", <textarea className="g-input w-full min-h-[60px]" aria-label="Nota" value={notas} maxLength={500} onChange={(e) => setNotas(e.target.value)} />)}
+        <Comprobantes titulo="Facturas o presupuestos (opcional, los ve el CFO)" lista={adjuntos} onCambio={setAdjuntos} disabled={guardando} />
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         <div className="flex flex-wrap justify-end gap-2">
           <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>
@@ -239,8 +274,12 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
   const [haciendo, setHaciendo] = useState(null);
   const [confirmarAnular, setConfirmarAnular] = useState(false);
   const [error, setError] = useState(null);
+  // 19/11: varios movimientos del banco pueden ser este pago → cuál es
+  const [elegir, setElegir] = useState(null);
+  const [unir, setUnir] = useState({});
   const est = ESTADOS_ORDEN[orden.estado] || { nombre: orden.estado, icono: "" };
-  const acciones = accionesOrden(orden.estado);
+  const acciones = accionesOrden(orden.estado, orden);
+  const marcada = sinRegistrar(orden);
 
   async function hacer(accion, extra = {}) {
     setError(null);
@@ -248,10 +287,19 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
     try {
       const d = await postPagos({ accion, id: orden.id, ...extra });
       if (accion === "mandar" && d.url) mandarWhatsapp(d.orden, d.url, datos);
-      toast.success({ mandar: "Abrimos WhatsApp con el link para el CFO", pagar: "Pago registrado: se generaron las operaciones y los cheques", anular: "Orden anulada", comprobante: extra.url ? "Comprobante guardado" : "Comprobante quitado" }[accion]);
+      const pago = d.unidas
+        ? `Pago registrado. ${d.unidas === 1 ? "Se unió con el movimiento que ya estaba en el banco" : `Se unió con ${d.unidas} movimientos que ya estaban en el banco`}: no quedó repetido`
+        : "Pago registrado: se generaron las operaciones y los cheques";
+      toast.success({ mandar: "Abrimos WhatsApp con el link para el CFO", pagar: pago, marcar_pagada: "Orden marcada pagada. No se registró nada: el movimiento entra con el extracto o la caja", anular: "Orden anulada", comprobante: extra.url ? "Comprobante guardado" : "Comprobante quitado", adjuntos: "Adjuntos guardados" }[accion]);
+      setElegir(null);
       onCambio();
     } catch (e) {
-      setError(e.message);
+      if (accion === "pagar" && Array.isArray(e.datos?.elegir)) {
+        setElegir(e.datos.elegir);
+        setUnir(Object.fromEntries(e.datos.elegir.map((x) => [String(x.i), String(x.opciones[0]?.id ?? "nueva")])));
+      } else {
+        setError(e.message);
+      }
     } finally {
       setHaciendo(null);
     }
@@ -272,15 +320,28 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
         <p className="m-0 text-[22px] font-bold font-mono">{plata(orden.total, "ARS")}</p>
         <ul className="list-none m-0 p-0 flex flex-col gap-1" aria-label="Formas de pago">
           {(orden.formas || []).map((f, i) => (
-            <li key={i} className="flex items-baseline gap-2 text-[13px]">
-              <span className="flex-1 min-w-0">{textoForma(f)}</span>
-              <span className="font-mono font-semibold">{plata(f.importe, "ARS")}</span>
+            <li key={i} className="flex flex-col text-[13px]">
+              <div className="flex items-baseline gap-2">
+                <span className="flex-1 min-w-0">{textoForma(f)}</span>
+                <span className="font-mono font-semibold">{plata(f.importe, "ARS")}</span>
+              </div>
+              {f.plazo_fijo && (
+                <div className="flex items-baseline gap-2 pl-4 text-gypi-dim">
+                  <span className="flex-1 min-w-0">{textoPlazo(f)}</span>
+                  <span className="font-mono">{plata(f.plazo_fijo.importe, "ARS")}</span>
+                </div>
+              )}
             </li>
           ))}
         </ul>
+        {sumasPagos([orden]).plazos > 0 && <RescateFci compacto {...sumasPagos([orden])} />}
         {(orden.facturas || []).length > 0 && (
           <div className="text-[13px] text-gypi-dim">
             Paga: {(orden.facturas || []).map((f) => `${fechaCorta(f.fecha)} ${f.detalle} (${plata(f.importe, "ARS")})`).join(" · ")}
+            {/* 22/11: el PDF o la foto de cada factura (los ve también el CFO) */}
+            {(orden.facturas || []).flatMap(comprobantesFactura).map((a) => (
+              <a key={a.url} href={a.url} target="_blank" rel="noopener noreferrer" className="ml-2 text-gypi-cyan underline">{a.tipo === "pdf" ? "📄" : "🖼"} {a.nombre}</a>
+            ))}
           </div>
         )}
         {orden.notas && <p className="m-0 text-[13px]">📝 {orden.notas}</p>}
@@ -291,7 +352,12 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
         ) : mandadaAlCfo(orden) ? (
           <p className="m-0 text-[13px] text-gypi-dim">📲 Mandada al CFO{orden.enviada_at ? ` el ${fechaCorta(String(orden.enviada_at).slice(0, 10))}` : ""}. Todavía no apretó 👍 Visto.</p>
         ) : null}
-        {orden.estado === "pagada" && (
+        {marcada && (
+          <p className="m-0 text-[13px] text-gypi-amber-ink">
+            ✓ Marcada pagada el {fechaCorta(orden.pagada_fecha)}{orden.pagada_por_nombre ? ` por ${orden.pagada_por_nombre}` : ""}, sin registrar. El movimiento entra con el extracto del banco o la planilla de caja: al subir el extracto, Gypi te ofrece unirlo con esta orden. Si hace falta, registralo ahora con 💸 Registrar pago.
+          </p>
+        )}
+        {orden.estado === "pagada" && !marcada && (
           <p className="m-0 text-[13px] text-gypi-dim">
             💸 Pagada el {fechaCorta(orden.pagada_fecha)}{orden.pagada_por_nombre ? ` por ${orden.pagada_por_nombre}` : ""}. Las operaciones están en Movimientos y los cheques en Cheques.
           </p>
@@ -300,6 +366,11 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
           <p className="m-0 text-[12px] text-gypi-dim break-all">Link para el CFO: {url}</p>
         )}
         {resumen && <p className="m-0 text-[13px] text-gypi-dim">📋 Está en el resumen N° {resumen.numero}</p>}
+        {/* 19/11 (198): facturas o presupuestos; se pueden sumar o quitar mientras no esté anulada */}
+        {(orden.estado !== "anulada" || adjuntosDe(orden).length > 0) && (
+          <Comprobantes titulo="Facturas o presupuestos" lista={adjuntosDe(orden)} disabled={!!haciendo || orden.estado === "anulada"}
+            onCambio={(lista) => hacer("adjuntos", { lista })} />
+        )}
         {orden.estado !== "anulada" && !datos.falta_186 && (
           <div className="flex flex-wrap items-center gap-2">
             {orden.comprobante_url && <a className="text-[13px] font-semibold text-gypi-amber-ink" href={orden.comprobante_url} target="_blank" rel="noopener noreferrer">📎 Ver comprobante</a>}
@@ -311,17 +382,48 @@ function Detalle({ orden, datos, url, onCerrar, onCambio }) {
         {acciones.includes("pagar") && (
           <div className="flex flex-wrap items-end gap-2 p-2 rounded-lg border border-gypi-border">
             {campo("Fecha del pago", <input type="date" className="g-input" aria-label="Fecha del pago" value={fecha} onChange={(e) => e.target.value && setFecha(e.target.value)} />)}
-            <button type="button" className="g-btn g-btn-primary flex-1" disabled={!!haciendo} onClick={() => hacer("pagar", { fecha })}>
+            <button type="button" className="g-btn g-btn-primary flex-1" disabled={!!haciendo} onClick={() => hacer("pagar", { fecha, ...(elegir ? { unir } : {}) })}>
               {haciendo === "pagar" ? "Registrando…" : "💸 Registrar pago"}
             </button>
+            {/* 23/11: pagada sin registrar; el movimiento llega con el extracto o la caja */}
+            {acciones.includes("marcar_pagada") && (
+              <button type="button" className="g-btn g-btn-secondary flex-1" disabled={!!haciendo} onClick={() => hacer("marcar_pagada", { fecha })}>
+                {haciendo === "marcar_pagada" ? "Marcando…" : "✓ Marcar pagada (sin registrar)"}
+              </button>
+            )}
+            {acciones.includes("marcar_pagada") && (
+              <p className="basis-full m-0 text-[12px] text-gypi-dim">&quot;Marcar pagada&quot; no crea movimientos, ni e-cheq, ni entrega cheques de terceros: el pago se registra cuando subís el extracto del banco o la planilla de caja.</p>
+            )}
+            {elegir && (
+              <div role="group" aria-label="Qué movimiento del banco es este pago" className="basis-full flex flex-col gap-2 p-2 rounded-lg bg-gypi-amber/10 border border-gypi-amber/40 text-[13px]">
+                <p className="m-0">Este pago ya puede estar en el banco (por ejemplo, del extracto). Elegí cuál es, así no queda repetido, y apretá de nuevo 💸 Registrar pago.</p>
+                {elegir.map((x) => (
+                  <fieldset key={x.i} className="m-0 p-0 border-0 flex flex-col gap-1">
+                    <legend className="font-semibold">{textoForma(orden.formas?.[x.i] || {})} · {plata(x.importe, "ARS")}</legend>
+                    {x.opciones.map((o) => (
+                      <label key={o.id} className="flex items-start gap-2">
+                        <input type="radio" name={`unir-${x.i}`} checked={unir[String(x.i)] === String(o.id)} onChange={() => setUnir((u) => ({ ...u, [String(x.i)]: String(o.id) }))} />
+                        <span>{fechaCorta(o.fecha)} · {[o.tipo, o.entidad || o.descripcion].filter(Boolean).join(" · ")}</span>
+                      </label>
+                    ))}
+                    <label className="flex items-start gap-2">
+                      <input type="radio" name={`unir-${x.i}`} checked={unir[String(x.i)] === "nueva"} onChange={() => setUnir((u) => ({ ...u, [String(x.i)]: "nueva" }))} />
+                      <span>Ninguno: es otro pago, cargarlo nuevo</span>
+                    </label>
+                  </fieldset>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         {confirmarAnular ? (
           <div className="flex flex-col gap-2 p-2 rounded-lg border border-gypi-red">
             <p className="m-0 text-[13px]">
-              {orden.estado === "pagada"
-                ? "¿Anular la orden pagada? Se anulan sus operaciones, los e-cheq que emitió y los cheques de terceros vuelven a la cartera."
+              {orden.estado === "pagada" && marcada
+                ? "¿Anular la orden? Estaba marcada pagada sin registrar, así que no hay movimientos para deshacer."
+                : orden.estado === "pagada"
+                ? "¿Anular la orden pagada? Se anulan sus operaciones, los e-cheq que emitió y los cheques de terceros vuelven a la cartera. Lo que se unió con el extracto del banco queda como estaba antes."
                 : "¿Anular la orden? El link del CFO deja de servir."}
             </p>
             <div className="flex gap-2">
@@ -354,6 +456,7 @@ function Totales({ ordenes }) {
       <div className="flex items-baseline gap-2"><span className="flex-1">⚡ Transferencia, efectivo o inmediato</span><b className="font-mono">{plata(t.inmediato, "ARS")}</b></div>
       <div className="flex items-baseline gap-2"><span className="flex-1">🧾 Cheques (e-cheq y de terceros)</span><b className="font-mono">{plata(t.cheques, "ARS")}</b></div>
       <div className="flex items-baseline gap-2 border-t border-gypi-border pt-1 text-[16px]"><span className="flex-1 font-bold">Total · {t.ordenes} {t.ordenes === 1 ? "orden" : "órdenes"}</span><b className="font-mono">{plata(t.total, "ARS")}</b></div>
+      <RescateFci compacto transferencia={t.porForma.transferencia} plazos={t.plazos} cantidadPlazos={t.cantidadPlazos} rescatar={t.rescatar} />
     </div>
   );
 }
@@ -378,7 +481,7 @@ function TablaResumen({ ordenes }) {
             <tr key={`${r.orden_id}-${i}`} className="border-t border-gypi-border align-top">
               <td className="py-1 px-1.5 font-mono whitespace-nowrap">{fechaCorta(r.fecha)}</td>
               <td className="py-1 px-1.5">{r.proveedor} <span className="block text-[12px] text-gypi-dim">OP N° {r.numero}</span></td>
-              <td className="py-1 px-1.5">{r.clase === "cheque" ? "🧾" : "⚡"} {r.medio}</td>
+              <td className="py-1 px-1.5">{r.clase === "cheque" ? "🧾" : "⚡"} {r.medio}{r.plazo && <span className="block text-[12px] text-gypi-dim">{r.plazo.texto} · {plata(r.plazo.importe, "ARS")}</span>}</td>
               <td className="py-1 px-1.5 text-right font-mono whitespace-nowrap">{plata(r.importe, "ARS")}</td>
               <td className="py-1 px-1.5">{r.comprobante ? <a className="font-semibold text-gypi-amber-ink" href={r.comprobante} target="_blank" rel="noopener noreferrer">📎 Ver</a> : ""}</td>
             </tr>
@@ -425,7 +528,7 @@ function NuevoResumen({ datos, onCerrar, onGuardado }) {
   return (
     <Modal open onClose={onCerrar} title="Resumen de órdenes de pago" maxWidth={720}>
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
-        <p className="m-0 text-[13px] text-gypi-dim">Elegí las órdenes que van juntas. A cada una le podés cargar la foto del comprobante (no es obligatorio).</p>
+        <p className="m-0 text-[13px] text-gypi-dim">Elegí las órdenes sin pagar que van juntas. A cada una le podés cargar la foto del comprobante (no es obligatorio).</p>
         {libres.length ? (
           <fieldset className="border border-gypi-border rounded-lg p-2 m-0">
             <legend className="text-[13px] font-semibold px-1">Órdenes de pago</legend>
@@ -457,7 +560,7 @@ function NuevoResumen({ datos, onCerrar, onGuardado }) {
             </ul>
           </fieldset>
         ) : (
-          <p className="m-0 text-[13px] text-gypi-dim">No hay órdenes para juntar: las que no están pagadas ni anuladas ya están en otro resumen. Armá órdenes con &quot;+ Orden de pago&quot;.</p>
+          <p className="m-0 text-[13px] text-gypi-dim">No hay órdenes para juntar: solo entran las que todavía no están pagadas, y las que hay ya están en otro resumen. Armá órdenes con &quot;+ Orden de pago&quot;.</p>
         )}
         {seleccion.length > 0 && <Totales ordenes={seleccion} />}
         <div className="flex flex-wrap gap-2">
@@ -730,7 +833,7 @@ export default function FinanzasPagos() {
                     <span className="font-mono font-semibold">{plata(t.total, "ARS")}</span>
                   </span>
                   <span className="block text-[12px] text-gypi-dim">
-                    {est.icono} {est.nombre} · {fechaCorta(r.fecha)} · ⚡ {plata(t.inmediato, "ARS")} · 🧾 {plata(t.cheques, "ARS")} · {t.pagadas} de {t.ordenes} pagadas · 👍 {t.vistas} vistas
+                    {est.icono} {est.nombre} · {fechaCorta(r.fecha)} · ⚡ {plata(t.inmediato, "ARS")} · 🧾 {plata(t.cheques, "ARS")}{t.rescatar > 0 ? ` · 💰 FCI ${plata(t.rescatar, "ARS")}` : ""} · {t.pagadas} de {t.ordenes} pagadas · 👍 {t.vistas} vistas
                   </span>
                 </button>
               </li>
@@ -752,7 +855,7 @@ export default function FinanzasPagos() {
                   <span className="font-mono font-semibold">{plata(o.total, "ARS")}</span>
                 </span>
                 <span className={`block text-[12px] ${o.estado === "pagada" ? "text-gypi-green font-semibold" : "text-gypi-dim"}`}>
-                  {est.icono} {est.nombre}{o.estado === "pagada" && vistaPorCfo(o) ? " · 👍 vista por el CFO" : ""} · {fechaCorta(o.fecha)}
+                  {est.icono} {est.nombre}{sinRegistrar(o) ? " · sin registrar" : ""}{o.estado === "pagada" && vistaPorCfo(o) ? " · 👍 vista por el CFO" : ""} · {fechaCorta(o.fecha)}
                 </span>
               </button>
             </li>

@@ -250,19 +250,18 @@ test("movimientos en Stock — lista, anular y cargar un ingreso", async () => {
   fireEvent.click(screen.getByLabelText(/Anular 📦 Retiro/));
   await waitFor(() => assert.deepEqual(enviados[0], { accion: "anular", id: 4 }));
 
-  fireEvent.click(screen.getByText("＋ Cargar retiro, devolución, ingreso o ajuste"));
+  // 22/11: el ingreso también va por tanda (varios renglones, la misma fecha)
+  fireEvent.click(screen.getByText("📥 Cargar ingreso"));
+  fireEvent.change(screen.getByLabelText("Proveedor para todos"), { target: { value: "Aluar" } });
   fireEvent.change(screen.getByLabelText("Artículo"), { target: { value: "tablilla" } });
   fireEvent.click(screen.getByText("Tablilla 0277 negra"));
-  fireEvent.change(screen.getByLabelText("Cantidad (MT)"), { target: { value: "10" } });
-  fireEvent.change(screen.getByLabelText("Proveedor"), { target: { value: "Aluar" } });
-  fireEvent.change(screen.getByLabelText("Precio unitario (sin IVA)"), { target: { value: "1.500,50" } });
+  fireEvent.change(screen.getByLabelText("Cantidad de Tablilla 0277 negra"), { target: { value: "10" } });
+  fireEvent.change(screen.getByLabelText("Precio de Tablilla 0277 negra"), { target: { value: "1.500,50" } });
   fireEvent.click(screen.getByText("Guardar"));
   await waitFor(() => assert.equal(enviados.length, 2));
+  assert.equal(enviados[1].accion, "registrar_varios");
   assert.equal(enviados[1].tipo, "ingreso");
-  assert.equal(enviados[1].cantidad, 10);
-  assert.equal(enviados[1].proveedor, "Aluar");
-  assert.equal(enviados[1].precio_unitario, 1500.5);
-  assert.equal(enviados[1].ot, null);
+  assert.deepEqual(enviados[1].renglones, [{ sku: TABLILLA.sku, cantidad: 10, proveedor: "Aluar", comprobante: null, precio_unitario: 1500.5 }]);
 });
 
 test("accesos — botón en el inicio del operario, en la ficha y pestaña en Stock", () => {
@@ -270,7 +269,8 @@ test("accesos — botón en el inicio del operario, en la ficha y pestaña en St
   assert.match(home, /titulo="Retirar material"/);
   const ficha = readFileSync(new URL("../app/components/FichaArticulo.jsx", import.meta.url), "utf8");
   assert.match(ficha, /📦 Retirar o devolver/);
-  const stock = readFileSync(new URL("../app/components/StockScreen.jsx", import.meta.url), "utf8");
+  // 17/11: Movimientos tiene su pestaña en Materiales
+  const stock = readFileSync(new URL("../app/components/MovimientosScreen.jsx", import.meta.url), "utf8");
   assert.match(stock, /<MovimientosStock usuario=\{usuario\} articulos=\{articulos\} /);
 });
 
@@ -304,15 +304,15 @@ test("/api/stock/movimientos — varios: si uno está mal no se guarda ninguno",
   res = await api.POST(req(await token("operativo"), { accion: "registrar_varios", tipo: "consumo", renglones: [{ sku: TABLILLA.sku, cantidad: -1 }] }));
   assert.equal(res.status, 400, "cantidad mayor a cero");
   res = await api.POST(req(await token("operativo"), { accion: "registrar_varios", tipo: "ingreso", renglones: [{ sku: TABLILLA.sku, cantidad: 1 }] }));
-  assert.equal(res.status, 400, "los ingresos van de a uno");
-  res = await api.POST(req(await token("operativo"), { accion: "registrar_varios", tipo: "consumo", renglones: Array.from({ length: 51 }, () => ({ sku: TABLILLA.sku, cantidad: 1 })) }));
-  assert.equal(res.status, 400, "hasta 50 por vez");
+  assert.equal(res.status, 403, "los ingresos los carga la oficina");
+  res = await api.POST(req(await token("operativo"), { accion: "registrar_varios", tipo: "consumo", renglones: Array.from({ length: 201 }, () => ({ sku: TABLILLA.sku, cantidad: 1 })) }));
+  assert.equal(res.status, 400, "hasta 200 por tanda");
 });
 
 test("movimientos en Stock — varios retiros juntos con la OT de todos y una distinta", async () => {
   const enviados = mockPantalla({ articulos: [TABLILLA, BISAGRA] });
   render(<MovimientosStock usuario={{ id: OTRO, rol: "administrativo" }} articulos={[TABLILLA, BISAGRA]} />);
-  fireEvent.click(screen.getByText("＋ Cargar retiro, devolución, ingreso o ajuste"));
+  fireEvent.click(screen.getByText("📤 Cargar consumo"));
   fireEvent.click(screen.getByText("📦 Retiro"));
   fireEvent.change(screen.getByLabelText("OT para todos (opcional)"), { target: { value: "M-7495" } });
   fireEvent.change(screen.getByLabelText("Artículo"), { target: { value: "tablilla" } });
@@ -328,7 +328,7 @@ test("movimientos en Stock — varios retiros juntos con la OT de todos y una di
   fireEvent.click(screen.getByText("Guardar los 2"));
   await waitFor(() => assert.equal(enviados.length, 1));
   assert.deepEqual(enviados[0], {
-    accion: "registrar_varios", tipo: "consumo", notas: null,
+    accion: "registrar_varios", tipo: "consumo", notas: null, fecha: null,
     renglones: [{ sku: TABLILLA.sku, cantidad: 2.5, ot: "M-7495" }, { sku: BISAGRA.sku, cantidad: 8, ot: "M-7500" }],
   });
 });

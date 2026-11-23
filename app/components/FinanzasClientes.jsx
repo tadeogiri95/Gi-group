@@ -14,6 +14,7 @@
 // (parte 6, FinanzasOtClientes.jsx) y "🔗 Cliente y proveedor" (parte 5).
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { medioDePago } from "../lib/finanzasTipos";
 import { apiFetch } from "../lib/supabase";
 import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import { ORIGEN_SALDO_INICIAL } from "../lib/finanzasProveedores";
@@ -22,7 +23,10 @@ import {
   FORMAS_COBRO, ORIGEN_COBRO, clienteDeOt, emparejarCliente, movimientosCliente, saldoPorOt, saldosClientes, saldosClientesDelLibro,
 } from "../lib/finanzasClientes";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
+import BotonEstadoCuenta from "./FinanzasEstadoCuenta";
 import { useToast } from "./ui/Toast";
+import AjusteSaldo, { anularAjuste } from "./FinanzasAjusteSaldo";
+import { ORIGEN_AJUSTE_SALDO } from "../lib/finanzasAjusteSaldo";
 import FinanzasUnificados, { LineaUnificada } from "./FinanzasUnificados";
 import FinanzasOtClientes, { ComposicionOt } from "./FinanzasOtClientes";
 
@@ -156,7 +160,7 @@ export function Cobrar({ datos, cliente, proyectoId = "", cajaInicial = "", onCe
 
 /* ─── Datos de un cliente ────────────────────────────────────────────── */
 
-function DatosCliente({ cliente, onCerrar, onGuardado }) {
+export function DatosCliente({ cliente, onCerrar, onGuardado }) {
   const nuevo = !cliente?.id;
   const [f, setF] = useState({ nombre: cliente?.nombre || "", cuit: cliente?.cuit || "", telefono: cliente?.telefono || "", email: cliente?.email || "", notas: cliente?.notas || "", alias: (cliente?.alias || []).join("\n") });
   const [error, setError] = useState(null);
@@ -244,7 +248,7 @@ export function textoResultadoVentas(r) {
   return partes.length ? `Ventas y entregas: ${partes.join(", ")}` : "Las ventas y entregas de las OT ya estaban al día";
 }
 
-function VentasOt({ config, onCerrar, onHecho }) {
+export function VentasOt({ config, onCerrar, onHecho }) {
   const toast = useToast();
   const [activo, setActivo] = useState(Boolean(config?.activo || !config?.desde));
   const [desde, setDesde] = useState(config?.desde || hoyAr());
@@ -288,7 +292,7 @@ function VentasOt({ config, onCerrar, onHecho }) {
 
 /* ─── Ficha ──────────────────────────────────────────────────────────── */
 
-function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
+export function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
   const toast = useToast();
   const [vista, setVista] = useState("deuda");
   const [modal, setModal] = useState(null);
@@ -297,6 +301,7 @@ function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
   const movimientos = useMemo(() => movimientosCliente(datos.operaciones, saldo.clave, cuentasDeu, datos.clientes), [datos, saldo, cuentasDeu]);
   const porOt = useMemo(() => saldoPorOt(movimientos), [movimientos]);
   const ots = useMemo(() => new Map(datos.proyectos.map((p) => [Number(p.id), p])), [datos.proyectos]);
+  const ctxMedio = useMemo(() => ({ tesoreria: datos.tesoreria || [], cuentas: datos.cuentas || [] }), [datos.tesoreria, datos.cuentas]);
   const s = textoSaldoCliente(saldo.saldo);
 
   async function anular(grupo) {
@@ -310,6 +315,16 @@ function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
     }
   }
   const grupoDe = (op) => (op.origen === ORIGEN_COBRO ? String(op.origen_id || "").split(":")[0] : null);
+  async function anularElAjuste(id) {
+    setError(null);
+    try {
+      await anularAjuste(id);
+      toast.success("Ajuste anulado");
+      onCambio();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
 
   return (
     <Modal open onClose={onCerrar} title={saldo.nombre || "Cliente"} maxWidth={1080}>
@@ -321,10 +336,15 @@ function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
             <button type="button" className="g-btn g-btn-primary" onClick={() => setModal("cobrar")}>💵 Cobrar</button>
             <button type="button" className="g-btn g-btn-secondary" onClick={() => setModal("datos")}>✏ Datos y otros nombres</button>
             <button type="button" className="g-btn g-btn-secondary" onClick={() => setModal("unir")}>🔗 Unir un repetido</button>
+            <button type="button" className="g-btn g-btn-secondary" onClick={() => setModal("ajuste")}>⚖ Ajustar saldo</button>
           </div>
         ) : (
-          <p className="m-0 text-[12px] text-gypi-dim">Este nombre no está en la lista de clientes: creá el cliente o sumalo como otro nombre de uno que ya esté.</p>
+          <div className="flex flex-col gap-2">
+            <p className="m-0 text-[12px] text-gypi-dim">Este nombre no está en la lista de clientes: creá el cliente o sumalo como otro nombre de uno que ya esté.</p>
+            <div><button type="button" className="g-btn g-btn-secondary" onClick={() => setModal("ajuste")}>⚖ Ajustar saldo</button></div>
+          </div>
         )}
+        <div><BotonEstadoCuenta cliente={saldo.clave} nombre={saldo.nombre} /></div>
         {saldo.cliente_id && <LineaUnificada clienteId={saldo.cliente_id} onCambio={onCambio} />}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         <div className="flex flex-wrap gap-2">
@@ -374,7 +394,9 @@ function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
                       <span className="font-mono text-[12px] text-gypi-dim">{fechaCorta(m.op.fecha)}</span> {m.op.tipo}
                       {m.op.descripcion && <span className="block text-[12px] text-gypi-dim break-words">{m.op.descripcion}</span>}
                       {m.op.proyecto_id && ots.get(Number(m.op.proyecto_id)) && <span className="block text-[12px] text-gypi-dim">OT {ots.get(Number(m.op.proyecto_id)).ot}</span>}
+                      {m.cobro > 0 && medioDePago(m.op, ctxMedio) && <span className="block text-[12px] text-gypi-dim">Medio de pago: {medioDePago(m.op, ctxMedio)}</span>}
                       {grupo && <button type="button" className="text-[12px] text-gypi-red underline bg-transparent border-none p-0 cursor-pointer" onClick={() => anular(grupo)}>Anular el cobro</button>}
+                      {m.op.origen === ORIGEN_AJUSTE_SALDO && <button type="button" className="text-[12px] text-gypi-red underline bg-transparent border-none p-0 cursor-pointer" onClick={() => anularElAjuste(m.op.id)}>Anular el ajuste</button>}
                     </td>
                     <td className="py-1 text-right font-mono">{m.venta ? plata(m.venta, "ARS") : ""}</td>
                     <td className="py-1 text-right font-mono">{m.cobro ? plata(m.cobro, "ARS") : ""}</td>
@@ -388,6 +410,7 @@ function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
       </div>
       {modal === "cobrar" && cliente && <Cobrar datos={datos} cliente={cliente} onCerrar={() => setModal(null)} onHecho={() => { setModal(null); onCambio(); }} />}
       {modal === "datos" && cliente && <DatosCliente cliente={cliente} onCerrar={() => setModal(null)} onGuardado={() => { setModal(null); onCambio(); }} />}
+      {modal === "ajuste" && <AjusteSaldo lado="cliente" clave={saldo.clave} nombre={saldo.nombre} saldo={saldo.saldo} onCerrar={() => setModal(null)} onHecho={() => { setModal(null); onCambio(); }} />}
       {modal === "unir" && cliente && <Unir cliente={cliente} datos={datos} onCerrar={() => setModal(null)} onHecho={() => { setModal(null); onCambio(); }} />}
     </Modal>
   );
@@ -395,7 +418,7 @@ function Ficha({ saldo, datos, cuentasDeu, onCerrar, onCambio }) {
 
 /* ─── Saldos iniciales ───────────────────────────────────────────────── */
 
-function SaldosIniciales({ datos, cuentasDeu, onCerrar, onCargados }) {
+export function SaldosIniciales({ datos, cuentasDeu, onCerrar, onCargados }) {
   const toast = useToast();
   const [grilla, setGrilla] = useState(null);
   const [fecha, setFecha] = useState(hoyAr());

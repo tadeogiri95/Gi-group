@@ -4,7 +4,8 @@
 //   GET ?tipo=semana|mes&fecha=AAAA-MM-DD → el reporte de la semana (lunes a
 //       domingo) o del mes de esa fecha; ?tipo=rango&fecha=desde&hasta=AAAA-MM-DD
 //       entre dos fechas (hasta 12 meses; 11/11): resultados, flujo de caja, posición
-//       de fondos, valores a cobrar y a pagar, cuentas a cobrar y a pagar.
+//       de fondos, valores a cobrar y a pagar, cuentas a cobrar y a pagar. Las entregas suman las OT terminadas sin
+//       precio en el Plan con su valor estimado por materiales (18/11).
 //       Se arma en el momento; no guarda nada.
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige).
@@ -15,6 +16,7 @@ import { hoyAr } from "../../../lib/finanzasOperaciones";
 import { CLAVE_RESULTADOS, configResultados } from "../../../lib/finanzasResultados";
 import { CLAVE_FLUJO, validarLineasFlujo } from "../../../lib/finanzasFlujo";
 import { errorPeriodo, periodoReporte, reporteFinanciero } from "../../../lib/finanzasReporte";
+import { entregasEstimadas } from "../../../lib/finanzasEntregasEstimadas";
 
 const COLUMNAS = "id,fecha,tipo,proveedor_id,cliente_id,entidad,proyecto_id,centro_costo,neto,total,total_ars,moneda,cuenta_debe,cuenta_haber,estado,origen,origen_id,anulada_at";
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data || []);
@@ -45,9 +47,11 @@ export async function GET(request) {
       leer(sesion, `proveedores?empresa_id=eq.${e}&select=id,nombre&order=id.asc`, 10000),
       sbGet(`empresa?id=eq.${e}&select=nombre&limit=1`, { silent: true, fallback: [] }),
     ]);
+    // Las OT terminadas sin precio en el Plan, con su valor estimado (18/11)
+    const { estimadas } = await entregasEstimadas(sesion, periodo.desde, periodo.hasta);
     const reporte = reporteFinanciero({
       tipo, fecha, hasta, ops, cuentas, tesoreria, proyectos, centros, lineas: validarLineasFlujo(cfgFlujo || {}),
-      materialesPct: configResultados(cfgRes).materiales_pct, cheques, clientes, proveedores, hoy,
+      materialesPct: configResultados(cfgRes).materiales_pct, cheques, clientes, proveedores, hoy, entregasEstimadas: estimadas,
     });
     return NextResponse.json({ ...reporte, empresa: empresas?.[0]?.nombre || "" });
   } catch (err) {

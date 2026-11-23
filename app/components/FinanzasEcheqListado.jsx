@@ -8,6 +8,9 @@
 // recibidos por la cuenta del emisor, busca cada cheque por su Id. o por
 // número y monto, y muestra qué cambia, qué se suma y qué ya estaba. Vos
 // elegís y confirmás. Subir el mismo listado otra vez no repite nada.
+// 16/11: si un débito o depósito no se encuentra en el banco pero hay algo
+// del mismo importe cerca, ese cheque no se cambia: sale en "¿Ya está en el
+// banco?" y se carga solo si confirmás que es otro distinto.
 import { useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { plata } from "../lib/finanzasOperaciones";
@@ -35,6 +38,7 @@ export default function ListadoEcheq({ onCerrar, onAplicado }) {
   const [fuera, setFuera] = useState(() => new Set());
   const [abiertos, setAbiertos] = useState(() => new Set(["cambia", "no"]));
   const [guardando, setGuardando] = useState(false);
+  const [dudosos, setDudosos] = useState(null);
 
   async function subir(file) {
     if (!file) return;
@@ -66,18 +70,24 @@ export default function ListadoEcheq({ onCerrar, onAplicado }) {
   const alternar = (id) => setFuera((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const alternarGrupo = (que) => setAbiertos((s) => { const n = new Set(s); if (n.has(que)) n.delete(que); else n.add(que); return n; });
 
-  async function aplicar() {
+  async function aplicar(forzar = null) {
     setError(null);
     setGuardando(true);
     try {
+      const ids = forzar || elegidos.map((f) => f.c.id_banco);
       const r = await apiFetch("/api/finanzas/cheques/listado", {
         method: "POST",
-        body: JSON.stringify({ accion: "aplicar", cheques: datos.cheques, cuenta_propia: cuentaPropia, cuit_empresa: cuit, cuenta_banco: banco, elegidos: elegidos.map((f) => f.c.id_banco) }),
+        body: JSON.stringify({ accion: "aplicar", cheques: datos.cheques, cuenta_propia: cuentaPropia, cuit_empresa: cuit, cuenta_banco: banco, elegidos: ids, ...(forzar ? { forzar } : {}) }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || "No se pudo poner al día");
       toast.success(`✅ ${d.cambiados} cheques cambiados${d.unidos_al_banco ? ` (${d.unidos_al_banco} unidos al movimiento del banco)` : ""}, ${d.sumados} sumados${d.solo_id ? `, ${d.solo_id} unidos con el banco` : ""}`);
       if (d.errores?.length) toast.error(d.errores.slice(0, 3).join(" · "));
+      if (d.dudosos?.length) {
+        setDudosos(d.dudosos);
+        setGuardando(false);
+        return;
+      }
       onAplicado();
     } catch (e) {
       setError(e.message);
@@ -125,7 +135,7 @@ export default function ListadoEcheq({ onCerrar, onAplicado }) {
               {resumen.no > 0 && <> · <span className="text-gypi-amber-ink">⚠ {resumen.no} a mano</span></>}
             </p>
             <p className="m-0 text-[12px] text-gypi-dim">
-              Los que se suman entran sin movimiento, como lo copiado del libro: lo que ya se pagó o cobró ya está en tus movimientos. Cuando un débito o un depósito ya está en el banco (del extracto), se une al cheque en vez de cargarse otra vez.
+              Los que se suman entran sin movimiento, como lo copiado del libro: lo que ya se pagó o cobró ya está en tus movimientos. Cuando un débito o un depósito ya está en el banco (del extracto, hasta 35 días después de la fecha de pago), se une al cheque en vez de cargarse otra vez.
             </p>
             {GRUPOS.map(({ que, titulo, elegible }) => {
               const del = plan.filter((f) => f.que === que);
@@ -154,12 +164,25 @@ export default function ListadoEcheq({ onCerrar, onAplicado }) {
             })}
           </>
         )}
+        {dudosos && (
+          <section aria-label="¿Ya está en el banco?" className="rounded-lg border border-gypi-amber/40 bg-gypi-amber/10 p-3 flex flex-col gap-2">
+            <p className="m-0 font-semibold text-gypi-amber-ink">⚠ ¿Ya está en el banco? {dudosos.length === 1 ? "Este cheque no se cambió" : `Estos ${dudosos.length} cheques no se cambiaron`}</p>
+            <p className="m-0 text-[13px]">En el banco hay un movimiento del mismo importe cerca de esa fecha. Si es el mismo, no hagas nada: así no se resta dos veces. Cargalos solo si de verdad es otro movimiento.</p>
+            <ul className="list-none m-0 p-0 flex flex-col gap-1 text-[13px]">
+              {dudosos.map((x) => <li key={x.id_banco}>{x.texto}</li>)}
+            </ul>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" className="g-btn g-btn-secondary" disabled={guardando} onClick={() => aplicar(dudosos.map((x) => x.id_banco))}>Es otro distinto: cargarlos igual</button>
+              <button type="button" className="g-btn g-btn-primary" disabled={guardando} onClick={onAplicado}>Listo, no cargarlos</button>
+            </div>
+          </section>
+        )}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         <div className="flex flex-wrap justify-end gap-2">
           {datos && <button type="button" className="g-btn g-btn-secondary" onClick={() => setDatos(null)}>Subir otro</button>}
-          <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cerrar</button>
+          <button type="button" className="g-btn g-btn-secondary" onClick={dudosos ? onAplicado : onCerrar}>Cerrar</button>
           {datos && (
-            <button type="button" className="g-btn g-btn-primary" disabled={guardando || !elegidos.length || !banco} onClick={aplicar}>
+            <button type="button" className="g-btn g-btn-primary" disabled={guardando || Boolean(dudosos) || !elegidos.length || !banco} onClick={() => aplicar()}>
               {guardando ? "Guardando…" : `Poner al día ${elegidos.length} cheques`}
             </button>
           )}

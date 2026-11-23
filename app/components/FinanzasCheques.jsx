@@ -12,7 +12,7 @@ import { apiFetch } from "../lib/supabase";
 import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import { emparejarProveedor } from "../lib/finanzasProveedores";
 import {
-  ACCIONES, BANCO_ECHEQ, ESTADOS_CHEQUE, NOMBRE_ACCION, TIPOS_CHEQUE, calendarioCheques, chequesDelLibro, cuentaBancoDe,
+  ACCIONES, SE_DESHACEN, BANCO_ECHEQ, ESTADOS_CHEQUE, NOMBRE_ACCION, TIPOS_CHEQUE, calendarioCheques, chequesDelLibro, cuentaBancoDe,
 } from "../lib/finanzasCheques";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -21,6 +21,8 @@ import ElegirProveedor from "./FinanzasElegirProveedor";
 import { VentanaAltaPersona } from "./AltaPersona";
 import AvisoRepetidos, { repetidosDe } from "./FinanzasAvisoRepetidos";
 import ListadoEcheq from "./FinanzasEcheqListado";
+import BotonesExportar from "./FinanzasExportar";
+import { informeCheques } from "../lib/finanzasInformesSueltos";
 
 const fechaCorta = (f) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(2, 4)}` : "");
 const normal = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -173,6 +175,47 @@ function Detalle({ ch, datos, onCerrar, onCambiado }) {
     }
   }
 
+  // 19/11: deshacer el último cambio (un cheque marcado por error)
+  const [deshacer, setDeshacer] = useState(null);
+  async function probarDeshacer() {
+    setError(null);
+    setGuardando(true);
+    try {
+      const r = await postCheques({ accion: "deshacer", id: ch.id, probar: true });
+      setDeshacer(r);
+    } catch (e) {
+      setError(e.message);
+    }
+    setGuardando(false);
+  }
+  async function confirmarDeshacer() {
+    setError(null);
+    setGuardando(true);
+    try {
+      await postCheques({ accion: "deshacer", id: ch.id });
+      toast.success(`↩ Listo: el cheque volvió a ${ESTADOS_CHEQUE[deshacer.a]?.nombre.toLowerCase() || "como estaba"}`);
+      onCambiado();
+    } catch (e) {
+      setError(e.message);
+      setGuardando(false);
+    }
+  }
+
+  // 19/11: un "propio" que en realidad es de terceros (un e-cheq recibido)
+  const [aTerceros, setATerceros] = useState(false);
+  async function confirmarTerceros() {
+    setError(null);
+    setGuardando(true);
+    try {
+      await postCheques({ accion: "a_terceros", id: ch.id });
+      toast.success("Listo: el cheque está en la cartera de terceros. Ahora podés marcarlo entregado a un proveedor.");
+      onCambiado();
+    } catch (e) {
+      setError(e.message);
+      setGuardando(false);
+    }
+  }
+
   // 13/11: el débito o el depósito ya está en el banco (de un extracto o a mano)
   const [repetidos, setRepetidos] = useState(null);
   async function confirmar(extra = {}) {
@@ -220,6 +263,41 @@ function Detalle({ ch, datos, onCerrar, onCambiado }) {
               <button key={a} type="button" className={`g-btn ${a === "anular" || a === "rechazado" ? "g-btn-secondary" : "g-btn-primary"} flex-1`} onClick={() => setAccion(a)}>{NOMBRE_ACCION[a]}</button>
             ))}
           </div>
+        )}
+        {!accion && SE_DESHACEN.includes(ch.estado) && (
+          deshacer ? (
+            <div className="flex flex-col gap-2 mt-2 p-3 rounded-[10px] border border-gypi-border">
+              <p className="m-0 text-[14px] font-semibold">↩ Deshacer: {ESTADOS_CHEQUE[ch.estado]?.nombre}</p>
+              <p className="m-0 text-[13px]">{deshacer.texto}</p>
+              <p className="m-0 text-[12px] text-gypi-dim">Queda anotado en el cheque quién lo deshizo. Después podés marcarlo como corresponde.</p>
+              {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+              <div className="flex gap-2">
+                <button type="button" className="g-btn g-btn-secondary flex-1" onClick={() => { setDeshacer(null); setError(null); }}>Volver</button>
+                <button type="button" className="g-btn g-btn-primary flex-1" disabled={guardando} onClick={confirmarDeshacer}>{guardando ? "Guardando…" : "Sí, deshacer"}</button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1 mt-2">
+              <button type="button" className="g-btn g-btn-secondary" disabled={guardando} onClick={probarDeshacer}>↩ Deshacer &quot;{ESTADOS_CHEQUE[ch.estado]?.nombre}&quot;</button>
+              <p className="m-0 text-[12px] text-gypi-dim">Si lo marcaste por error, vuelve a como estaba antes y su movimiento se anula.</p>
+              {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+            </div>
+          )
+        )}
+        {!accion && ch.clase === "propio" && ch.estado === "pendiente" && ch.origen !== "pago" && (
+          aTerceros ? (
+            <div className="flex flex-col gap-2 mt-2 p-3 rounded-[10px] border border-gypi-border">
+              <p className="m-0 text-[14px] font-semibold">¿Es un cheque de terceros?</p>
+              <p className="m-0 text-[13px]">Si este cheque no lo firmó la empresa (te lo dio un cliente), pasa a <b>En cartera</b>. Después lo marcás <b>Entregado a un proveedor</b> o <b>Depositado</b>.</p>
+              {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+              <div className="flex gap-2">
+                <button type="button" className="g-btn g-btn-secondary flex-1" onClick={() => { setATerceros(false); setError(null); }}>Volver</button>
+                <button type="button" className="g-btn g-btn-primary flex-1" disabled={guardando} onClick={confirmarTerceros}>{guardando ? "Guardando…" : "Sí, es de terceros"}</button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="g-btn g-btn-secondary mt-1" onClick={() => setATerceros(true)}>No es mío: es un cheque de terceros</button>
+          )
         )}
         {accion && (
           <div className="flex flex-col gap-2 mt-2 p-3 rounded-[10px] border border-gypi-border">
@@ -333,6 +411,54 @@ function CopiarLibro({ datos, onCerrar, onCopiados }) {
 }
 
 /* ─── Pantalla ───────────────────────────────────────────────────────── */
+/* ─── Débitos o depósitos dos veces (16/11) ──────────────────────────── */
+
+/** Los cheques con el movimiento dos veces: queda el del banco y se anula el de Gypi. */
+function ChequesRepetidos({ repetidos, onCerrar, onHecho }) {
+  const toast = useToast();
+  const [ocupado, setOcupado] = useState(false);
+  const [error, setError] = useState(null);
+  async function anular() {
+    setOcupado(true);
+    setError(null);
+    try {
+      const d = await postCheques({ accion: "anular_repetidos" });
+      toast.success(`✅ ${d.anuladas === 1 ? "Se anuló 1 movimiento repetido" : `Se anularon ${d.anuladas} movimientos repetidos`}`);
+      onHecho();
+    } catch (e) {
+      setError(e.message);
+      setOcupado(false);
+    }
+  }
+  return (
+    <Modal open onClose={ocupado ? () => {} : onCerrar} title="Cheques con el movimiento dos veces" maxWidth={680}>
+      <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
+        <p className="m-0 text-[13px] text-gypi-dim">
+          El débito (o el depósito) de estos cheques está dos veces en el banco: el que cargó Gypi al cambiar el cheque y el que ya trajo el extracto.
+          Se queda el del banco (tiene la fecha real), el cheque se une a ese y el de Gypi se anula (queda tachado, no se borra).
+        </p>
+        <ul className="list-none m-0 p-0 flex flex-col gap-2" aria-label="Cheques repetidos">
+          {repetidos.map((r) => (
+            <li key={r.id} className="text-[13px] border-b border-gypi-border pb-2">
+              <span className="flex flex-wrap gap-x-2">
+                <b className="font-mono">{plata(r.importe, "ARS")}</b>
+                <span>Cheque{r.numero ? ` N° ${r.numero}` : ""} · {r.estado === "debitado" ? "debitado" : "depositado"}</span>
+                {r.quien && <span className="text-gypi-dim">{r.quien}</span>}
+              </span>
+              <span className="block text-gypi-red">Se anula: el de Gypi del {fechaCorta(r.gypi.fecha)}</span>
+              <span className="block text-gypi-dim">Queda el {r.otra.origen} del {fechaCorta(r.otra.fecha)}{r.otra.descripcion ? `: ${r.otra.descripcion}` : ""}</span>
+            </li>
+          ))}
+        </ul>
+        {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" className="g-btn g-btn-secondary" disabled={ocupado} onClick={onCerrar}>Cerrar</button>
+          <button type="button" className="g-btn g-btn-primary" disabled={ocupado} onClick={anular}>{ocupado ? "Anulando…" : `Anular ${repetidos.length === 1 ? "el repetido" : `los ${repetidos.length} repetidos`}`}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
 
 export default function FinanzasCheques() {
   const [datos, setDatos] = useState(null);
@@ -343,6 +469,7 @@ export default function FinanzasCheques() {
   const [detalle, setDetalle] = useState(null);
   const [copiar, setCopiar] = useState(false);
   const [listado, setListado] = useState(false);
+  const [verRepetidos, setVerRepetidos] = useState(false);
   const hoy = hoyAr();
 
   const cargar = useCallback(async () => {
@@ -387,11 +514,18 @@ export default function FinanzasCheques() {
         <button type="button" className="g-btn g-btn-secondary ml-auto" onClick={() => setListado(true)}>📥 Subir listado del banco</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setCopiar(true)}>📥 Copiar del libro</button>
       </div>
+      {datos.repetidos?.length > 0 && (
+        <button type="button" onClick={() => setVerRepetidos(true)}
+          className="w-full mb-2 p-3 rounded-lg border border-gypi-red/40 bg-gypi-red/10 text-left text-[14px] font-semibold text-gypi-red cursor-pointer">
+          ⚠ {datos.repetidos.length === 1 ? "1 cheque tiene" : `${datos.repetidos.length} cheques tienen`} el débito o el depósito dos veces en el banco: revisar y anular los repetidos
+        </button>
+      )}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <Chip active={vista === "propios"} onClick={() => setVista("propios")}>Por debitar ({propios.length})</Chip>
         <Chip active={vista === "cartera"} onClick={() => setVista("cartera")}>En cartera ({cartera.length})</Chip>
         <Chip active={vista === "calendario"} onClick={() => setVista("calendario")}>Calendario</Chip>
         <Chip active={vista === "historial"} onClick={() => setVista("historial")}>Historial</Chip>
+        <div className="ml-auto"><BotonesExportar nombre="el Flujo de cheques" informe={() => informeCheques({ calendario, cheques, hoy, quien })} /></div>
       </div>
 
       {vista === "calendario" ? (
@@ -449,6 +583,7 @@ export default function FinanzasCheques() {
 
       {nuevo && <NuevoCheque clase={nuevo} datos={datos} onCerrar={() => setNuevo(null)} onGuardado={() => { setNuevo(null); cargar(); }} />}
       {detalle && <Detalle ch={detalle} datos={datos} onCerrar={() => setDetalle(null)} onCambiado={() => { setDetalle(null); cargar(); }} />}
+      {verRepetidos && <ChequesRepetidos repetidos={datos.repetidos} onCerrar={() => setVerRepetidos(false)} onHecho={() => { setVerRepetidos(false); cargar(); }} />}
       {listado && <ListadoEcheq onCerrar={() => setListado(false)} onAplicado={() => { setListado(false); cargar(); }} />}
       {copiar && <CopiarLibro datos={datos} onCerrar={() => setCopiar(false)} onCopiados={() => { setCopiar(false); cargar(); }} />}
     </div>

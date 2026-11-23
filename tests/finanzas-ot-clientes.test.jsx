@@ -62,8 +62,11 @@ test("cuenta por OT — OT por nombre o alias del cliente, cobros a su OT o sin 
   const r = resumirCliente(hotel);
   assert.deepEqual([r.valor, r.cobrado, r.saldo, r.sin_ot, r.estimadas], [2000, 750, 1250, 200, 1]);
   assert.deepEqual(r.ots.find((o) => o.ot === "7001").saldo, 450);
-  const conIva = resumirCliente(hotel, { conIva: true });
-  assert.deepEqual([conIva.valor, conIva.saldo], [2420, 1670]);
+  assert.equal(r.con_iva, 0, "por defecto sin IVA");
+  // 201: cada OT con su IVA; la 7001 lleva IVA y la 7002 no
+  const conIva = resumirCliente({ ...hotel, ots: hotel.ots.map((o) => (o.ot === "7001" ? { ...o, lleva_iva: true } : o)) });
+  assert.deepEqual([conIva.valor, conIva.saldo, conIva.con_iva], [2210, 1460, 1]);
+  assert.deepEqual((({ neto, iva, valor }) => [neto, iva, valor])(conIva.ots.find((o) => o.ot === "7001")), [1000, 210, 1210]);
   const desde = resumirCliente(hotel, { desde: "2026-10-01" });
   assert.deepEqual([desde.ots.length, desde.cobrado, desde.saldo], [1, 250, 750]);
   const sur = resumirCliente(cs.find((c) => c.clave === "c2"));
@@ -95,10 +98,30 @@ test("/api/finanzas/ot-clientes — solo el Dueño; materiales solo de las OT si
   const d = await res.json();
   const hotel = d.clientes.find((c) => c.clave === "c1");
   assert.deepEqual(hotel.ots.find((o) => o.ot === "7002"), {
-    proyecto_id: 102, ot: "7002", obra: "Habitaciones", descripcion: "", estado: "", fecha: "2026-10-05", valor: 1000, estimado: true, materiales: 300, sin_precio_materiales: 0,
+    proyecto_id: 102, ot: "7002", obra: "Habitaciones", descripcion: "", estado: "", entregada: false, entrega: "", fecha: "2026-10-05", valor: 1000, estimado: true, lleva_iva: false, materiales: 300, sin_precio_materiales: 0,
   });
   assert.equal(pedidos.length, 1);
   assert.match(pedidos[0], /ot=in\.\("7002"\)/, "solo la OT sin presupuesto");
+});
+
+test("Precios del Plan — se leen todas las páginas (más de 1000 OT) y solo las que tienen precio", async () => {
+  const { leerPreciosOt } = await import("../app/lib/finanzasMaterialesOt.js");
+  // 1271 OT con precio, como la planilla del 20/11: Supabase da de a 1000
+  const todas = Array.from({ length: 1271 }, (_, i) => ({ ot: `M-${7000 + i}`, precio: 100 + i }));
+  const urls = [];
+  global.fetch = createFetchMock([
+    { match: (u) => u.includes("/rest/v1/precios_ot"), respond: (u) => {
+      urls.push(decodeURIComponent(u));
+      const q = new URL(u).searchParams;
+      const desde = Number(q.get("offset") || 0);
+      return { status: 200, body: todas.slice(desde, desde + Math.min(Number(q.get("limit") || 1000), 1000)) };
+    } },
+  ]);
+  const precios = await leerPreciosOt(null, E);
+  assert.equal(precios.size, 1271, "no se corta en 1000");
+  assert.equal(precios.get("M-8270"), 1370, "la última OT también tiene su precio");
+  assert.equal(urls.length, 2);
+  assert.ok(urls.every((u) => u.includes("precio=gt.0") && u.includes("order=ot.asc")));
 });
 
 test("Cuenta por OT — saldo por cliente, OT estimada en amarillo, con IVA y lista de OT sin presupuesto", async () => {
@@ -111,8 +134,11 @@ test("Cuenta por OT — saldo por cliente, OT estimada en amarillo, con IVA y li
   await waitFor(() => assert.ok(screen.getByText("Hotel Norte")));
   assert.ok(screen.getByText(/Falta cobrar en total/).textContent.includes("3.250,00"));
   assert.ok(screen.getByText(/⚠ Estimado: falta el presupuesto/).textContent.includes("2 artículos sin precio"));
-  fireEvent.click(screen.getByLabelText(/Con IVA/));
-  assert.ok(screen.getByText(/Falta cobrar en total/).textContent.includes("4.090,00"));
+  // 201: la 7001 (1000) pasa a llevar IVA → +210
+  const casilla = screen.getAllByLabelText(/Lleva IVA/).find((x) => x.closest("tr").textContent.includes("7001"));
+  fireEvent.click(casilla);
+  await waitFor(() => assert.ok(screen.getByText(/Falta cobrar en total/).textContent.includes("3.460,00")));
+  assert.match(screen.getByText(/Falta cobrar en total/).textContent, /1 OT con IVA/);
   fireEvent.click(screen.getByRole("button", { name: /OT sin presupuesto \(1\)/ }));
   assert.ok(screen.getByRole("table", { name: "OT sin presupuesto" }).textContent.includes("7002"));
 });
@@ -130,9 +156,42 @@ test("Ficha del cliente — las OT que componen la deuda, con IVA", async () => 
   assert.equal(screen.getByRole("table", { name: "OT del cliente" }).querySelectorAll("tbody tr").length >= r.ots.length, true);
   for (const o of r.ots) assert.ok(screen.getByRole("table", { name: "OT del cliente" }).textContent.includes(o.ot));
   assert.ok(screen.getByText(/Según sus OT falta cobrar/).textContent.includes("sin IVA"));
-  fireEvent.click(screen.getByLabelText(/Con IVA/));
-  assert.ok(screen.getByText(/Según sus OT falta cobrar/).textContent.includes("con IVA"));
+  for (const x of screen.getAllByLabelText(/Lleva IVA/)) fireEvent.click(x);
+  await waitFor(() => assert.ok(screen.getByText(/Según sus OT falta cobrar/).textContent.includes("(con IVA)")));
   unmount();
   render(<ComposicionOt clave="c999999" />);
   await waitFor(() => assert.ok(screen.getByText(/no tiene OT en el Plan/)));
+});
+
+// ─── 201: "Lleva IVA (21 %)" en cada OT ───
+
+test("IVA por OT — la casilla guarda lleva_iva en la OT, muestra el total con IVA y avisa si falta la 201", async () => {
+  const { default: IvaOt } = await import("../app/components/IvaOt.jsx");
+  const { validarPatch } = await import("../app/lib/dataPolicy.js");
+  const { describirCambio } = await import("../app/lib/historialOt.js");
+  const { textoIvaOt } = await import("../app/lib/finanzasOtClientes.js");
+  assert.equal(textoIvaOt(1000, false), "Sin IVA: $ 1.000");
+  assert.equal(textoIvaOt(1000, true), "Con IVA: $ 1.210 ($ 1.000 + IVA)");
+  const pedidos = [];
+  global.fetch = async (u, o) => { pedidos.push({ u: String(u), o }); return new Response("[]", { status: 200 }); };
+  let guardado = null;
+  render(<IvaOt proyecto={{ id: 55, ot: "7001", lleva_iva: false }} precio={1000} onGuardado={(x) => { guardado = x; }} />);
+  assert.ok(screen.getByText("Sin IVA: $ 1.000"));
+  fireEvent.click(screen.getByLabelText(/Lleva IVA/));
+  await waitFor(() => assert.deepEqual(guardado, { id: 55, lleva_iva: true }));
+  assert.ok(screen.getByText("Con IVA: $ 1.210 ($ 1.000 + IVA)"));
+  const patch = pedidos.find((p) => String(p.o?.body || "").includes("lleva_iva"));
+  assert.ok(patch, "se guardó por /api/data");
+  assert.match(String(patch.o.body), /proyectos\?id=eq\.55/);
+  assert.match(String(patch.o.body), /"lleva_iva":true/);
+  cleanup();
+  global.fetch = async () => new Response(JSON.stringify({ error: "column proyectos.lleva_iva does not exist" }), { status: 400 });
+  render(<IvaOt proyecto={{ id: 55, ot: "7001" }} precio={1000} />);
+  fireEvent.click(screen.getByLabelText(/Lleva IVA/));
+  await waitFor(() => assert.match(screen.getByRole("alert").textContent, /migración 201/));
+  // Solo true o false; y queda en el historial de la OT con su texto
+  assert.equal(validarPatch("proyectos", { lleva_iva: "si" }, { rol: "gerencial" })?.status, 400);
+  assert.equal(validarPatch("proyectos", { lleva_iva: true }, { rol: "gerencial" }), null);
+  assert.equal(describirCambio({ tabla: "proyectos", metodo: "PATCH", campos: { lleva_iva: true } }), "Marcó que la OT lleva IVA (21 %)");
+  assert.equal(describirCambio({ tabla: "proyectos", metodo: "PATCH", campos: { lleva_iva: false } }), "Marcó que la OT va sin IVA");
 });

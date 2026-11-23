@@ -12,11 +12,18 @@
 // actualizar las cotizaciones, la diferencia entre lo que valen y el saldo de
 // la cuenta entra como Diferencia cotización Títulos. Lo que está en dólares
 // se pasa a pesos con el tipo de cambio del día.
+//
+// Corregir un título (pedido del 19/11): cambia sus datos (moneda, láminas,
+// cotización…) sin cargar ninguna operación, y cada cambio queda en el
+// historial del título (mismo formato que app/lib/historialCambios.js).
+
+import { conEntrada, diferencias, entradaCorreccion } from "./historialCambios";
 
 export const CLAVE_TITULOS = "finanzas_titulos";
 export const ORIGEN_FCI = "fci";
 export const ORIGEN_TITULOS = "titulos";
 export const MAX_ESPECIES = 100;
+export const MAX_HISTORIAL_TITULO = 50;
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const centavos = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -121,7 +128,19 @@ export function especieValida(e = {}) {
     especie, nombre: txt(e.nombre, 80), clase: e.clase === "privado" ? "privado" : "publico",
     moneda: e.moneda === "USD" ? "USD" : "ARS", laminas: Math.round(laminas * 10000) / 10000, cotizacion: Math.round(cotizacion * 10000) / 10000, por,
     fecha_cotizacion: fechaValida(e.fecha_cotizacion) ? e.fecha_cotizacion : null,
+    ...(Array.isArray(e.historial) && e.historial.length ? { historial: limpiarHistorial(e.historial) } : {}),
   };
+}
+
+/** El historial de un título como viene guardado: solo entradas sanas, las últimas MAX_HISTORIAL_TITULO. */
+function limpiarHistorial(lista) {
+  return lista
+    .filter((h) => h && typeof h === "object" && typeof h.at === "string" && Array.isArray(h.cambios))
+    .map((h) => ({
+      at: h.at.slice(0, 40), por: h.por ? String(h.por).slice(0, 120) : null, accion: "corregida",
+      cambios: h.cambios.filter((c) => c && typeof c.campo === "string").slice(0, 20).map((c) => ({ campo: c.campo.slice(0, 30), antes: c.antes ?? null, despues: c.despues ?? null })),
+    }))
+    .slice(-MAX_HISTORIAL_TITULO);
 }
 
 /** La lista guardada (vieja o rota → vacía). */
@@ -213,4 +232,41 @@ export function movimientoTitulo({ especie, como, laminas, importe, caja, fecha,
   else op = base(fecha, tipo, cuenta, ctx.ajuste, imp, `Tenencia que ya había: ${texto}`, ORIGEN_TITULOS, `tim:${marca}`);
   const nuevas = como === "venta" ? (Number(especie.laminas) || 0) - l : (Number(especie.laminas) || 0) + l;
   return { op, laminas: Math.round(nuevas * 10000) / 10000, errores };
+}
+
+/* ─── Corregir un título ──────────────────────────────────────────────── */
+
+/** Lo que se puede corregir de un título, con su nombre visible. */
+export const CAMPOS_TITULO = ["especie", "nombre", "clase", "moneda", "por", "laminas", "cotizacion"];
+export const ETIQUETAS_TITULO = { especie: "Especie", nombre: "Nombre", clase: "Clase", moneda: "Moneda", por: "Cotiza", laminas: "Láminas", cotizacion: "Cotización" };
+export const FORMATO_TITULO = {
+  clase: (v) => (v === "privado" ? "Privado" : "Público"),
+  moneda: (v) => (v === "USD" ? "Dólares" : "Pesos"),
+  por: (v) => (Number(v) === 1 ? "por lámina" : "cada 100"),
+};
+
+/**
+ * Corrige los datos de un título sin cargar ninguna operación: no hay
+ * compra, venta ni asiento. Lo que cambió queda en el historial del título.
+ * La cuenta contable no se toca: si después el valor en pesos no coincide,
+ * se ve la diferencia como siempre.
+ * @param {{ especie: object, datos: object, lista?: object[], por?: string|null, at?: string }} p
+ * @returns {{ especie?: object, cambios?: object[], errores: string[] }}
+ */
+export function corregirTitulo({ especie, datos = {}, lista = [], por = null, at = new Date().toISOString() }) {
+  if (!especie) return { errores: ["No encontré ese título"] };
+  const pedido = {};
+  for (const c of CAMPOS_TITULO) if (datos[c] !== undefined) pedido[c] = datos[c];
+  const nueva = especieValida({ ...especie, ...pedido, id: especie.id, historial: undefined });
+  if (!nueva) return { errores: ["Revisá el título: la especie (por ejemplo GD35), las láminas y la cotización"] };
+  if (lista.some((x) => x.id !== especie.id && x.especie === nueva.especie)) return { errores: [`${nueva.especie} ya está en la lista`] };
+  const cambios = diferencias(especie, nueva, CAMPOS_TITULO);
+  if (!cambios.length) return { errores: ["No cambiaste nada"] };
+  const historial = conEntrada(especie.historial, entradaCorreccion({ por, at, cambios })).slice(-MAX_HISTORIAL_TITULO);
+  const cambioCotizacion = cambios.some((c) => c.campo === "cotizacion" || c.campo === "moneda" || c.campo === "por");
+  return {
+    especie: { ...nueva, fecha_cotizacion: cambioCotizacion && nueva.cotizacion > 0 ? at.slice(0, 10) : especie.fecha_cotizacion || null, historial },
+    cambios,
+    errores: [],
+  };
 }

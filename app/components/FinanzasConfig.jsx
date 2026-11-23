@@ -15,6 +15,7 @@ import FinanzasLibroScript from "./FinanzasLibroScript";
 import FinanzasHistorico from "./FinanzasHistorico";
 import FinanzasCuadrar from "./FinanzasCuadrar";
 import FinanzasTipos from "./FinanzasTipos";
+import { PctMateriales } from "./FinanzasPctMateriales";
 import { HOJA_FLUJO, HOJA_OPERACIONES, TABLAS_FIN, TIPOS_TESORERIA, leerLibro } from "../lib/finanzas";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -356,6 +357,7 @@ export default function FinanzasConfig() {
       {!vacio && <FinanzasHistorico onPasado={cargar} />}
       {!vacio && <FinanzasCuadrar onCambio={cargar} />}
       {!vacio && <FinanzasTipos onPasado={cargar} />}
+      {!vacio && <PctMateriales />}
 
       {!vacio && (
         <section aria-label="Configuración de Finanzas">

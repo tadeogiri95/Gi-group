@@ -11,7 +11,7 @@ import { fechaDeSerie, hojasXls, leerHojaXls } from "../app/lib/leerXls.js";
 import { grillaDeArchivo } from "../app/lib/finanzasExtracto.js";
 import {
   contextoPlazos, cuentasPorDefecto, estadoDePlazos, interesesPorCobrar, leerPlazosFijos, listaPlazos,
-  planPlazosFijos, unirPlazos, vencidosPendientes,
+  planPlazosFijos, unirPlazos, vencidosPendientes, lineasDelBanco, repetidosConElBanco, arreglosDelBanco, interesesSinRegistrar,
 } from "../app/lib/finanzasPlazosFijos.js";
 import { flujoPrevisto } from "../app/lib/finanzasFlujo.js";
 
@@ -25,6 +25,8 @@ afterEach(() => cleanup());
 const { signAccessToken } = await import("../app/lib/jwt.ts");
 const api = await import("../app/api/finanzas/plazos-fijos/route.js");
 const { default: FinanzasPlazosFijos } = await import("../app/components/FinanzasPlazosFijos.jsx");
+const { registrarInteresesDelBanco, plazosSinInteres } = await import("../app/lib/finanzasPlazosFijosServidor.js");
+const { default: AvisoPlazosSinInteres } = await import("../app/components/AvisoPlazosSinInteres.jsx");
 
 const E = "11111111-1111-1111-1111-111111111111";
 const EMP = "22222222-2222-2222-2222-222222222222";
@@ -168,7 +170,7 @@ test("vencidos, lista e intereses para el flujo", () => {
   const guardados = [P1, P2, P3].map((p) => ({ ...p, banco: BANCO, cuenta_pf: PF }));
   const ops = [...DEL_LIBRO, { id: 7, fecha: "2026-10-29", tipo: "PLAZO FIJO", total: 2000000, cuenta_debe: PF, cuenta_haber: BANCO, descripcion: "x", origen: "plazo_fijo", origen_id: "pf10000002:c" }];
   const pend = vencidosPendientes(guardados, ops, [PF], "2026-11-11");
-  assert.deepEqual(pend.map((p) => [p.certificado, p.falta]), [["10000001", { r: true, i: false }], ["10000002", { r: true, i: true }]]);
+  assert.deepEqual(pend.map((p) => [p.certificado, p.falta]), [["10000001", { r: true, i: false, ajustes: [], interes_junto: null }], ["10000002", { r: true, i: true, ajustes: [], interes_junto: null }]]);
   const lista = listaPlazos(guardados, ops, [PF], "2026-11-11");
   assert.deepEqual(lista.map((p) => p.situacion), ["vencido", "vencido", "sin_cargar"]);
   const terminado = listaPlazos(guardados, [...ops, { id: 8, fecha: "2026-11-02", total: 1000000, cuenta_debe: BANCO, cuenta_haber: PF, descripcion: "Vencimiento Plazo Fijo (Exento) Operacion: 10000001", origen: "libro" }], [PF], "2026-11-11");
@@ -200,6 +202,7 @@ const pedir = async (rol, metodo, body) => api[metodo](new Request("http://local
 
 function mockApi(enBanco = []) {
   const insertado = [];
+  const parches = [];
   const config = { filas: [] };
   const tabla = { fin_tesoreria: TESORERIA, fin_tipos_operacion: TIPOS, fin_cuentas: CUENTAS, empleados: [{ nombre: "Tadeo" }] };
   const ops = [...DEL_LIBRO.filter((o) => !o.anulada_at), ...enBanco];
@@ -222,12 +225,20 @@ function mockApi(enBanco = []) {
           filas.forEach((f, i) => { insertado.push(f); ops.push({ ...f, id: 500 + ops.length + i }); });
           return { status: 201, body: filas };
         }
+        if (o?.method === "PATCH") {
+          const id = Number(u.match(/id=eq\.(\d+)/)?.[1]);
+          const cambio = JSON.parse(o.body);
+          parches.push({ id, ...cambio });
+          const op = ops.find((x) => x.id === id);
+          if (op) Object.assign(op, cambio);
+          return { status: 200, body: op ? [op] : [] };
+        }
         return { status: 200, body: ops };
       },
     },
     { match: (u) => /\/rest\/v1\/(fin_|empleados)/.test(u), respond: (u) => ({ status: 200, body: tabla[u.split("/rest/v1/")[1].split("?")[0]] || [] }) },
   ]);
-  return { insertado, config };
+  return { insertado, config, parches };
 }
 
 test("/api/finanzas/plazos-fijos — solo el Dueño; ver, cargar sin repetir y registrar los vencidos", async () => {
@@ -322,17 +333,121 @@ test("Plazos fijos — lista, aviso de vencidos e importar la planilla del banco
   assert.equal(cargar.fechas["10000003"], "2026-10-15");
 });
 
-test("/api/finanzas/plazos-fijos — lo que el extracto ya trajo (el rescate con el interés en un renglón) no se carga sin OK (13/11)", async () => {
+test("/api/finanzas/plazos-fijos — el rescate del extracto (capital e interés en un renglón, contra otra cuenta) no se carga de nuevo: pasa a la cuenta del plazo fijo y el interés va aparte (19/11)", async () => {
   const rescate = { id: 70, fecha: "2026-11-03", tipo: "OTROS INGRESOS", total: 2080000, total_ars: 2080000, cuenta_debe: BANCO, cuenta_haber: "04.01.09.001.001", descripcion: "PF RESCATE", origen: "banco" };
-  const { insertado } = mockApi([rescate]);
+  const { insertado, parches } = mockApi([rescate]);
   const ver = await (await pedir("gerencial", "POST", { accion: "ver", plazos: [P2], banco: BANCO, cuenta_pf: PF, exportado: "2026-10-29" })).json();
-  assert.equal(ver.filas[0].repetidos.length, 1);
-  assert.match(ver.filas[0].repetidos[0], /🔴 Ya hay en BANCO CREDICOOP CTA CTE .* el mismo día/);
-  const sinOk = await pedir("gerencial", "POST", { accion: "cargar", plazos: [P2], banco: BANCO, cuenta_pf: PF, exportado: "2026-10-29" });
-  assert.equal(sinOk.status, 409);
-  assert.deepEqual((await sinOk.json()).certificados, ["10000002"]);
-  assert.equal(insertado.length, 0);
-  const conOk = await pedir("gerencial", "POST", { accion: "cargar", plazos: [P2], banco: BANCO, cuenta_pf: PF, exportado: "2026-10-29", forzar: ["10000002"] });
-  assert.equal(conOk.status, 200);
-  assert.ok(insertado.length > 0);
+  const pasos = ver.filas[0].ops.map((o) => String(o.origen_id).split(":")[1]);
+  assert.deepEqual(pasos, ["c", "ij"], "la constitución y el interés aparte; ni vencimiento ni interés del banco otra vez");
+  assert.deepEqual(ver.filas[0].cambios, [{ id: 70, cuenta_haber: PF }]);
+  const r = await pedir("gerencial", "POST", { accion: "cargar", plazos: [P2], banco: BANCO, cuenta_pf: PF, exportado: "2026-10-29" });
+  assert.equal(r.status, 200);
+  const ij = insertado.find((o) => String(o.origen_id).endsWith(":ij"));
+  assert.deepEqual([ij.cuenta_debe, ij.cuenta_haber, ij.total], [PF, INTERESES, 80000]);
+  assert.deepEqual(parches.map((x) => [x.id, x.cuenta_haber]), [[70, PF]]);
+  const otra = await (await pedir("gerencial", "POST", { accion: "ver", plazos: [P2], banco: BANCO, cuenta_pf: PF, exportado: "2026-10-29" })).json();
+  assert.equal(otra.filas[0].ops.length, 0, "la segunda vez no hay nada para cargar");
+});
+
+test("20/11 — al subir el extracto, el interés que vino con el capital se registra solo (sin botón) y una sola vez", async () => {
+  const rescate = { id: 71, fecha: "2026-11-03", tipo: "PLAZO FIJO", total: 2080000, total_ars: 2080000, cuenta_debe: BANCO, cuenta_haber: PF, descripcion: "RESCATE PF", origen: "banco" };
+  const constitucion = { id: 72, fecha: "2026-10-04", tipo: "PLAZO FIJO", total: 2000000, cuenta_debe: PF, cuenta_haber: BANCO, descripcion: "Constitución · Operacion: 10000002", origen: "plazo_fijo", origen_id: "pf10000002:c" };
+  const { insertado, config } = mockApi([rescate, constitucion]);
+  config.filas = [{ valor: { plazos: [{ ...P2, banco: BANCO, cuenta_pf: PF }] } }];
+  const sesion = { empresa_id: E, empleado_id: EMP, rol: "gerencial" };
+  const antes = await plazosSinInteres(sesion);
+  assert.deepEqual([antes.cantidad, antes.importe], [1, 80000], "el aviso: falta el interés");
+  const r = await registrarInteresesDelBanco(sesion, { quien: "Tadeo" });
+  assert.deepEqual([r.cargadas, r.interes], [1, 80000]);
+  const ij = insertado.find((o) => String(o.origen_id) === "pf10000002:ij");
+  assert.deepEqual([ij.cuenta_debe, ij.cuenta_haber, ij.total, ij.fecha], [PF, INTERESES, 80000, P2.vencimiento], "Debe el plazo fijo / Haber Intereses Ganados: el banco no cambia");
+  assert.ok(!insertado.some((o) => o.cuenta_debe === BANCO || o.cuenta_haber === BANCO), "no toca la cuenta del banco");
+  const otra = await registrarInteresesDelBanco(sesion, { quien: "Tadeo" });
+  assert.equal(otra.cargadas, 0, "la segunda vez no repite");
+  assert.equal((await plazosSinInteres(sesion)).cantidad, 0, "ya no hay aviso");
+});
+
+test("20/11 — aviso de plazos vencidos sin interés registrado", () => {
+  assert.deepEqual(interesesSinRegistrar([
+    { certificado: "1", interes: 100, falta: { r: true, i: true, ajustes: [], interes_junto: null } },
+    { certificado: "2", interes: 50, falta: { r: false, i: false, ajustes: [], interes_junto: 40 } },
+    { certificado: "3", interes: 70, falta: { r: true, i: false, ajustes: [], interes_junto: null } },
+  ]), { cantidad: 2, importe: 140, certificados: ["1", "2"] });
+  const { container, rerender } = render(<AvisoPlazosSinInteres datos={{ cantidad: 0, importe: 0 }} />);
+  assert.equal(container.textContent, "");
+  rerender(<AvisoPlazosSinInteres datos={{ cantidad: 2, importe: 140 }} />);
+  assert.match(screen.getByRole("status").textContent, /2 plazos fijos vencieron.*\$ 140,00.*Subí el extracto/);
+});
+
+// 16/11: el interés que trajo el extracto con otro tipo, y el renglón con capital e interés juntos
+test("estadoDePlazos — el interés del extracto cuenta aunque tenga otro tipo; el renglón con capital e interés juntos cuenta como las dos cosas", () => {
+  const p = plazo("20000001", 1000000, 40000, "2026-11-02");
+  const capital = { id: 1, fecha: "2026-11-02", tipo: "PLAZO FIJO", total: 1000000, cuenta_debe: BANCO, cuenta_haber: PF, descripcion: "Acred. plazo fijo", origen: "banco" };
+  const interesOtroTipo = { id: 2, fecha: "2026-11-03", tipo: "COBRO INTERESES", total: 40000, cuenta_debe: BANCO, cuenta_haber: INTERESES, descripcion: "Intereses plazo fijo", origen: "banco" };
+  const sinPista = estadoDePlazos([p], [capital, { ...interesOtroTipo, descripcion: "Transferencia" }], [PF]).get("20000001");
+  assert.equal(sinPista.i, null, "sin saber cuál es Intereses Ganados ni decir plazo fijo o interés, no lo reconoce");
+  const sinCuenta = estadoDePlazos([p], [capital, interesOtroTipo], [PF]).get("20000001");
+  assert.equal(sinCuenta.i?.id, 2, "con la palabra interés sí (19/11)");
+  const e = estadoDePlazos([p], [capital, interesOtroTipo], [PF], { cuentasInteres: [INTERESES] }).get("20000001");
+  assert.deepEqual([e.r?.id, e.i?.id], [1, 2]);
+  const contraPf = estadoDePlazos([p], [capital, { ...interesOtroTipo, cuenta_haber: PF }], [PF]).get("20000001");
+  assert.equal(contraPf.i?.id, 2, "contra la cuenta del plazo fijo también");
+  const juntos = { id: 3, fecha: "2026-11-02", tipo: "PLAZO FIJO", total: 1040000, cuenta_debe: BANCO, cuenta_haber: PF, descripcion: "Acred. plazo fijo", origen: "banco" };
+  const j = estadoDePlazos([p], [juntos], [PF]).get("20000001");
+  assert.deepEqual([j.r?.id, j.i?.id], [3, 3]);
+  const plan = planPlazosFijos({ plazos: [{ ...p, constituido: "2026-10-01" }], ops: [{ id: 4, fecha: "2026-10-01", tipo: "PLAZO FIJO", total: 1000000, cuenta_debe: PF, cuenta_haber: BANCO, origen: "banco", descripcion: "" }, juntos], ctx: CTX, cuentasPf: [PF], hoy: "2026-11-11" });
+  assert.deepEqual(plan.ops.map((o) => [o.origen_id, o.cuenta_debe, o.cuenta_haber, o.total]), [["pf20000001:ij", PF, INTERESES, 40000]],
+    "no se vuelve a sumar el banco: solo el interés, de la cuenta del plazo fijo a Intereses Ganados (19/11)");
+  const conIj = planPlazosFijos({ plazos: [{ ...p, constituido: "2026-10-01" }], ops: [{ id: 4, fecha: "2026-10-01", tipo: "PLAZO FIJO", total: 1000000, cuenta_debe: PF, cuenta_haber: BANCO, origen: "banco", descripcion: "" }, juntos, { ...plan.ops[0], id: 5 }], ctx: CTX, cuentasPf: [PF], hoy: "2026-11-11" });
+  assert.equal(conIj.ops.length, 0, "con el interés aparte ya registrado no hay nada más");
+  assert.equal(vencidosPendientes([{ ...p, banco: BANCO, cuenta_pf: PF }], [{ id: 4, fecha: "2026-10-01", total: 1000000, cuenta_debe: PF, cuenta_haber: BANCO, origen: "banco", descripcion: "" }, capital, interesOtroTipo], [PF], "2026-11-11", { cuentasInteres: [INTERESES] }).length, 0);
+});
+
+// 19/11: el interés de los plazos fijos se cargaba dos veces aunque el banco ya lo había traído
+test("lineasDelBanco — junto, con retención o contra otra cuenta; capital e interés por separado", () => {
+  const p = plazo("30000001", 1000000, 40000, "2026-11-16");
+  const pfs = new Set([PF]);
+  const op = (id, total, extra = {}) => ({ id, fecha: "2026-11-16", tipo: "OTROS INGRESOS", total, cuenta_debe: BANCO, cuenta_haber: "04.01.09.001.001", descripcion: "", origen: "banco", ...extra });
+  assert.equal(lineasDelBanco(p, [op(1, 1040000)], { pfs }).juntos?.id, 1, "capital + interés, contra otra cuenta");
+  assert.equal(lineasDelBanco(p, [op(1, 1032000)], { pfs }).juntos?.id, 1, "con retención de parte del interés");
+  assert.equal(lineasDelBanco(p, [op(1, 1010000)], { pfs }).juntos, null, "retuvo más de la mitad: no es este");
+  assert.equal(lineasDelBanco(p, [op(1, 1040000, { fecha: "2026-11-30" })], { pfs }).juntos, null, "muy lejos del vencimiento");
+  assert.equal(lineasDelBanco(p, [op(1, 1040000)], { pfs, banco: "01.01.01.003.001" }).juntos, null, "en otro banco");
+  const sep = lineasDelBanco(p, [op(1, 1000000), op(2, 38000, { descripcion: "Interes PF" }), op(3, 39000)], { pfs });
+  assert.deepEqual([sep.capital?.id, sep.interes?.id], [1, 2], "el interés solo si dice plazo fijo, interés o el certificado");
+  assert.equal(lineasDelBanco(p, [op(2, 40000)], { pfs }).interes, null, "un cobro cualquiera del mismo importe no es el interés");
+  assert.equal(lineasDelBanco(p, [op(2, 40000, { descripcion: "Acred. op 30000001" })], { pfs }).interes?.id, 2);
+});
+
+test("estadoDePlazos + arreglosDelBanco — el capital del extracto contra otra cuenta pasa a la del plazo fijo; el interés a Intereses Ganados", () => {
+  const p = plazo("30000002", 1000000, 40000, "2026-11-16");
+  const capital = { id: 1, fecha: "2026-11-16", tipo: "OTROS INGRESOS", total: 1000000, cuenta_debe: BANCO, cuenta_haber: "04.01.09.001.001", descripcion: "", origen: "banco" };
+  const interes = { id: 2, fecha: "2026-11-17", tipo: "OTROS INGRESOS", total: 36000, cuenta_debe: BANCO, cuenta_haber: "04.01.09.001.001", descripcion: "Interes plazo fijo", origen: "banco" };
+  const e = estadoDePlazos([p], [capital, interes], [PF], { cuentasInteres: [INTERESES] }).get("30000002");
+  assert.deepEqual([e.r?.id, e.i?.id], [1, 2]);
+  const a = arreglosDelBanco(p, e, CTX);
+  assert.deepEqual(a.cambios, [{ id: 1, cuenta_haber: PF }, { id: 2, cuenta_haber: INTERESES }]);
+  assert.equal(a.ops.length, 0);
+  const ya = estadoDePlazos([p], [{ ...capital, cuenta_haber: PF }, { ...interes, cuenta_haber: INTERESES }], [PF], { cuentasInteres: [INTERESES] }).get("30000002");
+  assert.deepEqual(arreglosDelBanco(p, ya, CTX).cambios, [], "si ya están en su cuenta no se tocan");
+  const pend = vencidosPendientes([{ ...p, banco: BANCO, cuenta_pf: PF }], [{ id: 9, fecha: "2026-10-01", total: 1000000, cuenta_debe: PF, cuenta_haber: BANCO, origen: "banco", descripcion: "" }, capital, interes], [PF], "2026-11-18", { cuentasInteres: [INTERESES] });
+  assert.equal(pend.length, 1, "queda para corregir aunque no falte nada que cargar");
+  assert.deepEqual([pend[0].falta.r, pend[0].falta.i, pend[0].falta.ajustes.length], [false, false, 2]);
+});
+
+test("repetidosConElBanco — el vencimiento y el interés de Gypi que el banco ya trajo (aunque con retención)", () => {
+  const p = { ...plazo("30000003", 1000000, 40000, "2026-11-16"), banco: BANCO, cuenta_pf: PF };
+  const deGypi = [
+    { id: 11, fecha: "2026-11-16", total: 1000000, cuenta_debe: BANCO, cuenta_haber: PF, origen: "plazo_fijo", origen_id: "pf30000003:r" },
+    { id: 12, fecha: "2026-11-16", total: 40000, cuenta_debe: BANCO, cuenta_haber: INTERESES, origen: "plazo_fijo", origen_id: "pf30000003:i" },
+  ];
+  const banco = { id: 20, fecha: "2026-11-17", total: 1034000, cuenta_debe: BANCO, cuenta_haber: "04.01.09.001.001", descripcion: "", origen: "banco" };
+  const r = repetidosConElBanco([p], [...deGypi, banco], [PF]);
+  assert.deepEqual(r.map((x) => [x.gypi.id, x.otra.id]), [[11, 20], [12, 20]]);
+  assert.equal(repetidosConElBanco([p], deGypi, [PF]).length, 0, "sin renglón del banco no hay repetido");
+  // Anuladas las de Gypi: el renglón pasa a la cuenta del plazo fijo y el interés que de verdad entró va aparte
+  const e = estadoDePlazos([p], [banco], [PF], { cuentasInteres: [INTERESES] }).get("30000003");
+  const a = arreglosDelBanco(p, e, CTX);
+  assert.deepEqual(a.cambios, [{ id: 20, cuenta_haber: PF }]);
+  assert.deepEqual(a.ops.map((o) => [o.origen_id, o.cuenta_debe, o.cuenta_haber, o.total]), [["pf30000003:ij", PF, INTERESES, 34000]]);
 });

@@ -27,6 +27,7 @@ import { movimientoCaja, separaIva } from "./finanzasOperaciones";
 import { LETRAS, proveedorDeFactura, textoComprobante } from "./finanzasGastos";
 import { TIPOS_NUEVOS, claveTipo, leyendaTipo, lineaDeLista } from "./finanzasTipos";
 import { clienteDeOt, cuentasDeCliente, indiceClientes } from "./finanzasClientes";
+import { conceptosCajaDisponibles } from "./finanzasConceptosCaja";
 
 export const CLAVE_MI_CAJA = "finanzas_mi_caja";
 export const ORIGEN_MI_CAJA = "mi_caja";
@@ -82,15 +83,49 @@ const grupoDe = (t) => {
   return g ? g[0].toUpperCase() + g.slice(1) : "Otros";
 };
 
-/** Lo que ve el responsable: todos los tipos de gasto y de plata que entra, menos los que escondió el dueño. */
+/**
+ * Lo que se le ofrece a Mi caja, sin mirar lo escondido: la lista fija de
+ * conceptos de caja (14/11, finanzasConceptosCaja) si el plan de cuentas
+ * tiene sus cuentas; si no (una empresa sin el plan copiado), los tipos de
+ * gasto y de plata que entra, como antes.
+ */
+export function conceptosMiCajaTodos(tipos = [], cuentas = []) {
+  const deCliente = cuentasDeCliente(cuentas);
+  const fijos = conceptosCajaDisponibles(tipos, cuentas);
+  if (fijos.gastos.length || fijos.ingresos.length) {
+    const marcar = (c) => (deCliente.has(c.cuenta) ? { ...c, pide_cliente: true } : c);
+    return { gastos: fijos.gastos.map(marcar), ingresos: fijos.ingresos.map(marcar), fijos: true };
+  }
+  return { ...conceptosDeTipos(tipos, cuentas), fijos: false };
+}
+
+/** Lo que ve el responsable: los conceptos de caja, menos los que escondió el dueño. */
 export function conceptosMiCaja(config, tipos = [], cuentas = []) {
   const { ocultos } = leerConfigMiCaja(config);
+  const todos = conceptosMiCajaTodos(tipos, cuentas);
+  return {
+    gastos: todos.gastos.filter((c) => !ocultos.gastos.includes(c.codigo)),
+    ingresos: todos.ingresos.filter((c) => !ocultos.ingresos.includes(c.codigo)),
+  };
+}
+
+/** "PAGO GASTOS DE LOGÍSTICA" → "Pago gastos de logística": un nombre todo en mayúscula se escribe normal. */
+export function nombreNormal(nombre) {
+  const s = String(nombre || "").trim();
+  if (!s || s !== s.toUpperCase() || s === s.toLowerCase() || s.length <= 4) return s;
+  const bajo = s.toLowerCase();
+  return bajo[0].toUpperCase() + bajo.slice(1);
+}
+
+/** Los tipos de gasto y de plata que entra como conceptos (lo de antes del 14/11). */
+function conceptosDeTipos(tipos = [], cuentas = []) {
+  const ocultos = { gastos: [], ingresos: [] };
   const sirven = tiposParaMiCaja(tipos);
   const deCliente = cuentasDeCliente(cuentas);
   const armar = (de, lado, fuera) => de
     .filter((t) => !fuera.includes(t.codigo))
     .map((t) => ({
-      codigo: t.codigo, nombre: txt(t.nombre, 80) || t.codigo, cuenta: t[lado], leyenda: leyendaTipo(t), grupo: grupoDe(t),
+      codigo: t.codigo, nombre: nombreNormal(txt(t.nombre, 80) || t.codigo), cuenta: t[lado], leyenda: leyendaTipo(t), grupo: grupoDe(t),
       ...(deCliente.has(t[lado]) ? { pide_cliente: true } : {}),
     }));
   return { gastos: armar(sirven.gastos, "cuenta_debe", ocultos.gastos), ingresos: armar(sirven.ingresos, "cuenta_haber", ocultos.ingresos) };
@@ -151,13 +186,13 @@ export function validarMovimientoMiCaja(f = {}, { caja, conceptos, confirmada = 
   const elegido = f.proveedor_id ? proveedores.find((p) => Number(p.id) === Number(f.proveedor_id)) : null;
   const proveedor = elegido || (comercio || cuit ? proveedorDeFactura({ emisor: comercio, cuit }, proveedores) : null);
   // 11/11: en sueldos, impuestos o pagos no se separa el IVA
-  const imp = separaIva(concepto) ? importesTicket(f, importe) : { neto: importe, iva: 0, otros: 0, letra: importesTicket(f, importe).letra };
+  const imp = separaIva({ grupo: concepto.grupo_tipo || concepto.grupo }) ? importesTicket(f, importe) : { neto: importe, iva: 0, otros: 0, letra: importesTicket(f, importe).letra };
   const referencia = referenciaTicket(f);
   const cuitTexto = !proveedor && cuit ? `CUIT ${cuitFormato(cuit)}` : "";
   return {
     errores,
     op: {
-      fecha: f.fecha, tipo: concepto.codigo, proveedor_id: proveedor && !cliente ? Number(proveedor.id) : null,
+      fecha: f.fecha, tipo: concepto.tipo || concepto.codigo, proveedor_id: proveedor && !cliente ? Number(proveedor.id) : null,
       entidad: cliente ? txt(cliente.nombre, 120) : proveedor ? null : comercio || null,
       ...(cliente ? { cliente_id: Number(cliente.id) } : {}),
       ...(proyecto ? { proyecto_id: Number(proyecto.id) } : {}),
@@ -210,7 +245,7 @@ export function cambioDeTipoMiCaja(op, tipo, cuentasTesoreria = []) {
 }
 
 /** Saldo de una caja y sus últimos movimientos (el más nuevo primero), para el responsable. */
-export function resumenMiCaja(ops = [], caja, nombresTipo = new Map()) {
+export function resumenMiCaja(ops = [], caja, nombresTipo = new Map(), nombreDe = null) {
   let saldo = 0;
   let revisar = 0;
   const movs = [];
@@ -220,7 +255,7 @@ export function resumenMiCaja(ops = [], caja, nombresTipo = new Map()) {
     saldo += m;
     if (op.estado === "para_revisar") revisar++;
     movs.push({
-      id: op.id, fecha: op.fecha, concepto: nombresTipo.get(op.tipo) || op.tipo, descripcion: op.descripcion || "",
+      id: op.id, fecha: op.fecha, concepto: nombreDe?.(op, caja) || nombresTipo.get(op.tipo) || op.tipo, descripcion: op.descripcion || "",
       entra: m > 0 ? centavos(m) : 0, sale: m < 0 ? centavos(-m) : 0, estado: op.estado, comprobante_url: op.comprobante_url || null,
       propia: op.origen === ORIGEN_MI_CAJA,
     });

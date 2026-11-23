@@ -18,6 +18,12 @@
 // anulan; si la OT se reabre, se anula la entrega. Si el dueño anuló a mano
 // una venta o una entrega, Gypi no la vuelve a crear.
 //
+// IVA por OT (201, 22/11): si la OT tiene tildado "Lleva IVA (21 %)", la
+// venta deja al cliente debiendo el total con IVA (neto a Ventas Generales y
+// el 21 % a IVA Debito Fiscal, el asiento lo arma asientoDe). La entrega
+// sigue siendo por el neto: el IVA no es ingreso. Si se tilda o destilda,
+// se corrige el importe de la venta.
+//
 // Corre al final de cada sincronización del Plan (syncOt) y con el botón
 // "Revisar ahora" de Finanzas → Clientes. Escribe con la llave del servidor
 // (quien sincroniza puede ser un operario) y nunca hace fallar la sync.
@@ -33,7 +39,8 @@ import {
 } from "./finanzasConsumoOt";
 import { materialesRealesDeOts } from "./costoRealServidor";
 import { materialesDeOts } from "./finanzasMaterialesOt";
-import { valorOt } from "./finanzasOtClientes";
+import { FACTOR_ESTIMADO, IVA_OT, valorOt } from "./finanzasOtClientes";
+import { factorMateriales } from "./finanzasPctMateriales";
 
 export const CLAVE_VENTAS_OT = "finanzas_ventas_ot";
 /**
@@ -131,15 +138,19 @@ export function planVentas({ proyectos = [], precios, operaciones = [], clientes
       if (entrega) anular.push({ id: entrega.id, motivo: "Gypi (la OT quedó sin precio)" });
       continue;
     }
+    // La entrega va por el neto; la venta, con el IVA si la OT lo lleva (201)
     const importe = { neto: precio, iva: 0, otros_impuestos: 0, total: precio, total_ars: precio };
-    const cambio = (o) => Math.abs(centavos(o.total) - precio) >= 0.01;
+    const iva = p.lleva_iva ? centavos(precio * IVA_OT) : 0;
+    const total = centavos(precio + iva);
+    const importeVenta = { ...importe, iva, total, total_ars: total };
+    const cambio = (o, imp) => Math.abs(centavos(o.total) - imp.total) >= 0.01;
     // Manda el cliente de la OT (parte 6): si en la OT cambió, la venta y la entrega lo siguen
     const delOt = clienteDeOt(p, clientes, indice);
     const otroCliente = (o) => delOt && o.cliente_id !== undefined && indice.destino(o.cliente_id) !== delOt;
     const deCliente = delOt ? { cliente_id: delOt, entidad: txt(nombreDe.get(delOt), 120) || null } : {};
-    for (const o of [venta, entrega]) {
+    for (const [o, imp] of [[venta, importeVenta], [entrega, importe]]) {
       if (!o) continue;
-      const c = { ...(cambio(o) ? importe : {}), ...(otroCliente(o) ? deCliente : {}) };
+      const c = { ...(cambio(o, imp) ? imp : {}), ...(otroCliente(o) ? deCliente : {}) };
       if (Object.keys(c).length) corregir.push({ id: o.id, cambios: c });
     }
     if (entrega && !cerrada) anular.push({ id: entrega.id, motivo: "Gypi (la OT se volvió a abrir)" });
@@ -160,7 +171,7 @@ export function planVentas({ proyectos = [], precios, operaciones = [], clientes
     const ot = textoOt(p).slice(0, 400);
     if (!venta && !anuladasAMano.has(kv)) {
       crear.push({
-        ...comun, cuenta_debe: cuentas.deudores, cuenta_haber: cuentas.ventas,
+        ...comun, ...importeVenta, cuenta_debe: cuentas.deudores, cuenta_haber: cuentas.ventas,
         descripcion: `Venta ${ot}`.slice(0, 500), referencia: `OT ${txt(p.ot, 100)}`,
         origen: ORIGEN_VENTA, origen_id: id, estado: "confirmada",
       });
@@ -252,12 +263,14 @@ async function sincronizarConsumosOt(e, { proyectos, entregas, fechasEstimadas, 
   const reales = aCalcular.size ? await materialesRealesDeOts(e, de(aCalcular)) : new Map();
   const materiales = new Map(de(aCalcular).map((p) => [`p${p.id}`, Number(reales.get(String(p.ot))) || 0]));
   const necesidades = aEstimar.size ? await materialesDeOts(null, de(aEstimar), e) : new Map();
-  const valores = new Map(de(aEstimar).map((p) => [`p${p.id}`, valorOt(0, necesidades.get(String(p.ot))).valor]));
+  // 19/11 (punto 9): el mismo % de materiales de Finanzas → Configuración
+  const factor = aEstimar.size ? await factorMateriales(e) : FACTOR_ESTIMADO;
+  const valores = new Map(de(aEstimar).map((p) => [`p${p.id}`, valorOt(0, necesidades.get(String(p.ot)), factor).valor]));
   const centro = (division) => centroDeDivision(division, centros);
 
   const pc = consumo.error ? { crear: [], corregir: [], anular: [] }
     : planConsumos({ proyectos, entregas, materiales, operaciones: deOrigen(ORIGEN_CONSUMO), cuentas: consumo, centro, hoy });
-  const pe = planEstimadas({ proyectos, fechas: fechasEstimadas || {}, valores, operaciones: deOrigen(ORIGEN_ESTIMADA), clientes, cuentas: cuentasVenta, centro, hoy });
+  const pe = planEstimadas({ proyectos, fechas: fechasEstimadas || {}, valores, operaciones: deOrigen(ORIGEN_ESTIMADA), clientes, cuentas: cuentasVenta, centro, hoy, factor });
   for (const nombre of clientesNuevosDe(pe.crear)) {
     if (emparejarCliente(nombre, clientes)) continue;
     const [c] = (await sbPost("fin_clientes", { empresa_id: e, nombre, notas: "Creado por Gypi desde el Plan de trabajo", created_at: ahora, updated_at: ahora })) || [];
@@ -364,7 +377,9 @@ export async function sincronizarVentasOt(empresaId, { hoy = hoyAr() } = {}) {
       leer(`fin_centros_costo?empresa_id=eq.${e}&select=codigo,division,activo&order=codigo.asc`),
       leer(`fin_clientes?empresa_id=eq.${e}&select=id,nombre,alias,activo,unido_a&order=id.asc`),
       // Las de antes de "desde" igual se leen si tienen venta (para corregir o anular)
-      leer(`proyectos?empresa_id=eq.${e}&select=id,ot,cliente,cliente_id,obra,descripcion,division,estado,created_at&order=id.asc`)
+      // Con si lleva IVA (201); sin la migración, sin esa columna
+      leer(`proyectos?empresa_id=eq.${e}&select=id,ot,cliente,cliente_id,obra,descripcion,division,estado,created_at,lleva_iva&order=id.asc`)
+        .catch(() => leer(`proyectos?empresa_id=eq.${e}&select=id,ot,cliente,cliente_id,obra,descripcion,division,estado,created_at&order=id.asc`))
         .catch(() => leer(`proyectos?empresa_id=eq.${e}&select=id,ot,cliente,obra,descripcion,division,estado,created_at&order=id.asc`)),
       leer(`precios_ot?empresa_id=eq.${e}&select=ot,precio&order=ot.asc`),
       leer(`fin_operaciones?empresa_id=eq.${e}&origen=in.(${ORIGEN_VENTA},${ORIGEN_ENTREGA})&select=id,origen,origen_id,fecha,total,cliente_id,anulada_at,anulada_por_nombre&order=id.asc`),

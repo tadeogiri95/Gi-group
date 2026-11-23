@@ -111,6 +111,13 @@ export const MIGRACIONES = [
   { n: 192, archivo: "192_elegir_de_la_lista.sql", nombre: "Elegir proveedor y cliente de la lista", tablas: { movimientos_stock: ["proveedor_id"], remitos_stock: ["proveedor_id"], fin_cheques: ["cliente_id"] } },
   { n: 193, archivo: "193_cuentas_ligadas.sql", nombre: "Finanzas: cada operación ligada al plan de cuentas", funciones: ["fin_cuentas_sin_plan"] },
   { n: 194, archivo: "194_ot_ligada.sql", nombre: "OT ligada en pedidos, órdenes de compra y stock", tablas: { pedidos_compra: ["proyecto_id"], ordenes_compra_items: ["proyecto_id"], movimientos_stock: ["proyecto_id"] }, funciones: ["gypi_ot_de_texto"] },
+  { n: 196, archivo: "196_fotos_stock.sql", nombre: "Foto diaria del stock (inventario valorizado)", tablas: { stock_fotos: [] } },
+  { n: 197, archivo: "197_fecha_movimientos_stock.sql", nombre: "Materiales: fecha de cada ingreso y consumo", tablas: { movimientos_stock: ["fecha"] } },
+  { n: 198, archivo: "198_adjuntos_orden_pago.sql", nombre: "Finanzas: facturas y presupuestos en la orden de pago", tablas: { fin_ordenes_pago: ["adjuntos"] } },
+  { n: 199, archivo: "199_historial_cambios.sql", nombre: "Finanzas y Materiales: corregir en el lugar, con historial", tablas: { fin_operaciones: ["historial"], movimientos_stock: ["historial"] } },
+  { n: 200, archivo: "200_imputar_vehiculo_maquina.sql", nombre: "Finanzas: imputar a un vehículo o una máquina", tablas: { fin_operaciones: ["vehiculo_id", "maquina_id"] } },
+  { n: 201, archivo: "201_ot_lleva_iva.sql", nombre: "OT con IVA", tablas: { proyectos: ["lleva_iva"] } },
+  { n: 202, archivo: "202_ot_material_mrp.sql", nombre: "Material de OT desde el MRP", tablas: { proyectos: ["fondos_mrp", "metros_canto_mrp", "placas_mrp"] } },
 ];
 
 /** Lo que pide una migración, como lista de { tabla, columnas } y funciones. */

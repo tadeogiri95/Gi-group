@@ -12,6 +12,9 @@
 //   POST { accion: "compra", clase: "sin_factura"|"nota_credito", fecha,
 //       proveedor_id, importe, iva?, numero?, cuenta, descripcion? } → una
 //       compra sin factura o una nota de crédito del proveedor.
+//   POST { accion: "ajuste_saldo", clave, saldo_nuevo, fecha, motivo } → deja la
+//       deuda con el proveedor en ese importe contra "Ajuste de resultados de
+//       ejercicios anteriores" (punto 15 del 19/11; finanzasAjusteSaldo.js).
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige).
 import { NextResponse } from "next/server";
@@ -20,6 +23,7 @@ import { sbGet, sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
+import { ajustarSaldo } from "../../../lib/finanzasAjusteSaldoServidor";
 import { FECHA, IVA_CREDITO } from "../../../lib/finanzasOperaciones";
 import {
   CLAVE_CUENTAS_PROV, CUENTA_AJUSTE_CAPITAL, ORIGEN_SALDO_INICIAL, cuentasProveedores, leerCuentasProveedores, operacionCompraManual, operacionSaldoInicial,
@@ -94,15 +98,17 @@ export async function GET(request) {
   if (response) return response;
   const e = sesion.empresa_id;
   try {
-    const [cuentas, proveedores] = await Promise.all([
+    const [cuentas, proveedores, tesoreria] = await Promise.all([
       leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre,activa&order=codigo.asc`),
       leer(sesion, `proveedores?empresa_id=eq.${e}&select=id,nombre,activo,fin_tipo&order=nombre.asc,id.asc`),
+      // Para el medio de pago de cada pago en la ficha (22/11)
+      leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda`).catch(() => []),
     ]);
     const prov = [...cuentasProveedores(cuentas)];
     const operaciones = prov.length
       ? await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&or=(cuenta_debe.in.(${prov.join(",")}),cuenta_haber.in.(${prov.join(",")}))&select=${COLUMNAS}&order=fecha.asc,id.asc`, 50000)
       : [];
-    return NextResponse.json({ cuentas, proveedores, operaciones, cuentas_proveedores: prov, cuentas_guardadas: await leerGuardadas(e) });
+    return NextResponse.json({ cuentas, proveedores, tesoreria, operaciones, cuentas_proveedores: prov, cuentas_guardadas: await leerGuardadas(e) });
   } catch (err) {
     return errorFinanzas(err, "proveedores GET");
   }
@@ -117,6 +123,7 @@ export async function POST(request) {
   try {
     if (d?.accion === "cuentas") return await guardarCuentas(sesion, d);
     if (d?.accion === "compra") return await cargarCompra(sesion, d);
+    if (d?.accion === "ajuste_saldo") return await ajustarSaldo(sesion, d, "proveedor");
   } catch (err) {
     return errorFinanzas(err, `proveedores ${d.accion}`);
   }

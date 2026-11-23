@@ -9,16 +9,19 @@
 //     que se paga con cheques (e-cheq propios y cheques de terceros) y el total.
 //   - Se le manda al CFO un link (sin usuario) para que vea lo que tiene para
 //     firmar en el banco (solo informativo desde el 13/11: puede apretar
-//     👍 Visto), o se exporta en PDF. Las anuladas no suman. Entran también
-//     las órdenes ya pagadas.
-import { FORMAS_PAGO, ESTADOS_ORDEN, fechaCorta, textoForma, vistaPorCfo } from "./finanzasPagos";
+//     👍 Visto), o se exporta en PDF. Las anuladas no suman.
+//   - 23/11: solo entran órdenes sin pagar. Las pagadas (viejas) ya no se
+//     ofrecen al armar un resumen; las que ya estaban en uno siguen ahí.
+//   - 20/11: cada e-cheq puede llevar el plazo fijo nuevo que lo calza; abajo
+//     del total, "A rescatar del FCI" = transferencias + plazos fijos.
+import { FORMAS_PAGO, ESTADOS_ORDEN, CSS_RESCATE, adjuntosDe, comprobantesFactura, fechaCorta, htmlRescate, lineasRescate, sumasPagos, textoForma, textoPlazo, vistaPorCfo } from "./finanzasPagos";
 import { plata } from "./finanzasOperaciones";
 
 /** Formas que se pagan en el momento; el resto son cheques. */
 export const FORMAS_INMEDIATAS = ["efectivo", "transferencia"];
 export const FORMAS_CHEQUE = ["echeq", "cheque_tercero"];
 /** Órdenes que se pueden juntar en un resumen. */
-export const ENTRAN_EN_RESUMEN = ["borrador", "para_aprobar", "rechazada", "aprobada", "pagada"];
+export const ENTRAN_EN_RESUMEN = ["borrador", "para_aprobar", "rechazada", "aprobada"];
 export const ESTADOS_RESUMEN = {
   armado: { nombre: "Armado, sin mandar", icono: "📝" },
   enviado: { nombre: "Mandado al CFO", icono: "📲" },
@@ -71,17 +74,25 @@ export function renglonesResumen(ordenes = []) {
       orden_id: o.id, numero: o.numero, fecha: o.fecha, proveedor: o.proveedor_nombre, estado: o.estado,
       forma: x.forma, medio: textoForma(x), clase: claseForma(x.forma), importe: centavos(x.importe),
       comprobante: i === 0 ? o.comprobante_url || null : null,
+      // 22/11: los PDF de las facturas que paga la orden, en el primer renglón
+      facturas_comprobantes: i === 0 ? (o.facturas || []).flatMap(comprobantesFactura) : [],
+      plazo: x.forma === "echeq" && x.plazo_fijo ? { texto: textoPlazo(x), importe: centavos(x.plazo_fijo.importe), vencimiento: x.plazo_fijo.vencimiento } : null,
     })));
 }
 
-/** Las sumas del pie: inmediato (efectivo + transferencia), cheques y total, y por forma. */
+/**
+ * Las sumas del pie: inmediato (efectivo + transferencia), cheques y total, y
+ * por forma. 20/11: más plazos fijos a constituir y rescatar (transferencias
+ * + plazos fijos, lo que hay que sacar del FCI).
+ */
 export function totalesResumen(ordenes = []) {
   const porForma = Object.fromEntries(Object.keys(FORMAS_PAGO).map((k) => [k, 0]));
   for (const r of renglonesResumen(ordenes)) if (r.forma in porForma) porForma[r.forma] = centavos(porForma[r.forma] + r.importe);
   const inmediato = centavos(FORMAS_INMEDIATAS.reduce((s, k) => s + porForma[k], 0));
   const cheques = centavos(FORMAS_CHEQUE.reduce((s, k) => s + porForma[k], 0));
   const vivas = ordenes.filter((o) => o && o.estado !== "anulada");
-  return { inmediato, cheques, total: centavos(inmediato + cheques), porForma, ordenes: vivas.length, vistas: vivas.filter(vistaPorCfo).length, pagadas: vivas.filter((o) => o.estado === "pagada").length };
+  const { plazos, cantidadPlazos, rescatar } = sumasPagos(vivas);
+  return { inmediato, cheques, total: centavos(inmediato + cheques), porForma, plazos, cantidadPlazos, rescatar, ordenes: vivas.length, vistas: vivas.filter(vistaPorCfo).length, pagadas: vivas.filter((o) => o.estado === "pagada").length };
 }
 
 /** Lo que ve el CFO en la página del resumen (nada de cuentas contables de más). */
@@ -95,7 +106,9 @@ export function datosResumenParaCfo(resumen, ordenes = [], empresa = {}) {
     ordenes: vivas.map((o) => ({
       numero: o.numero, fecha: o.fecha, proveedor: o.proveedor_nombre, estado: o.estado, total: Number(o.total) || 0,
       comprobante: /^https:\/\//.test(String(o.comprobante_url || "")) ? o.comprobante_url : null,
-      formas: (o.formas || []).map((x) => ({ texto: textoForma(x), importe: x.importe, clase: claseForma(x.forma) })),
+      adjuntos: adjuntosDe(o),
+      facturas_comprobantes: (o.facturas || []).flatMap(comprobantesFactura),
+      formas: (o.formas || []).map((x) => ({ texto: textoForma(x), importe: x.importe, clase: claseForma(x.forma), ...(x.plazo_fijo ? { plazo: { texto: textoPlazo(x), importe: x.plazo_fijo.importe } } : {}) })),
       // El link de la orden, para verla de a una
       token: o.token || null,
       visto: vistaPorCfo(o) ? { por: o.decidida_por_nombre || null } : null,
@@ -111,6 +124,7 @@ export function textoWhatsappResumen(resumen, ordenes, url, { empresa = "", cfo 
     `Transferencia, efectivo o inmediato: ${plata(t.inmediato, "ARS")}`,
     `Cheques: ${plata(t.cheques, "ARS")}`,
     `Total: ${plata(t.total, "ARS")}`,
+    ...(t.rescatar > 0 ? ["", ...lineasRescate(ordenes)] : []),
     "",
     `Es para que sepas lo que hay para firmar en el banco. Para verlo abrí este link: ${url}`,
   ].join("\n");
@@ -128,7 +142,8 @@ export function htmlResumenPago({ empresa = {}, resumen, ordenes = [] }) {
   const t = totalesResumen(ordenes);
   const tr = filas.map((r) => {
     const comp = urlSegura(r.comprobante);
-    return `<tr><td>${esc(fechaCorta(r.fecha))}</td><td>${esc(r.proveedor)}<span class="chico" style="display:block">OP N° ${esc(r.numero)}</span></td><td>${esc(r.medio)}</td><td class="n">${esc(plata(r.importe))}</td><td>${comp ? `<a href="${esc(comp)}">Ver</a>` : ""}</td></tr>`;
+    const pf = r.plazo ? `<tr class="pf"><td></td><td></td><td>${esc(r.plazo.texto)}</td><td class="n">${esc(plata(r.plazo.importe))}</td><td></td></tr>` : "";
+    return `<tr><td>${esc(fechaCorta(r.fecha))}</td><td>${esc(r.proveedor)}<span class="chico" style="display:block">OP N° ${esc(r.numero)}</span></td><td>${esc(r.medio)}</td><td class="n">${esc(plata(r.importe))}</td><td>${[...(comp ? [`<a href="${esc(comp)}">Ver</a>`] : []), ...(r.facturas_comprobantes || []).map((a) => `<a href="${esc(a.url)}">${esc(a.nombre)}</a>`)].join("<br>")}</td></tr>${pf}`;
   }).join("");
   const est = ESTADOS_RESUMEN[resumen.estado];
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Resumen de órdenes de pago N° ${esc(resumen.numero)}</title>
@@ -150,6 +165,7 @@ export function htmlResumenPago({ empresa = {}, resumen, ordenes = [] }) {
   .sumas td { border: none; padding: 1mm; }
   .sumas .tot td { border-top: .4mm solid #000; font-size: 12pt; font-weight: 800; }
   .nota { margin-top: 5mm; font-size: 9.5pt; }
+  ${CSS_RESCATE}
   .firmas { display: flex; gap: 20mm; margin-top: 22mm; }
   .firmas div { flex: 1; border-top: .3mm solid #000; padding-top: 1.5mm; text-align: center; font-size: 9pt; }
 </style></head><body>
@@ -167,6 +183,7 @@ export function htmlResumenPago({ empresa = {}, resumen, ordenes = [] }) {
     <tr><td>Cheques (e-cheq y de terceros)</td><td class="n">${esc(plata(t.cheques))}</td></tr>
     <tr class="tot"><td>Total</td><td class="n">${esc(plata(t.total))}</td></tr>
   </tbody></table>
+  ${htmlRescate(ordenes)}
   ${resumen.notas ? `<p class="nota">${esc(resumen.notas)}</p>` : ""}
   <div class="firmas"><div>Preparó${resumen.cargado_por_nombre ? `: ${esc(resumen.cargado_por_nombre)}` : ""}</div><div>Aprobó</div></div>
 </body></html>`;

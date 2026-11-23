@@ -14,7 +14,7 @@
 //    o hoy es su último día;
 //  - el anterior está atrasado y este arranca en 2 días o menos (o ya arrancó).
 import { apiFetch, sb, sbGetAll } from "./supabase";
-import { CLAVE_PLANIFICACION, ETAPAS_PLAN, divisionPlan, etapasPlanDe, normalizarParametros } from "./planificacion";
+import { CLAVE_PLANIFICACION, ETAPAS_PLAN, divisionPlan, etapasPlanDe, normalizarParametros, ordenarPorPrioridad } from "./planificacion";
 import { pendienteEtapa, capacidadPlanta, operariosDePlanta, personalPlanta, horasOt } from "./cargaPlanta";
 import { hoyArg } from "./dates";
 import { diasEntre } from "./semanaObjetivo";
@@ -52,6 +52,58 @@ export function itemsVigentes(planes = []) {
     if (!otro || clave(p) > clave(otro)) ultimo.set(k, p);
   }
   return [...ultimo.values()].flatMap((p) => p.items || []);
+}
+
+/**
+ * OT abiertas que no están en el último plan confirmado pero tienen que verse
+ * en el Gantt (Tadeo, 19/11: M-7877 estaba planificada y no aparecía). Son las
+ * que estuvieron en algún plan confirmado (en sus días o en lo que no entró)
+ * o que tienen SEMANA en el Plan de trabajo. Quedan afuera las cerradas, las
+ * terminadas en la planilla y las que están en pausa. Primero las de prioridad
+ * manual, después por semana y número.
+ * @param {{ planes?: object[], proyectos?: Map<string, object>, pausadas?: Set<string> }} p
+ * @returns {string[]} los códigos de OT
+ */
+export function otsFueraDelPlan({ planes = [], proyectos = new Map(), pausadas = new Set() } = {}) {
+  const vigentes = new Set(itemsVigentes(planes).map((i) => String(i.ot)));
+  const enAlguno = new Set();
+  for (const p of planes || []) {
+    for (const i of p.items || []) enAlguno.add(String(i.ot));
+    for (const x of p.pendientes || []) enAlguno.add(String(x?.ot));
+  }
+  const lista = [...proyectos.values()].filter((p) => {
+    const ot = String(p.ot);
+    return !vigentes.has(ot) && !pausadas.has(ot) && p.terminado_planilla !== true && p.estado !== "cerrado"
+      && (enAlguno.has(ot) || !!p.fecha_objetivo);
+  });
+  return ordenarPorPrioridad(lista).map((p) => String(p.ot));
+}
+
+/**
+ * Los renglones del plan más uno por proceso de cada OT de afuera, sin horas y
+ * después de todas las del plan: el plan vivo les calcula las horas con los
+ * datos de la OT y las pone al final de cada máquina, así no corren a ninguna
+ * OT del plan.
+ */
+export function itemsConFuera(items = [], fuera = [], hoy) {
+  if (!fuera.length) return items || [];
+  const base = (items || []).reduce((m, i) => Math.max(m, Number(i.orden) || 0), 0) + 1;
+  return [...(items || []), ...fuera.flatMap((ot, k) => ETAPAS_PLAN.map(({ id }) => ({ ot: String(ot), etapa: id, fecha: hoy, horas: 0, orden: base + k })))];
+}
+
+/**
+ * Por qué una OT no se dibuja en el Gantt, en una frase (o null si se dibuja).
+ * @param {object} p la OT
+ * @param {{ dibujadas: Set<string>, pausadas?: Set<string>, fuera?: Set<string>, vigentes?: Set<string> }} ctx
+ */
+export function motivoSinDibujar(p, { dibujadas, pausadas = new Set(), fuera = new Set(), vigentes = new Set() }) {
+  const ot = String(p?.ot ?? "");
+  if (dibujadas.has(ot)) return null;
+  if (p?.estado === "cerrado") return "Está cerrada.";
+  if (p?.terminado_planilla === true) return "En el Plan de trabajo figura TERMINADO = SI.";
+  if (pausadas.has(ot)) return "Está en pausa: se ve en los avisos, en \"En pausa\".";
+  if (fuera.has(ot) || vigentes.has(ot)) return "No hay horas para dibujarla: le faltan datos en el Plan de trabajo (placas, cantos, mecanizados) o ya está todo escaneado.";
+  return "No está en ningún plan confirmado ni tiene SEMANA en el Plan de trabajo.";
 }
 
 /** Días de horas extra de esos mismos planes (los que confirmó gerencia según fechas objetivo). */

@@ -6,6 +6,11 @@
 //          reemplazo por código (lo que no viene en el libro queda como está).
 //          tabla = cuentas | tipos | tesoreria | centros.
 //   POST { accion: "guardar", tabla, fila } → alta o edición de una fila.
+//   POST { accion: "caja_nueva", caja: { nombre, tipo, moneda, responsable_id } }
+//          → caja nueva desde Tesorería, con el código de cuenta elegido por
+//          Gypi (también la suma al plan de cuentas). 15/11.
+//   POST { accion: "caja_eliminar", cuenta } → la borra si nunca se usó
+//          (migración 195); si tuvo movimientos la archiva, con saldo en cero.
 //
 // Solo el rol Dueño (gerencial). El Supervisor no entra (pedido de Tadeo,
 // 09/11). Lee y escribe con el pase del usuario: la base también exige el rol
@@ -15,6 +20,8 @@ import { sbGetAll, sbHeaders } from "../../lib/sbHelpers";
 import { rechazarSiSinPlan } from "../../lib/planEnforcement";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { TABLAS_FIN, limpiarFila, limpiarFilas } from "../../lib/finanzas";
+import { codigoNuevaCaja, comoEliminarCaja, limpiarCajaNueva } from "../../lib/finanzasCajas";
+import { plata } from "../../lib/finanzasOperaciones";
 import { sesionDueno, errorFinanzas as errorDe } from "../../lib/finanzasApi";
 import { rechazarSiNoConfigura } from "../../lib/accesosServidor";
 
@@ -35,6 +42,68 @@ async function upsert(sesion, tabla, filas) {
     });
     if (!r.ok) throw new Error(`POST ${t}: ${await r.text()}`);
   }
+}
+
+const leerTodo = (sesion, path) => sbGetAll(path, { sesion, maxFilas: 60000 }).then((r) => r.data || []);
+
+/** Caja nueva: Gypi elige el código y la suma también al plan de cuentas. */
+async function cajaNueva(sesion, d) {
+  const e = sesion.empresa_id;
+  const { caja, error } = limpiarCajaNueva(d.caja);
+  if (error) return NextResponse.json({ error }, { status: 400 });
+  const [tesoreria, cuentas] = await Promise.all([
+    leerTodo(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda`),
+    leerTodo(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre`),
+  ]);
+  const r = codigoNuevaCaja(caja, tesoreria, cuentas);
+  if (r.error) return NextResponse.json({ error: r.error }, { status: 400 });
+  if (!cuentas.some((c) => c.codigo === r.codigo)) {
+    await upsert(sesion, "cuentas", [{ codigo: r.codigo, nombre: caja.nombre, rubro: "ACTIVO CORRIENTE", naturaleza: "D", activa: true }]);
+    broadcastRefresh(e, "fin_cuentas");
+  }
+  const fila = { cuenta: r.codigo, ...caja, activa: true };
+  await upsert(sesion, "tesoreria", [fila]);
+  broadcastRefresh(e, "fin_tesoreria");
+  return NextResponse.json({ ok: true, fila, reusa: r.reusa });
+}
+
+/** Eliminar una caja: se borra si nunca se usó; si tuvo movimientos, se archiva (con saldo en cero). */
+async function cajaEliminar(sesion, d) {
+  const e = sesion.empresa_id;
+  const cuenta = String(d.cuenta || "").trim();
+  if (!cuenta) return NextResponse.json({ error: "Falta la caja" }, { status: 400 });
+  const q = encodeURIComponent(`"${cuenta.replace(/"/g, "")}"`);
+  const [caja] = await leerTodo(sesion, `fin_tesoreria?empresa_id=eq.${e}&cuenta=eq.${q}&select=cuenta,nombre,tipo,moneda,activa&limit=1`);
+  if (!caja) return NextResponse.json({ error: "No encontré esa caja" }, { status: 404 });
+  // También las anuladas: una caja que alguna vez se usó no se borra
+  const ops = await leerTodo(sesion, `fin_operaciones?empresa_id=eq.${e}&or=(cuenta_debe.eq.${q},cuenta_haber.eq.${q})&select=cuenta_debe,cuenta_haber,total,total_ars,anulada_at`);
+  // Cheques y extractos que la nombran (sin esas migraciones, no cuentan)
+  const usos = await Promise.all([
+    leerTodo(sesion, `fin_cheques?empresa_id=eq.${e}&cuenta_banco=eq.${q}&select=id&limit=1`).catch(() => []),
+    leerTodo(sesion, `fin_cargas_banco?empresa_id=eq.${e}&cuenta=eq.${q}&select=id&limit=1`).catch(() => []),
+  ]);
+  const r = comoEliminarCaja(caja, ops, usos.reduce((n, u) => n + u.length, 0));
+  if (r.accion === "saldo") {
+    return NextResponse.json({ error: `${caja.nombre} tiene ${plata(r.saldo, caja.moneda)}. Primero pasá esa plata a otra caja (➕ Cargar → Entre cajas) y después archivala.` }, { status: 409 });
+  }
+  if (r.accion === "archivar") {
+    await upsert(sesion, "tesoreria", [{ cuenta: caja.cuenta, nombre: caja.nombre, activa: false }]);
+    broadcastRefresh(e, "fin_tesoreria");
+    return NextResponse.json({ ok: true, accion: "archivar", movimientos: r.movimientos });
+  }
+  const res = await fetch(`${SB_URL}/rest/v1/fin_tesoreria?empresa_id=eq.${e}&cuenta=eq.${q}`, {
+    method: "DELETE",
+    headers: await sbHeaders({ sesion }, { Prefer: "return=representation" }),
+  });
+  const borradas = res.ok ? await res.json().catch(() => []) : [];
+  if (!res.ok || !borradas.length) {
+    // Sin la migración 195 la base no deja borrar: se archiva y se avisa
+    await upsert(sesion, "tesoreria", [{ cuenta: caja.cuenta, nombre: caja.nombre, activa: false }]);
+    broadcastRefresh(e, "fin_tesoreria");
+    return NextResponse.json({ ok: true, accion: "archivar", movimientos: 0, aviso: "Quedó archivada: para poder borrarla del todo falta correr la migración 195 en Supabase." });
+  }
+  broadcastRefresh(e, "fin_tesoreria");
+  return NextResponse.json({ ok: true, accion: "borrar" });
 }
 
 export async function GET(request) {
@@ -66,6 +135,12 @@ export async function POST(request) {
   if (sinConfigurar) return sinConfigurar;
   const d = await request.json().catch(() => null);
   if (!d || typeof d !== "object") return NextResponse.json({ error: "Pedido inválido" }, { status: 400 });
+  try {
+    if (d.accion === "caja_nueva") return await cajaNueva(sesion, d);
+    if (d.accion === "caja_eliminar") return await cajaEliminar(sesion, d);
+  } catch (err) {
+    return errorDe(err, d.accion);
+  }
   if (!TABLAS_FIN[d.tabla]) return NextResponse.json({ error: "Tabla desconocida" }, { status: 400 });
   try {
     if (d.accion === "importar") {

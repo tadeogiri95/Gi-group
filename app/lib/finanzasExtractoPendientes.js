@@ -11,7 +11,7 @@
 // También: el resumen de lo que se va a cargar (cuánto entra, cuánto sale y
 // cómo queda el saldo contra el del banco) y qué renglones de una carga se
 // pueden deshacer (migración 188).
-import { FORMAS_PAGO } from "./finanzasPagos";
+import { FORMAS_PAGO, sinRegistrar } from "./finanzasPagos";
 
 const centavos = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const dias = (a, b) => Math.round((Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86400000);
@@ -30,9 +30,13 @@ function candidatos({ cheques = [], ordenes = [], plazos = [], cuenta }) {
     if (ch.clase === "propio" && ch.estado === "pendiente" && (!ch.cuenta_banco || ch.cuenta_banco === cuenta)) {
       out.push({
         clase: "cheque", id: Number(ch.id), importe: -centavos(ch.importe), fecha: ch.fecha_pago, margen: [-DIAS_CHEQUE, DIAS_CHEQUE],
-        texto: `Débito del cheque${ch.numero ? ` N° ${ch.numero}` : ""} a ${ch.beneficiario || "un proveedor"} (vence ${fechaDma(ch.fecha_pago)})`,
+        // 19/11: se dice claro que es un cheque PROPIO (lo firmó la empresa y
+        // el banco lo descuenta de la cuenta), para no confundirlo con un
+        // cheque de terceros entregado a un proveedor
+        texto: `Débito de un cheque propio${ch.numero ? ` N° ${ch.numero}` : ""} (firmado por la empresa) que le diste a ${ch.beneficiario || "un proveedor"}, que vence el ${fechaDma(ch.fecha_pago)}. El banco lo descuenta de tu cuenta`,
         accion: { url: "/api/finanzas/cheques", body: { accion: "cambiar", id: Number(ch.id), a: "debitado", cuenta_banco: cuenta } },
-        boton: "Marcar el cheque debitado",
+        boton: "Sí, es ese cheque propio: marcarlo debitado",
+        aviso: "Ojo: los cheques de terceros que le diste a un proveedor no salen en el extracto. Esos se marcan \"Entregado a un proveedor\" en 🏦 Cheques o se pagan con una orden de pago. Si este débito no es ese cheque propio, no toques el botón y cargalo como nuevo.",
       });
     }
     if (ch.clase === "tercero" && ch.estado === "en_cartera") {
@@ -45,17 +49,19 @@ function candidatos({ cheques = [], ordenes = [], plazos = [], cuenta }) {
     }
   }
   for (const o of ordenes) {
-    if (["pagada", "anulada"].includes(o.estado)) continue;
+    // 23/11: la marcada pagada sin registrar sigue esperando su movimiento del banco
+    const marcada = sinRegistrar(o);
+    if (!marcada && ["pagada", "anulada"].includes(o.estado)) continue;
     const formas = Array.isArray(o.formas) ? o.formas : [];
     const transf = formas.filter((x) => x?.forma === "transferencia" && x.cuenta === cuenta);
     if (!transf.length) continue;
     const otras = formas.length - transf.length;
     const importe = -centavos(transf.reduce((s, x) => s + (Number(x.importe) || 0), 0));
     out.push({
-      clase: "orden", id: Number(o.id), importe, fecha: o.fecha, margen: [-3, 60],
-      texto: `Orden de pago N° ${o.numero} a ${o.proveedor_nombre} por ${FORMAS_PAGO.transferencia.toLowerCase()}${otras ? ` (la orden tiene ${otras === 1 ? "otra forma de pago, que también se registra" : `otras ${otras} formas de pago, que también se registran`})` : ""}`,
+      clase: "orden", id: Number(o.id), importe, fecha: marcada && o.pagada_fecha ? o.pagada_fecha : o.fecha, margen: [-3, 60],
+      texto: `Orden de pago N° ${o.numero} a ${o.proveedor_nombre} por ${FORMAS_PAGO.transferencia.toLowerCase()}${marcada ? " (marcada pagada, sin registrar)" : ""}${otras ? ` (la orden tiene ${otras === 1 ? "otra forma de pago, que también se registra" : `otras ${otras} formas de pago, que también se registran`})` : ""}`,
       accion: { url: "/api/finanzas/pagos", body: { accion: "pagar", id: Number(o.id) } },
-      boton: "Marcar la orden pagada",
+      boton: marcada ? "Registrar el pago de la orden" : "Marcar la orden pagada",
     });
   }
   for (const p of plazos) {
@@ -76,13 +82,13 @@ function candidatos({ cheques = [], ordenes = [], plazos = [], cuenta }) {
  * completa (el más cercano en fecha; cada pendiente sirve para un solo
  * renglón, salvo un plazo fijo, que se registra entero).
  * @param {{ fecha: string, importe: number, op?: object|null }[]} filas
- * @returns {Map<number, { clase: string, id: number|string, texto: string, accion: { url: string, body: object }, boton: string }>}
+ * @returns {Map<number, { clase: string, id: number|string, texto: string, accion: { url: string, body: object }, boton: string, aviso?: string }>}
  */
 export function pendientesDelExtracto(filas = [], ctx = {}) {
   const lista = candidatos(ctx);
   const parejas = [];
   for (const [fi, f] of filas.entries()) {
-    if (f.op) continue;
+    if (f.op || f.reemplaza) continue;
     for (const [ci, c] of lista.entries()) {
       if (!c.fecha || !igual(c.importe, f.importe)) continue;
       const d = dias(f.fecha, c.fecha);
@@ -98,8 +104,8 @@ export function pendientesDelExtracto(filas = [], ctx = {}) {
     const clave = `${c.clase}:${c.id}`;
     if (out.has(fi) || (c.clase !== "plazo" && usados.has(clave))) continue;
     usados.add(clave);
-    const { clase, id, texto, accion, boton } = c;
-    out.set(fi, { clase, id, texto, boton, accion: { url: accion.url, body: { ...accion.body, fecha: filas[fi].fecha } } });
+    const { clase, id, texto, accion, boton, aviso } = c;
+    out.set(fi, { clase, id, texto, boton, ...(aviso ? { aviso } : {}), accion: { url: accion.url, body: { ...accion.body, fecha: filas[fi].fecha } } });
   }
   return out;
 }
@@ -126,6 +132,15 @@ export function idsParaDeshacer(carga, elegidos = null) {
   const deCarga = new Set((Array.isArray(carga?.op_ids) ? carga.op_ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0));
   if (!Array.isArray(elegidos)) return [...deCarga];
   return [...new Set(elegidos.map(Number))].filter((n) => deCarga.has(n));
+}
+
+/**
+ * 20/11: lo que una carga anuló porque el banco lo corrigió o ya no lo
+ * mostraba (va en op_ids con signo menos). Deshacer la carga entera lo devuelve.
+ * @returns {number[]}
+ */
+export function idsAnuladosPorCarga(carga) {
+  return [...new Set((Array.isArray(carga?.op_ids) ? carga.op_ids : []).map(Number).filter((n) => Number.isInteger(n) && n < 0).map((n) => -n))];
 }
 
 /** "Ago 2026 · 34 cargados de 120 · Tadeo" para la lista de cargas. */

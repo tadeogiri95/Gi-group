@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { hoyAr, plata } from "../lib/finanzasOperaciones";
 import { cuentasParaPagar, fechaCorta } from "../lib/finanzasPagos";
+import { descontadosDe, mesDeLiquidacion, nombreMesLargo } from "../lib/finanzasAnticipos";
 import { CLASES, numeroSueldo, pagadoPorEmpleado, renglonesDePegado, totalesLiquidacion } from "../lib/finanzasSueldos";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -228,7 +229,16 @@ function Detalle({ datos, liquidacion, onCerrar, onCambio, onCopiar }) {
   const falta = (emp) => Math.round((emp.total - (pagado[emp.empleado_id] || 0)) * 100) / 100;
   const [fecha, setFecha] = useState(hoyAr());
   const [cuenta, setCuenta] = useState(lugares.length === 1 ? lugares[0].cuenta : "");
-  const [filas, setFilas] = useState(() => Object.fromEntries(tot.porEmpleado.filter((e) => falta(e) > 0).map((e) => [e.empleado_id, { elegido: true, importe: textoNumero(falta(e)), cuenta: "" }])));
+  // 14/11: los anticipos por combustible del mes de la liquidación que todavía no se descontaron
+  const mesLiq = mesDeLiquidacion(liquidacion);
+  const anticipoDe = (emp) => {
+    const hechos = descontadosDe(datos.pagos || [], emp);
+    return hechos[mesLiq] ? 0 : Number(datos.anticipos?.[emp]?.[mesLiq]) || 0;
+  };
+  const [filas, setFilas] = useState(() => Object.fromEntries(tot.porEmpleado.filter((e) => falta(e) > 0).map((e) => {
+    const ant = Math.min(anticipoDe(e.empleado_id), falta(e));
+    return [e.empleado_id, { elegido: true, importe: textoNumero(Math.round((falta(e) - ant) * 100) / 100), cuenta: "", descontar: ant > 0 }];
+  })));
   const [error, setError] = useState(null);
   const [haciendo, setHaciendo] = useState(null);
   const [confirmarAnular, setConfirmarAnular] = useState(false);
@@ -236,6 +246,10 @@ function Detalle({ datos, liquidacion, onCerrar, onCambio, onCopiar }) {
   const pendientes = tot.porEmpleado.filter((e) => falta(e) > 0);
   const elegidos = pendientes.filter((e) => filas[e.empleado_id]?.elegido);
   const aPagar = elegidos.reduce((s, e) => s + (numeroSueldo(filas[e.empleado_id]?.importe) || 0), 0);
+  const cambiarDescontar = (e, v) => setFilas((x) => {
+    const ant = Math.min(anticipoDe(e.empleado_id), falta(e));
+    return { ...x, [e.empleado_id]: { ...x[e.empleado_id], descontar: v, importe: textoNumero(Math.round((falta(e) - (v ? ant : 0)) * 100) / 100) } };
+  });
   const nombreLugar = (c) => datos.tesoreria.find((t) => t.cuenta === c)?.nombre || c;
 
   const cambiar = (emp, k, v) => setFilas((x) => ({ ...x, [emp]: { ...x[emp], [k]: v } }));
@@ -256,7 +270,10 @@ function Detalle({ datos, liquidacion, onCerrar, onCambio, onCopiar }) {
 
   const pagar = () => hacer("pagar", {
     id: liquidacion.id,
-    pagos: elegidos.map((e) => ({ empleado_id: e.empleado_id, importe: numeroSueldo(filas[e.empleado_id].importe), cuenta: filas[e.empleado_id].cuenta || cuenta, fecha })),
+    pagos: elegidos.map((e) => ({
+      empleado_id: e.empleado_id, importe: numeroSueldo(filas[e.empleado_id].importe) || 0, cuenta: filas[e.empleado_id].cuenta || cuenta, fecha,
+      ...(filas[e.empleado_id].descontar && anticipoDe(e.empleado_id) > 0 ? { descontar: true } : {}),
+    })),
   }, `Sueldos pagados: ${elegidos.length} pago${elegidos.length === 1 ? "" : "s"} al libro`);
 
   return (
@@ -295,6 +312,12 @@ function Detalle({ datos, liquidacion, onCerrar, onCambio, onCopiar }) {
                       <option value="">{cuenta ? `Igual que todos` : "Elegí…"}</option>
                       {lugares.map((t) => <option key={t.cuenta} value={t.cuenta}>{t.nombre}</option>)}
                     </SelectBuscable>
+                    {anticipoDe(e.empleado_id) > 0 && (
+                      <label className="basis-full flex items-center gap-2 pl-6 text-[12px] cursor-pointer">
+                        <input type="checkbox" checked={!!f.descontar} onChange={(ev) => cambiarDescontar(e, ev.target.checked)} aria-label={`Descontar anticipos de ${e.nombre}`} />
+                        Descontar anticipos por combustible de {nombreMesLargo(mesLiq)}: {plata(Math.min(anticipoDe(e.empleado_id), falta(e)))}
+                      </label>
+                    )}
                   </li>
                 );
               })}
@@ -360,6 +383,9 @@ function Detalle({ datos, liquidacion, onCerrar, onCambio, onCopiar }) {
 function Conceptos({ datos, onCerrar, onGuardado }) {
   const [conceptos, setConceptos] = useState(() => datos.conceptos.map((c) => ({ ...c })));
   const [areas, setAreas] = useState(() => ({ ...datos.areas }));
+  // 14/11: sueldo mensual fijo de quien tiene una caja a cargo (los dueños)
+  const [fijos, setFijos] = useState(() => Object.fromEntries(Object.entries(datos.fijos || {}).map(([k, v]) => [k, textoNumero(v)])));
+  const responsables = datos.empleados.filter((e) => e.activo !== false && (datos.tesoreria || []).some((t) => String(t.responsable_id) === String(e.id)));
   const [todos, setTodos] = useState("");
   const [error, setError] = useState(null);
   const [guardando, setGuardando] = useState(false);
@@ -372,7 +398,7 @@ function Conceptos({ datos, onCerrar, onGuardado }) {
     setError(null);
     setGuardando(true);
     try {
-      await postSueldos({ accion: "config", conceptos, areas });
+      await postSueldos({ accion: "config", conceptos, areas, fijos: Object.fromEntries(Object.entries(fijos).filter(([, v]) => String(v).trim()).map(([k, v]) => [k, numeroSueldo(v) ?? v])) });
       onGuardado();
     } catch (e) {
       setError(e.message);
@@ -431,6 +457,21 @@ function Conceptos({ datos, onCerrar, onGuardado }) {
             ))}
           </ul>
         </fieldset>
+        {responsables.length > 0 && (
+          <fieldset className="border border-gypi-border rounded-lg p-2 m-0 flex flex-col gap-2">
+            <legend className="text-[13px] font-semibold px-1">Sueldo mensual fijo de los dueños</legend>
+            <p className="m-0 text-[13px] text-gypi-dim">En su caja se ve lo que lleva de anticipos por carga de combustible en el mes y cuánto queda del sueldo para liquidar. Al pagar el sueldo, esos anticipos se descuentan.</p>
+            <ul className="list-none m-0 p-0 flex flex-col gap-1" aria-label="Sueldo fijo">
+              {responsables.map((e) => (
+                <li key={e.id} className="flex flex-wrap items-center gap-2 text-[13px]">
+                  <span className="flex-1 min-w-[150px]">{e.nombre}</span>
+                  <input className="g-input w-[160px] text-right font-mono" inputMode="decimal" placeholder="Sin sueldo fijo" aria-label={`Sueldo fijo de ${e.nombre}`}
+                    value={fijos[String(e.id)] ?? ""} onChange={(ev) => setFijos((x) => ({ ...x, [String(e.id)]: ev.target.value }))} />
+                </li>
+              ))}
+            </ul>
+          </fieldset>
+        )}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" className="g-btn g-btn-secondary" onClick={onCerrar}>Cancelar</button>

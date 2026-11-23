@@ -8,9 +8,17 @@
 //       mandada al CFO con su link si mandar).
 //   POST { accion: "mandar", id } → devuelve el link del CFO (el mismo si ya
 //       tenía uno). Solo informativo (13/11): también para una ya pagada.
-//   POST { accion: "pagar", id, fecha } → cualquier orden sin pagar, sin
+//   POST { accion: "pagar", id, fecha, unir? } → cualquier orden sin pagar, sin
 //       esperar al CFO: genera las operaciones, los e-cheq y entrega los
 //       cheques de terceros. El link del CFO sigue sirviendo.
+//       19/11: el efectivo o la transferencia que ya está en la caja o el
+//       banco (del extracto, mismo importe, hasta 5 días) se une con la orden
+//       en vez de cargarse otra vez. Si hay varios posibles → 409 { elegir }
+//       y se vuelve a mandar con unir = { <n° de pago>: id | "nueva" }.
+//   POST { accion: "marcar_pagada", id, fecha } → 23/11: pagada sin generar
+//       nada (ni operaciones, ni e-cheq, ni entrega de cheques): el movimiento
+//       entra con el extracto del banco o la planilla de caja. Queda
+//       generado.sin_registro = true; después se puede registrar con "pagar".
 //   POST { accion: "anular", id } → anulada; si estaba pagada, deshace lo
 //       que generó (si ningún e-cheq se debitó ni un cheque volvió rechazado).
 //   POST { accion: "cfo", nombre, telefono } → guarda a quién se le manda.
@@ -25,6 +33,10 @@
 //   POST { accion: "comprobante", id, url } → foto del comprobante de una
 //       orden (opcional; url vacía la quita).
 //
+// Facturas y presupuestos (19/11, migración 198): crear acepta
+// orden.adjuntos = [{ url, nombre }] (PDF o foto, hasta 10) y
+//   POST { accion: "adjuntos", id, lista } cambia la lista de una orden (no anulada).
+//
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige). El
 // dato del CFO va en config_sistema.
 import crypto from "node:crypto";
@@ -35,9 +47,10 @@ import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { cambioDeEstado, operacionAlta } from "../../../lib/finanzasCheques";
 import { hoyAr } from "../../../lib/finanzasOperaciones";
-import { CLAVE_CFO, accionesOrden, generarPago, validarOrden } from "../../../lib/finanzasPagos";
+import { CLAVE_CFO, DIAS_UNIR, accionesOrden, sinRegistrar, cambioAlUnir, generarPago, movimientosParaUnir, ponerComprobantesFacturas, validarOrden } from "../../../lib/finanzasPagos";
 import { validarResumen } from "../../../lib/finanzasResumenPago";
 import { comprobanteValido } from "../../../lib/finanzasMiCaja";
+import { validarComprobantes } from "../../../lib/finanzasAdjuntos";
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const FALTA_175 = "Para las órdenes de pago falta correr la migración 175 en Supabase.";
@@ -45,6 +58,11 @@ const falta175 = (err) => /fin_ordenes_pago/.test(String(err?.message)) && /does
 
 const FALTA_186 = "Para el resumen de órdenes de pago falta correr la migración 186 en Supabase.";
 const falta186 = (err) => /fin_resumenes_pago|resumen_id|comprobante_url/.test(String(err?.message)) && /does not exist|42P01|42703|PGRST20[045]|schema cache/.test(String(err?.message));
+
+const FALTA_198 = "Para adjuntar facturas o presupuestos a la orden falta correr la migración 198 en Supabase.";
+const falta198 = (err) => /adjuntos/.test(String(err?.message)) && /does not exist|42703|PGRST20[045]|schema cache|column/.test(String(err?.message));
+
+const errorAdjunto = (m) => m.replace("Un comprobante", "Un archivo").replace("comprobantes por movimiento", "archivos por orden");
 
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data);
 const nuevoToken = () => crypto.randomBytes(24).toString("base64url");
@@ -98,8 +116,10 @@ export async function GET(request) {
       leer(sesion, `fin_resumenes_pago?empresa_id=eq.${e}&estado=neq.anulado&select=*&order=numero.desc`, 2000).catch((err) => (falta186(err) ? null : [])),
     ]);
     const { cuentas: _c, ...resto } = ctx;
+    // 22/11: los PDF de las facturas que paga cada orden (para la pantalla y el PDF)
+    const conComp = await ponerComprobantesFacturas(ordenes || [], e, (path) => leer(sesion, path));
     return NextResponse.json({
-      ...resto, ordenes,
+      ...resto, ordenes: conComp,
       empresa: empresas?.[0] || {},
       cfo: { nombre: cfg?.[0]?.valor?.nombre || "", telefono: cfg?.[0]?.valor?.telefono || "" },
       links: Object.fromEntries((ordenes || []).filter((o) => o.token && o.estado !== "anulada").map((o) => [o.id, linkCfo(request, o.token)])),
@@ -117,6 +137,9 @@ async function crear(request, sesion, d) {
   const ctx = await contexto(sesion);
   const { orden, errores } = validarOrden(d.orden || {}, ctx);
   if (errores.length) return NextResponse.json({ error: errores[0], errores }, { status: 400 });
+  const adj = validarComprobantes(d.orden?.adjuntos, { supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL, empresaId: e });
+  if (adj.error) return NextResponse.json({ error: errorAdjunto(adj.error) }, { status: 400 });
+  let aviso = null;
   const ahora = new Date().toISOString();
   const quien = await nombreEmpleado(sesion);
   const mandar = d.mandar === true;
@@ -127,12 +150,19 @@ async function crear(request, sesion, d) {
       ...orden, empresa_id: e, numero: (Number(ultima?.numero) || 0) + 1,
       estado: mandar ? "para_aprobar" : "borrador", token: mandar ? nuevoToken() : null, enviada_at: mandar ? ahora : null,
       cargada_por_nombre: quien, created_at: ahora, updated_at: ahora,
+      ...(adj.lista.length ? { adjuntos: adj.lista } : {}),
     };
     try {
-      const [o] = (await sbPost("fin_ordenes_pago", fila, { sesion })) || [];
+      // Sin la 198 la orden se guarda igual, sin los adjuntos, y se avisa
+      const [o] = (await sbPost("fin_ordenes_pago", fila, { sesion }).catch((err) => {
+        if (!adj.lista.length || !falta198(err)) throw err;
+        aviso = FALTA_198;
+        const { adjuntos: _sin, ...sinAdjuntos } = fila;
+        return sbPost("fin_ordenes_pago", sinAdjuntos, { sesion });
+      })) || [];
       if (!o?.id) return NextResponse.json({ error: "No se pudo guardar la orden" }, { status: 500 });
       refrescar(e, "fin_ordenes_pago");
-      return NextResponse.json({ ok: true, orden: o, url: o.token ? linkCfo(request, o.token) : null });
+      return NextResponse.json({ ok: true, orden: o, url: o.token ? linkCfo(request, o.token) : null, ...(aviso ? { aviso } : {}) });
     } catch (err) {
       if (!/23505|duplicate key/.test(String(err?.message)) || intento === 2) throw err;
     }
@@ -160,8 +190,10 @@ async function pagar(sesion, d) {
   const e = sesion.empresa_id;
   const o = await leerOrden(sesion, Number(d.id));
   if (!o) return NextResponse.json({ error: "No encontré esa orden" }, { status: 404 });
-  if (!accionesOrden(o.estado).includes("pagar")) return NextResponse.json({ error: o.estado === "pagada" ? "Esta orden ya está pagada" : "Esta orden está anulada" }, { status: 400 });
-  const fecha = FECHA.test(String(d.fecha || "")) ? d.fecha : hoyAr();
+  if (!accionesOrden(o.estado, o).includes("pagar")) return NextResponse.json({ error: o.estado === "pagada" ? "Esta orden ya está pagada" : "Esta orden está anulada" }, { status: 400 });
+  // 23/11: una marcada pagada sin registrar se registra con la fecha en que se marcó
+  const yaMarcada = sinRegistrar(o);
+  const fecha = FECHA.test(String(d.fecha || "")) ? d.fecha : yaMarcada && FECHA.test(String(o.pagada_fecha || "")) ? o.pagada_fecha : hoyAr();
   const ctx = await contexto(sesion);
   const plan = generarPago(o, ctx, fecha);
   if (plan.error) return NextResponse.json({ error: plan.error }, { status: 400 });
@@ -175,21 +207,38 @@ async function pagar(sesion, d) {
     if (r.error) return NextResponse.json({ error: r.error }, { status: 400 });
     entregas.push({ ch, ...r });
   }
+  // 19/11: lo que ya está en la caja o el banco (el extracto) se une, no se repite
+  const { unir, dudas } = await buscarParaUnir(sesion, plan.operaciones, o.proveedor_id, d.unir);
+  if (dudas.length) {
+    return NextResponse.json({ error: "Hay más de un movimiento del banco que puede ser este pago: elegí cuál es.", elegir: dudas }, { status: 409 });
+  }
   const ahora = new Date().toISOString();
   const quien = await nombreEmpleado(sesion);
   // La orden se marca primero: dos clics no pagan dos veces. El link del CFO
   // sigue sirviendo (es informativo).
-  const [tomada] = (await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}&estado=eq.${o.estado}`, {
-    estado: "pagada", pagada_at: ahora, pagada_fecha: fecha, pagada_por_nombre: quien, updated_at: ahora,
-  }, { sesion })) || [];
+  const [tomada] = yaMarcada
+    // Ya estaba pagada: se "toma" sacándole la marca, así dos clics no registran dos veces
+    ? (await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}&estado=eq.pagada&generado->>sin_registro=eq.true`, {
+      generado: { operaciones: [], cheques_emitidos: [], cheques_entregados: [], unidas: [] }, pagada_fecha: fecha, updated_at: ahora,
+    }, { sesion })) || []
+    : (await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}&estado=eq.${o.estado}`, {
+      estado: "pagada", pagada_at: ahora, pagada_fecha: fecha, pagada_por_nombre: quien, updated_at: ahora,
+    }, { sesion })) || [];
   if (!tomada) return NextResponse.json({ error: "La orden cambió mientras tanto. Actualizá la pantalla." }, { status: 409 });
 
-  const generado = { operaciones: [], cheques_emitidos: [], cheques_entregados: [] };
+  const generado = { operaciones: [], cheques_emitidos: [], cheques_entregados: [], unidas: [] };
   const extra = { empresa_id: e, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora };
   try {
-    if (plan.operaciones.length) {
-      const ops = (await sbPost("fin_operaciones", plan.operaciones.map((op) => ({ ...op, ...extra })), { sesion })) || [];
+    const nuevas = plan.operaciones.filter((_, i) => !unir.has(i));
+    if (nuevas.length) {
+      const ops = (await sbPost("fin_operaciones", nuevas.map((op) => ({ ...op, ...extra })), { sesion })) || [];
       generado.operaciones.push(...ops.map((x) => x.id));
+    }
+    for (const [i, existente] of unir) {
+      const { id, antes, cambios } = cambioAlUnir(existente, plan.operaciones[i]);
+      const [hecho] = (await sbPatch(`fin_operaciones?id=eq.${Number(id)}&empresa_id=eq.${e}&anulada_at=is.null`, { ...cambios, updated_at: ahora }, { sesion })) || [];
+      if (!hecho) throw new Error("un movimiento del banco cambió mientras tanto");
+      generado.unidas.push({ id: Number(id), antes });
     }
     for (const ch of plan.emitir) {
       const [fila] = (await sbPost("fin_cheques", { ...ch, empresa_id: e, cargado_por_nombre: quien, created_at: ahora, updated_at: ahora }, { sesion })) || [];
@@ -215,14 +264,46 @@ async function pagar(sesion, d) {
   }
   const [final] = (await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}`, { generado, updated_at: new Date().toISOString() }, { sesion })) || [tomada];
   refrescar(e, "fin_ordenes_pago", "fin_operaciones", "fin_cheques");
-  return NextResponse.json({ ok: true, orden: final, generado });
+  return NextResponse.json({ ok: true, orden: final, generado, unidas: generado.unidas.length });
+}
+
+/**
+ * 23/11: marca la orden pagada sin registrar nada. El movimiento entra con el
+ * extracto del banco o la planilla de caja (el extracto la ofrece para unir).
+ */
+async function marcarPagada(sesion, d) {
+  const e = sesion.empresa_id;
+  const o = await leerOrden(sesion, Number(d.id));
+  if (!o) return NextResponse.json({ error: "No encontré esa orden" }, { status: 404 });
+  if (!accionesOrden(o.estado, o).includes("marcar_pagada")) return NextResponse.json({ error: o.estado === "pagada" ? "Esta orden ya está pagada" : "Esta orden está anulada" }, { status: 400 });
+  const fecha = FECHA.test(String(d.fecha || "")) ? d.fecha : hoyAr();
+  const ahora = new Date().toISOString();
+  const quien = await nombreEmpleado(sesion);
+  const [hecha] = (await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}&estado=eq.${o.estado}`, {
+    estado: "pagada", pagada_at: ahora, pagada_fecha: fecha, pagada_por_nombre: quien, updated_at: ahora,
+    generado: { sin_registro: true, operaciones: [], cheques_emitidos: [], cheques_entregados: [], unidas: [] },
+  }, { sesion })) || [];
+  if (!hecha) return NextResponse.json({ error: "La orden cambió mientras tanto. Actualizá la pantalla." }, { status: 409 });
+  refrescar(e, "fin_ordenes_pago");
+  return NextResponse.json({ ok: true, orden: hecha });
+}
+
+/** Los movimientos que ya están para los pagos de la orden (mismas cajas, fechas cerca). */
+async function buscarParaUnir(sesion, operaciones, proveedorId, elegidas) {
+  if (!operaciones.length) return { unir: new Map(), dudas: [] };
+  const cajas = [...new Set(operaciones.map((op) => op.cuenta_haber))];
+  const fecha = operaciones[0].fecha;
+  const mover = (dias) => new Date(Date.parse(`${fecha}T12:00:00Z`) + dias * 86400000).toISOString().slice(0, 10);
+  const lista = cajas.map((c) => `"${String(c).replace(/"/g, "")}"`).join(",");
+  const existentes = (await leer(sesion, `fin_operaciones?empresa_id=eq.${sesion.empresa_id}&anulada_at=is.null&cuenta_haber=in.(${encodeURIComponent(lista)})&fecha=gte.${mover(-DIAS_UNIR)}&fecha=lte.${mover(DIAS_UNIR)}&select=id,fecha,tipo,total,total_ars,cuenta_debe,cuenta_haber,proveedor_id,entidad,referencia,descripcion,origen,anulada_at&order=fecha.asc,id.asc`)) || [];
+  return movimientosParaUnir(operaciones, existentes, { proveedorId, elegidas: elegidas && typeof elegidas === "object" ? elegidas : {} });
 }
 
 async function anular(sesion, d) {
   const e = sesion.empresa_id;
   const o = await leerOrden(sesion, Number(d.id));
   if (!o) return NextResponse.json({ error: "No encontré esa orden" }, { status: 404 });
-  if (!accionesOrden(o.estado).includes("anular")) return NextResponse.json({ error: "Esta orden ya está anulada" }, { status: 400 });
+  if (!accionesOrden(o.estado, o).includes("anular")) return NextResponse.json({ error: "Esta orden ya está anulada" }, { status: 400 });
   const ahora = new Date().toISOString();
   const quien = await nombreEmpleado(sesion);
   const g = o.generado || {};
@@ -246,6 +327,12 @@ async function anular(sesion, d) {
   if (!hecha) return NextResponse.json({ error: "La orden cambió mientras tanto. Actualizá la pantalla." }, { status: 409 });
   const anularOp = (id) => sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null`, { anulada_at: ahora, anulada_por_nombre: quien || "Gypi (orden de pago anulada)", updated_at: ahora }, { sesion });
   for (const id of (g.operaciones || []).map(Number).filter(Boolean)) await anularOp(id);
+  // Lo que se unió con el extracto no se anula: vuelve a como estaba (19/11)
+  for (const u of Array.isArray(g.unidas) ? g.unidas : []) {
+    if (!Number(u?.id) || !u.antes || typeof u.antes !== "object") continue;
+    const { tipo, cuenta_debe, proveedor_id, entidad, referencia, descripcion } = u.antes;
+    await sbPatch(`fin_operaciones?id=eq.${Number(u.id)}&empresa_id=eq.${e}`, { tipo, cuenta_debe, proveedor_id, entidad, referencia, descripcion, updated_at: ahora }, { sesion });
+  }
   for (const ch of cheques) {
     if (emitidos.includes(ch.id) && ch.estado === "pendiente") {
       await sbPatch(`fin_cheques?id=eq.${ch.id}&empresa_id=eq.${e}&estado=eq.pendiente`, { estado: "anulado", estado_fecha: hoyAr(), updated_at: ahora }, { sesion });
@@ -362,6 +449,23 @@ async function guardarComprobante(sesion, d) {
   return NextResponse.json({ ok: true, orden: hecha || { ...o, comprobante_url: url } });
 }
 
+async function guardarAdjuntos(sesion, d) {
+  const e = sesion.empresa_id;
+  const o = await leerOrden(sesion, Number(d.id));
+  if (!o) return NextResponse.json({ error: "No encontré esa orden" }, { status: 404 });
+  if (o.estado === "anulada") return NextResponse.json({ error: "La orden está anulada" }, { status: 400 });
+  const adj = validarComprobantes(d.lista ?? [], { supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL, empresaId: e });
+  if (adj.error) return NextResponse.json({ error: errorAdjunto(adj.error) }, { status: 400 });
+  try {
+    const [hecha] = (await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}`, { adjuntos: adj.lista, updated_at: new Date().toISOString() }, { sesion })) || [];
+    refrescar(e, "fin_ordenes_pago");
+    return NextResponse.json({ ok: true, orden: hecha || { ...o, adjuntos: adj.lista } });
+  } catch (err) {
+    if (falta198(err)) return NextResponse.json({ error: FALTA_198 }, { status: 409 });
+    throw err;
+  }
+}
+
 async function guardarCfo(sesion, d) {
   const e = sesion.empresa_id;
   const valor = {
@@ -384,12 +488,14 @@ export async function POST(request) {
     if (d?.accion === "crear") return await crear(request, sesion, d);
     if (d?.accion === "mandar") return await mandar(request, sesion, d);
     if (d?.accion === "pagar") return await pagar(sesion, d);
+    if (d?.accion === "marcar_pagada") return await marcarPagada(sesion, d);
     if (d?.accion === "anular") return await anular(sesion, d);
     if (d?.accion === "cfo") return await guardarCfo(sesion, d);
     if (d?.accion === "resumen_crear") return await crearResumen(request, sesion, d);
     if (d?.accion === "resumen_mandar") return await mandarResumen(request, sesion, d);
     if (d?.accion === "resumen_anular") return await anularResumen(sesion, d);
     if (d?.accion === "comprobante") return await guardarComprobante(sesion, d);
+    if (d?.accion === "adjuntos") return await guardarAdjuntos(sesion, d);
     return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
   } catch (err) {
     return error(err, `pagos ${d?.accion}`);

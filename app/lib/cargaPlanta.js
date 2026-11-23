@@ -13,6 +13,8 @@
 //                mecanizan)
 //   Armado     = gabinetes × min por gabinete (módulos de la OT, o las
 //                etiquetas de módulo, o placas × gabinetes por placa del tipo)
+// Placas, fondos y metros de canto: los del Plan de trabajo y, lo que falte, de
+// las necesidades del MRP (app/lib/materialMrp.js, Tadeo 23/11).
 // Capacidad = horario semanal de los operarios de la división que no son
 // instaladores, sin los feriados ni las vacaciones o ausencias aprobadas; las
 // máquinas paradas no suman (auditoría 12/11, parte 7). La eficiencia se aplica
@@ -20,6 +22,7 @@
 import { buscarDivision } from "./rutas";
 import { ETAPAS_PLAN, relacionesTipo } from "./planificacion";
 import { tipoDeOt } from "./tipoProyecto";
+import { materialProduccion } from "./materialMrp";
 
 const DIAS_KEY = ["dom", "lun", "mar", "mie", "jue", "vie", "sab"];
 const DIA = 86400000;
@@ -214,18 +217,20 @@ export function pendienteEtapa({ ot, codigo, avance = [], piezas = [] }) {
 export function gabinetesOt(proyecto, params, { modulosEtiquetas = null } = {}) {
   if (num(proyecto?.total_modulos)) return { gabinetes: num(proyecto.total_modulos), origen: "modulos" };
   if (modulosEtiquetas) return { gabinetes: modulosEtiquetas, origen: "etiquetas" };
-  const placas = (num(proyecto?.placas) || 0) + (num(proyecto?.fondos) || 0);
+  const mat = materialProduccion(proyecto);
+  const placas = (mat.placas || 0) + (mat.fondos || 0);
   const rel = relacionesTipo(params, tipoDeOt(proyecto || {}).id);
   return { gabinetes: placas * (rel.gab || 0), origen: "placas" };
 }
 
 /**
  * Horas de una OT por etapa (horas de trabajo efectivas, antes de la eficiencia).
- * @returns {{ ot, tipo: string|null, sinDatos: boolean, placas, metros, mecanizados, origenMecanizados, gabinetes, origenGabinetes, etapas: Record<string,{gente:number, maquina:number, pendiente:number}>, total: number, completo: number }}
+ * @returns {{ ot, tipo: string|null, sinDatos: boolean, delMrp: { placas: boolean, fondos: boolean, metros: boolean }, algunoDelMrp: boolean, placas, metros, mecanizados, origenMecanizados, gabinetes, origenGabinetes, etapas: Record<string,{gente:number, maquina:number, pendiente:number}>, total: number, completo: number }}
  */
 export function horasOt(proyecto, params, { modulosEtiquetas = null, avance = [], piezas = [] } = {}) {
-  const placas = (num(proyecto.placas) || 0) + (num(proyecto.fondos) || 0);
-  const metros = num(proyecto.metros_canto) || 0;
+  const mat = materialProduccion(proyecto);
+  const placas = (mat.placas || 0) + (mat.fondos || 0);
+  const metros = mat.metros || 0;
   const tipo = tipoDeOt(proyecto).id;
   const rel = relacionesTipo(params, tipo);
   // La columna MECANIZADOS de la planilla (placas_mecanizadas) es la cantidad de mecanizados
@@ -234,7 +239,7 @@ export function horasOt(proyecto, params, { modulosEtiquetas = null, avance = []
   const mecanizados = deLaPlanilla ?? placas * pct * (rel.mec || 0);
   const origenMecanizados = deLaPlanilla != null ? "planilla" : "tipo";
   const { gabinetes, origen: origenGabinetes } = gabinetesOt(proyecto, params, { modulosEtiquetas });
-  const sinDatos = num(proyecto.placas) == null && num(proyecto.fondos) == null && num(proyecto.metros_canto) == null;
+  const sinDatos = mat.placas == null && mat.fondos == null && mat.metros == null;
 
   const pend = (id) => pendienteEtapa({ ot: proyecto.ot, codigo: params.etapas?.[id], avance, piezas });
   const doble = params.personas_canteadora === 2;
@@ -258,7 +263,7 @@ export function horasOt(proyecto, params, { modulosEtiquetas = null, avance = []
     etapas[id] = { gente: gente / 60, maquina: maquina / 60, pendiente };
   }
   const total = Object.values(etapas).reduce((s, e) => s + e.gente, 0);
-  return { ot: proyecto.ot, tipo, sinDatos, placas, metros, mecanizados, origenMecanizados, gabinetes, origenGabinetes, etapas, total, completo };
+  return { ot: proyecto.ot, tipo, sinDatos, delMrp: mat.delMrp, algunoDelMrp: mat.algunoDelMrp, placas, metros, mecanizados, origenMecanizados, gabinetes, origenGabinetes, etapas, total, completo };
 }
 
 const MAQUINAS = [

@@ -181,7 +181,7 @@ test("Stock — el ingreso repetido se confirma antes de cargarlo", async () => 
   globalThis.window.confirm = (t) => { preguntas.push(t); return preguntas.length > 1; };
   try {
     render(<MovimientosStock usuario={{ id: EMP, rol: "administrativo" }} articulos={[{ ...ARTICULOS[0], activo: true }]} />);
-    fireEvent.click(screen.getByText("＋ Cargar retiro, devolución, ingreso o ajuste"));
+    fireEvent.click(screen.getByText("📥 Cargar ingreso"));
     fireEvent.change(screen.getByLabelText("Artículo"), { target: { value: "melamina" } });
     fireEvent.click(screen.getByText("MELAMINA BLANCA 18MM"));
     fireEvent.change(screen.getByLabelText("Cantidad (UN)"), { target: { value: "10" } });

@@ -36,7 +36,7 @@ export function textoNeto(neto) {
   return "Neto: al día";
 }
 
-function Compensar({ cuenta, onCerrar, onHecho }) {
+export function Compensar({ cuenta, onCerrar, onHecho }) {
   const toast = useToast();
   const [fecha, setFecha] = useState(hoyAr());
   const [importe, setImporte] = useState(String(cuenta.compensable).replace(".", ","));

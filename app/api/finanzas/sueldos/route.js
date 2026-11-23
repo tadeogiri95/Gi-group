@@ -13,6 +13,10 @@
 //   POST { accion: "pagar", id, pagos: [{ empleado_id, cuenta, importe, fecha }] }
 //       → una operación SUELDOS (pago) por empleado, desde la caja o el banco elegido.
 //   POST { accion: "anular_pago", op_id } → anula un pago de sueldo.
+//   14/11: en config van también los sueldos fijos de los dueños (fijos); el
+//   GET trae los anticipos por carga de combustible de cada uno por mes, y un
+//   pago con descontar: true descuenta los del mes de la liquidación
+//   (Sueldos A Pagar contra Anticipo de sueldos; finanzasAnticipos.js).
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige). Los
 // conceptos van en config_sistema.
@@ -26,6 +30,7 @@ import {
   CLAVE_SUELDOS, ORIGEN_LIQUIDACION, ORIGEN_PAGO_SUELDO, cuentaSueldosAPagar, cuentasDeArea, leerConfigSueldos, operacionPagoSueldo,
   operacionesLiquidacion, pagadoPorEmpleado, totalesLiquidacion, validarConfigSueldos, validarLiquidacion,
 } from "../../../lib/finanzasSueldos";
+import { anticiposPorMes, cuentaAnticipos, descontadosDe, mesDeLiquidacion, operacionDescuentoAnticipos } from "../../../lib/finanzasAnticipos";
 
 const FALTA_178 = "Para los sueldos falta correr la migración 178 en Supabase.";
 const falta178 = (err) => /fin_liquidaciones/.test(String(err?.message)) && /does not exist|42P01|PGRST20[05]|schema cache/.test(String(err?.message));
@@ -49,7 +54,7 @@ async function contexto(sesion) {
   const e = sesion.empresa_id;
   const [cuentas, tesoreria, empleados] = await Promise.all([
     leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre,activa&order=codigo.asc`),
-    leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,activa&order=nombre.asc`),
+    leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,activa,responsable_id&order=nombre.asc`),
     leer(sesion, `empleados?empresa_id=eq.${e}&select=id,nombre,legajo,division,activo&order=nombre.asc`),
   ]);
   const config = await leerConfig(e, cuentas || []);
@@ -70,6 +75,24 @@ function error(err, donde) {
   return errorFinanzas(err, donde);
 }
 
+/**
+ * Los anticipos por carga de combustible de cada responsable de una caja:
+ * { empleado_id: { "2026-11": importe } }.
+ */
+async function anticiposDeCadaUno(sesion, ctx) {
+  const cuentaAnticipo = cuentaAnticipos(ctx.cuentas);
+  const cajasDe = new Map();
+  for (const t of ctx.tesoreria) if (t.responsable_id) cajasDe.set(String(t.responsable_id), [...(cajasDe.get(String(t.responsable_id)) || []), t.cuenta]);
+  if (!cuentaAnticipo || !cajasDe.size) return {};
+  const ops = (await leer(sesion, `fin_operaciones?empresa_id=eq.${sesion.empresa_id}&cuenta_debe=eq.${encodeURIComponent(cuentaAnticipo)}&anulada_at=is.null&select=${COLUMNAS_OP}&order=fecha.asc,id.asc`, 20000)) || [];
+  const out = {};
+  for (const [emp, cajas] of cajasDe) {
+    const meses = anticiposPorMes(ops, { cuentaAnticipo, cajas });
+    if (meses.size) out[emp] = Object.fromEntries([...meses].map(([m, x]) => [m, x.total]));
+  }
+  return out;
+}
+
 const refrescar = (e, ...tablas) => tablas.forEach((t) => broadcastRefresh(e, t));
 const mal = (msg, status = 400) => NextResponse.json({ error: msg }, { status });
 
@@ -84,8 +107,9 @@ export async function GET(request) {
       leer(sesion, `fin_liquidaciones?empresa_id=eq.${e}${anuladas ? "" : "&estado=neq.anulada"}&select=*&order=fecha.desc,id.desc`, 2000),
       leer(sesion, `fin_operaciones?empresa_id=eq.${e}&origen=eq.${ORIGEN_PAGO_SUELDO}&select=${COLUMNAS_OP}&order=fecha.asc,id.asc`, 50000),
     ]);
+    const anticipos = await anticiposDeCadaUno(sesion, ctx).catch(() => ({}));
     return NextResponse.json({
-      conceptos: ctx.config.conceptos, areas: ctx.config.areas, config_guardada: ctx.config.guardada,
+      conceptos: ctx.config.conceptos, areas: ctx.config.areas, fijos: ctx.config.fijos, anticipos, config_guardada: ctx.config.guardada,
       cuentas: ctx.cuentas, cuentas_area: cuentasDeArea(ctx.cuentas), cuenta_a_pagar: cuentaSueldosAPagar(ctx.cuentas),
       empleados: ctx.empleados, tesoreria: ctx.tesoreria, liquidaciones: liquidaciones || [], pagos: ops || [],
     });
@@ -191,6 +215,8 @@ async function pagar(sesion, d) {
   if (!lista.length) return mal("Elegí a quién pagar");
   const ops = [];
   const vistos = new Set();
+  let anticipos = null;
+  let todosLosPagos = null;
   for (const p of lista) {
     const emp = String(p?.empleado_id ?? "");
     const renglon = (l.renglones || []).find((r) => String(r.empleado_id) === emp);
@@ -200,8 +226,23 @@ async function pagar(sesion, d) {
     vistos.add(emp);
     const importe = centavos(p.importe);
     const falta = centavos(tot.total - (pagado[emp] || 0));
+    // 14/11: los anticipos por combustible del mes se descuentan del sueldo
+    let descuento = 0;
+    if (p.descontar) {
+      const mes = mesDeLiquidacion(l);
+      const cuentaAnticipo = cuentaAnticipos(ctx.cuentas);
+      if (!cuentaAnticipo) return mal("Falta la cuenta \"Anticipo De Sueldos\" en el plan de cuentas");
+      if (!FECHA.test(String(p.fecha || ""))) return mal(`${renglon.nombre}: falta la fecha del pago`);
+      if (anticipos === null) anticipos = await anticiposDeCadaUno(sesion, ctx);
+      const hechos = descontadosDe(todosLosPagos || (todosLosPagos = (await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&origen=eq.${ORIGEN_PAGO_SUELDO}&anulada_at=is.null&select=${COLUMNAS_OP}`, 50000)) || []), emp);
+      descuento = hechos[mes] ? 0 : centavos(anticipos[emp]?.[mes] || 0);
+      if (!(descuento > 0)) return mal(`${renglon.nombre}: no tiene anticipos de ese mes para descontar`);
+      if (descuento > falta + 0.01) return mal(`${renglon.nombre}: los anticipos superan lo que le falta cobrar`);
+      ops.push(operacionDescuentoAnticipos({ liq: l, renglon, importe: descuento, fecha: p.fecha, mes }, { cuentaAPagar, cuentaAnticipo }));
+      if (!(importe > 0)) continue;
+    }
     if (!(importe > 0)) return mal(`${renglon.nombre}: falta el importe`);
-    if (importe > falta + 0.01) return mal(`${renglon.nombre}: le falta cobrar $ ${falta.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`);
+    if (importe + descuento > falta + 0.01) return mal(`${renglon.nombre}: le falta cobrar $ ${centavos(falta - descuento).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`);
     const caja = ctx.tesoreria.find((t) => t.cuenta === String(p.cuenta || "") && t.activa !== false);
     if (!caja) return mal(`${renglon.nombre}: elegí la caja o el banco`);
     if (caja.moneda && caja.moneda !== "ARS") return mal(`${renglon.nombre}: los sueldos se pagan desde una caja o banco en pesos`);

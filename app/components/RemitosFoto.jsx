@@ -18,6 +18,7 @@ import BotonNuevaPersona from "./AltaPersona";
 import { sugerirArticulos } from "../lib/stock";
 import { COMO_ARTICULO, parecidosArticulo } from "../lib/remitosStock";
 import BotonFoto from "./BotonFoto";
+import { useTecladoLista, CLASE_MARCADA } from "../hooks/useTecladoLista";
 
 const PARA_TEXTO = 6;
 
@@ -60,6 +61,27 @@ export function cuerpoRemito(ed) {
 const fechaCorta = (iso) => (iso ? new Date(`${String(iso).slice(0, 10)}T12:00:00`).toLocaleDateString("es-AR", { dateStyle: "short" }) : "");
 const titulo = (r) => [r.origen === "ticket" ? "🧾 Ticket de Mi caja" : null, r.proveedor || "Sin proveedor", r.numero ? `N° ${r.numero}` : null].filter(Boolean).join(" · ");
 const cuantos = (n) => (n === 1 ? "1 artículo" : `${n} artículos`);
+
+/** El buscador de artículos de un renglón: flechas y Enter eligen (22/11). */
+function BuscarArticulo({ etiqueta, texto, lista, onTexto, onElegir, placeholder }) {
+  const teclado = useTecladoLista(lista, onElegir, () => onTexto(""));
+  return (
+    <>
+      <input aria-label={etiqueta} className="g-input w-full" value={texto} onChange={(e) => onTexto(e.target.value)} onKeyDown={teclado.onKeyDown} autoComplete="off" placeholder={placeholder} />
+      {lista.length > 0 && (
+        <ul aria-label="Artículos encontrados" className="list-none p-0 m-0 mt-1 flex flex-col gap-1">
+          {lista.map((x, i) => (
+            <li key={x.sku}>
+              <button {...teclado.props(i)} onClick={() => onElegir(x)} className={`w-full min-h-[44px] text-left bg-gypi-surface rounded-lg px-2 border border-gypi-border cursor-pointer font-body text-gypi-text text-[13px] ${i === teclado.activa ? CLASE_MARCADA : ""}`}>
+                <b>{x.nombre || x.sku}</b> <span className="text-gypi-dim">· {x.sku}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
 
 export default function RemitosFoto({ articulos = [], onIngreso, onAbierto }) {
   const [datos, setDatos] = useState(null);
@@ -284,18 +306,9 @@ export default function RemitosFoto({ articulos = [], onIngreso, onAbierto }) {
                       </ul>
                     </div>
                   )}
-                  <input aria-label={`Buscar el artículo de ${nombre}`} className="g-input w-full" value={r.texto} onChange={(e) => cambiarRenglon(i, { texto: e.target.value })} placeholder={opciones.length ? "Si no es ninguno, buscalo en el MRP: nombre o código" : "Buscá el artículo del MRP: nombre o código"} />
-                  {sug.lista.length > 0 && (
-                    <ul aria-label="Artículos encontrados" className="list-none p-0 m-0 mt-1 flex flex-col gap-1">
-                      {sug.lista.map((x) => (
-                        <li key={x.sku}>
-                          <button onClick={() => elegir(i, x)} className="w-full min-h-[44px] text-left bg-gypi-surface rounded-lg px-2 border border-gypi-border cursor-pointer font-body text-gypi-text text-[13px]">
-                            <b>{x.nombre || x.sku}</b> <span className="text-gypi-dim">· {x.sku}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <BuscarArticulo etiqueta={`Buscar el artículo de ${nombre}`} texto={r.texto} lista={sug.lista}
+                    onTexto={(t) => cambiarRenglon(i, { texto: t })} onElegir={(x) => elegir(i, x)}
+                    placeholder={opciones.length ? "Si no es ninguno, buscalo en el MRP: nombre o código" : "Buscá el artículo del MRP: nombre o código"} />
                   {sug.resto > 0 && <div className="text-[12px] text-gypi-dim mt-1">Hay {sug.resto} más: escribí otra palabra.</div>}
                   {!r.texto.trim() && !opciones.length && <div className="text-[12px] text-gypi-amber-ink mt-1">Elegí el artículo del MRP, o sacá el renglón si no va al stock.</div>}
                 </div>

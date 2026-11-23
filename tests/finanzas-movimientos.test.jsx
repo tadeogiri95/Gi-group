@@ -419,3 +419,16 @@ test("Tesorería — con una caja elegida: solo sus movimientos y «➕ Cargar»
   assert.equal(screen.getByLabelText("Caja o banco que paga").value, "Caja Tadeo Giri", "la caja elegida queda puesta");
   assert.equal(cambios, 0);
 });
+
+// 19/11: el cliente elegido (o dado de alta recién con ➕ Nuevo) va con su ficha
+test("/api/finanzas/operaciones — crear con el cliente elegido guarda su cliente_id (y el que quedó si se unió)", async () => {
+  const op = { fecha: "2026-11-09", tipo: "PAGO TRANSF", proveedor_id: "", entidad: "Riofrio Ivan", cliente_id: "3", neto: "5000", cuenta_debe: "02.01.02.001.001", cuenta_haber: "01.01.01.003.002" };
+  let { escrito } = mockApi({ existentes: [] });
+  let res = await pedir("gerencial", "POST", { accion: "crear", operacion: op });
+  assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
+  assert.deepEqual([escrito[0].body.cliente_id, escrito[0].body.entidad, escrito[0].body.proveedor_id], [3, "Riofrio Ivan", null]);
+  ({ escrito } = mockApi({ existentes: [] }));
+  res = await pedir("gerencial", "POST", { accion: "crear", operacion: { ...op, cliente_id: "999" } });
+  assert.equal(res.status, 200);
+  assert.equal(escrito[0].body.cliente_id ?? null, null, "un cliente que no está no se inventa");
+});

@@ -8,6 +8,7 @@ import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/re
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import {
   leerListadoEcheq, cuentaPropiaDe, estadoDelBanco, planListado, chequeNuevo, resumenListado, cuitLimpio,
+  fechaDelMovimiento, rangoDelMovimiento, movimientoDelCheque,
 } from "../app/lib/finanzasEcheqListado.js";
 
 before(() => {
@@ -188,6 +189,51 @@ test("/api/finanzas/cheques/listado — aplicar: suma sin operación, une el dé
   assert.equal((await pedir("gerencial", { accion: "aplicar", cheques, cuenta_propia: PROPIA, cuenta_banco: "otro", elegidos: ["ID1"] })).status, 400);
 });
 
+// 16/11: el débito que llega semanas después de la fecha de pago se une igual
+test("movimientoDelCheque — busca el débito hasta 35 días después de la fecha de pago, el más cercano al día en que se cobró", () => {
+  const c = { monto: 1000, fecha_pago: "2026-10-05", fecha_mod: "2026-10-28", estado_banco: "PAGADO" };
+  assert.equal(fechaDelMovimiento(c), "2026-10-28");
+  assert.equal(fechaDelMovimiento({ ...c, estado_banco: "ACTIVO" }), "2026-10-05");
+  assert.deepEqual(rangoDelMovimiento(c), { desde: "2026-10-01", hasta: "2026-11-09" });
+  const ops = [
+    { id: 1, fecha: "2026-10-06", total: 1000, cuenta_debe: "X", cuenta_haber: BANCO, origen: "manual" },
+    { id: 2, fecha: "2026-10-28", total: 1000, cuenta_debe: "X", cuenta_haber: BANCO, origen: "banco" },
+    { id: 3, fecha: "2026-10-28", total: 1000, cuenta_debe: BANCO, cuenta_haber: "X", origen: "banco" },
+    { id: 4, fecha: "2026-12-01", total: 1000, cuenta_debe: "X", cuenta_haber: BANCO, origen: "banco" },
+  ];
+  const f = { c, accion: "debitado" };
+  assert.equal(movimientoDelCheque(f, ops, { banco: BANCO }).id, 2, "el del día en que se cobró");
+  assert.equal(movimientoDelCheque(f, ops, { banco: BANCO, usadas: new Set([2]) }).id, 1);
+  assert.equal(movimientoDelCheque(f, [ops[3]], { banco: BANCO }), null, "más de 35 días: no");
+  assert.equal(movimientoDelCheque({ c, accion: "depositado" }, ops, { banco: BANCO }).id, 3, "un depósito entra al banco");
+});
+
+test("/api/finanzas/cheques/listado — aplicar: el débito del extracto 3 semanas después se une; algo igual cerca no se carga solo", async () => {
+  const gypi = [{ id: 1, clase: "propio", tipo: "echeq_diferido", estado: "pendiente", numero: "101", importe: 1000, fecha_pago: "2026-10-05", banco: "Credicoop", id_banco: null }];
+  const { cheques } = leerListadoEcheq(GRILLA);
+  const tarde = cheques.map((c) => (c.id_banco === "ID1" ? { ...c, fecha_mod: "2026-10-27" } : c));
+  let escrito = mockApi({ gypi, enBanco: [{ id: 55, fecha: "2026-10-27", total: 1000, total_ars: 1000, cuenta_debe: "02.01.03", cuenta_haber: BANCO, origen: "banco" }] });
+  let d = await (await pedir("gerencial", { accion: "aplicar", cheques: tarde, cuenta_propia: PROPIA, cuit_empresa: MI_CUIT, cuenta_banco: BANCO, elegidos: ["ID1"] })).json();
+  assert.equal(d.unidos_al_banco, 1);
+  assert.equal(escrito.filter((x) => x.tabla === "fin_operaciones" && x.metodo === "POST").length, 0, "no se resta dos veces");
+
+  // Un movimiento igual que no es del rango del cheque, pero está a 2 días de la fecha del débito: se pregunta
+  const parecido = { id: 56, fecha: "2026-09-29", total: 1000, total_ars: 1000, cuenta_debe: "02.01.03", cuenta_haber: BANCO, origen: "manual" };
+  const antes = cheques.map((c) => (c.id_banco === "ID1" ? { ...c, fecha_mod: null, estado_banco: "PAGADO", fecha_pago: "2026-10-01" } : c));
+  escrito = mockApi({ gypi: [{ ...gypi[0], fecha_pago: "2026-10-01" }], enBanco: [{ ...parecido, fecha: "2026-09-29" }] });
+  d = await (await pedir("gerencial", { accion: "aplicar", cheques: antes, cuenta_propia: PROPIA, cuit_empresa: MI_CUIT, cuenta_banco: BANCO, elegidos: ["ID1"] })).json();
+  assert.equal(d.unidos_al_banco, 1, "dentro del rango (4 días antes) se une");
+
+  escrito = mockApi({ gypi: [{ ...gypi[0], fecha_pago: "2026-10-01" }], enBanco: [{ ...parecido, fecha: "2026-09-29", origen: "cheque" }] });
+  d = await (await pedir("gerencial", { accion: "aplicar", cheques: antes, cuenta_propia: PROPIA, cuit_empresa: MI_CUIT, cuenta_banco: BANCO, elegidos: ["ID1"] })).json();
+  assert.equal(d.cambiados, 0);
+  assert.equal(d.dudosos.length, 1);
+  assert.match(d.dudosos[0].texto, /Cheque 101/);
+  assert.equal(escrito.filter((x) => x.metodo === "PATCH" || x.metodo === "POST").length, 0, "no cambia nada");
+  d = await (await pedir("gerencial", { accion: "aplicar", cheques: antes, cuenta_propia: PROPIA, cuit_empresa: MI_CUIT, cuenta_banco: BANCO, elegidos: ["ID1"], forzar: ["ID1"] })).json();
+  assert.deepEqual([d.cambiados, d.dudosos.length], [1, 0], "confirmado: se carga");
+});
+
 // ─── Pantalla ───
 
 test("pantalla — sube el listado, muestra qué cambia y aplica lo elegido", async () => {
@@ -218,4 +264,11 @@ test("pantalla — sube el listado, muestra qué cambia y aplica lo elegido", as
   await waitFor(() => assert.equal(posts.length, 1));
   assert.deepEqual([posts[0].accion, posts[0].cuenta_banco, posts[0].cuit_empresa, posts[0].elegidos.includes("ID1")], ["aplicar", BANCO, MI_CUIT, false]);
   await waitFor(() => assert.ok(aplicado));
+});
+
+// 19/11: un e-cheq sin cuenta del emisor no se toma como propio
+test("plan — sin cuenta del emisor va como de terceros", () => {
+  const c = { id_banco: "X1", numero: "650", fecha_pago: "2026-10-16", monto: 335619, cuenta_emisor: "", estado_banco: "ACTIVO" };
+  const { filas } = planListado([c], [], { cuentaPropia: "" });
+  assert.deepEqual([filas[0].clase, filas[0].estado], ["tercero", "en_cartera"]);
 });

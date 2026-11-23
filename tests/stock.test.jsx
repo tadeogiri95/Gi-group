@@ -252,7 +252,7 @@ test("/api/stock/sync — dice qué falta: la migración o el link", async () =>
 
 const LISTA = unirArticulos({ inventario: INVENTARIO, articulos: ARTICULOS }).filas.map((f) => ({ ...f, activo: true }));
 
-function mockPantalla({ articulos = LISTA, valor = { inventario: "https://docs.google.com/inv.csv", ultima_sync: "2026-10-15T09:00:00Z" } } = {}) {
+function mockPantalla({ articulos = LISTA, valor = { inventario: "https://docs.google.com/inv.csv", ultima_sync: "2026-10-15T09:00:00Z" }, precios = [] } = {}) {
   const pedidos = [];
   global.fetch = async (url, opts = {}) => {
     const body = opts.body ? JSON.parse(opts.body) : null;
@@ -262,10 +262,36 @@ function mockPantalla({ articulos = LISTA, valor = { inventario: "https://docs.g
     }
     if (body?.path?.startsWith("config_sistema")) return new Response(JSON.stringify({ data: valor ? [{ valor }] : [] }), { status: 200 });
     if (body?.path?.startsWith("articulos_stock")) return new Response(JSON.stringify({ data: articulos }), { status: 200 });
+    if (body?.path?.startsWith("v_precios_articulos")) {
+      pedidos.push("precios");
+      return new Response(JSON.stringify({ data: precios }), { status: 200 });
+    }
     return new Response(JSON.stringify({ data: [] }), { status: 200 });
   };
   return pedidos;
 }
+
+test("pantalla Stock — la oficina ve el último precio con su fecha; el operario no", async () => {
+  const lana = LISTA.find((a) => a.nombre === "LANA DE VIDRIO");
+  const pedidos = mockPantalla({
+    precios: [
+      { sku: lana.sku, fecha: "2026-11-14", precio: 12345, moneda: "ARS", precio_ars: 12345, origen: "oc", proveedor: "ISOVER" },
+      { sku: lana.sku, fecha: "2026-09-01", precio: 9000, moneda: "ARS", precio_ars: 9000, origen: "mrp" },
+    ],
+  });
+  render(<StockScreen empresa={{ slug: "gi" }} empresaId={E} usuario={{ rol: "administrativo" }} />);
+  await waitFor(() => assert.ok(screen.getByText("$ 12.345,00")));
+  const fila = screen.getAllByRole("listitem").find((li) => /LANA DE VIDRIO/.test(li.textContent));
+  assert.match(fila.textContent, /💲 \$ 12\.345,00 · 14\/11\/2026/);
+  assert.ok(!screen.queryByText("$ 9.000,00"), "solo el último");
+  cleanup();
+  const pedidosOp = mockPantalla({ precios: [{ sku: lana.sku, fecha: "2026-11-14", precio_ars: 1, moneda: "ARS" }] });
+  render(<StockScreen empresa={{ slug: "gi" }} empresaId={E} usuario={{ rol: "operativo" }} />);
+  await waitFor(() => assert.ok(screen.getByText("4 artículos")));
+  assert.ok(!screen.queryByText(/💲/));
+  assert.ok(!pedidosOp.includes("precios"), "el operario ni pide los precios");
+  assert.ok(pedidos.includes("precios"));
+});
 
 test("pantalla Stock — lista con semáforo, búsqueda, urgentes y ficha", async () => {
   mockPantalla();

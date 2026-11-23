@@ -198,3 +198,29 @@ test("plan vivo — producción marca tarde contra la fecha límite, no contra l
   assert.equal(sinInst.objetivo, "2026-11-15"); // sin días ni gabinetes: la semana
   assert.equal(sinInst.tarde, false);
 });
+
+// 19/11: Supabase corta cada respuesta en 1000 renglones; el plan grande se leía cortado
+test("/api/plan-instalacion — el plan se lee entero aunque tenga más de 1000 renglones", async () => {
+  const todos = Array.from({ length: 1500 }, (_, i) => ({ plan_id: 9, obra: `o${i}`, ots: ["1"], fecha: "2099-11-09", medio: i % 2, empleado_id: YO, orden: i }));
+  const pedidas = [];
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ timezone: "America/Argentina/Buenos_Aires", plan_activo: "pro", plan_vence: "2099-01-01", modulos: null }] }) },
+    { match: (u) => u.includes("/rest/v1/planes_instalacion?"), respond: () => ({ status: 200, body: [{ id: 9, division_id: null, confirmado_nombre: "Tadeo", confirmado_at: "2026-11-02T20:00:00Z" }] }) },
+    {
+      match: (u) => u.includes("/rest/v1/plan_instalacion_items?"),
+      respond: (u) => {
+        pedidas.push(u);
+        const limit = Number(u.match(/limit=(\d+)/)?.[1] || 1000);
+        const offset = Number(u.match(/offset=(\d+)/)?.[1] || 0);
+        return { status: 200, body: todos.slice(offset, offset + Math.min(limit, 1000)) };
+      },
+    },
+    { match: () => true, respond: () => ({ status: 200, body: [] }) },
+  ]);
+  const r = await api.GET(req(await token("gerencial")));
+  assert.equal(r.status, 200);
+  const d = await r.json();
+  assert.equal(d.planes[0].items.length, 1500);
+  assert.equal(pedidas.length, 2, "de a 1000");
+});

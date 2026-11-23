@@ -169,7 +169,7 @@ const pedir = async (rol, metodo, body) => api[metodo](new Request("http://local
   method: metodo, headers: { "Content-Type": "application/json", Authorization: `Bearer ${await token(rol)}` }, ...(body ? { body: JSON.stringify(body) } : {}),
 }));
 
-function mockApi({ sin177 = false, cheques = [] } = {}) {
+function mockApi({ sin177 = false, cheques = [], personas = [] } = {}) {
   const escrito = [];
   const leido = [];
   let idCheque = 50;
@@ -181,7 +181,20 @@ function mockApi({ sin177 = false, cheques = [] } = {}) {
     { match: (u) => u.includes("/rest/v1/empleados?"), respond: () => ({ status: 200, body: [{ id: EMP, nombre: "Tadeo" }] }) },
     { match: (u) => u.includes("/rest/v1/fin_cuentas"), respond: () => ({ status: 200, body: CUENTAS }) },
     { match: (u) => u.includes("/rest/v1/fin_tesoreria"), respond: () => ({ status: 200, body: TESORERIA }) },
-    { match: (u) => u.includes("/rest/v1/proyectos"), respond: () => ({ status: 200, body: PROYECTOS }) },
+    {
+      match: (u) => u.includes("/rest/v1/proyectos"),
+      respond: (u, o) => {
+        if (o?.method === "PATCH") { escrito.push({ tabla: "proyectos", url: u, metodo: "PATCH", body: JSON.parse(o.body) }); return { status: 200, body: [] }; }
+        return { status: 200, body: PROYECTOS };
+      },
+    },
+    {
+      match: (u) => u.includes("/rest/v1/fin_personas"),
+      respond: (u, o) => {
+        if (o?.method === "PATCH") { escrito.push({ tabla: "fin_personas", url: u, metodo: "PATCH", body: JSON.parse(o.body) }); return { status: 200, body: [] }; }
+        return { status: 200, body: personas };
+      },
+    },
     {
       match: (u) => u.includes("/rest/v1/fin_clientes"),
       respond: (u, o) => {
@@ -297,9 +310,15 @@ test("/api/finanzas/clientes — traer de las OT y unir", async () => {
   ({ escrito } = mockApi());
   r = await pedir("gerencial", "POST", { accion: "unir", a: 2, b: 1 });
   assert.equal(r.status, 200);
-  assert.deepEqual(escrito.map((x) => [x.tabla, x.url.match(/[?&](?:cliente_)?id=eq\.(\d+)/)?.[1]]), [["fin_clientes", "2"], ["fin_clientes", "1"], ["fin_operaciones", "1"]]);
+  assert.deepEqual(escrito.map((x) => [x.tabla, x.url.match(/[?&](?:cliente_)?id=eq\.(\d+)/)?.[1]]), [
+    ["fin_clientes", "2"], ["fin_clientes", "1"], ["fin_operaciones", "1"], ["fin_cheques", "1"], ["proyectos", "1"], ["fin_personas", "1"],
+  ], "19/11: también los cheques, las OT y su renglón de la Agenda");
   assert.deepEqual(escrito[0].body.alias, ["STOM SAS", "STOM"]);
-  assert.equal(escrito[2].body.cliente_id, 2);
+  assert.deepEqual(escrito.slice(2, 5).map((x) => x.body.cliente_id), [2, 2, 2]);
+  assert.equal(escrito[5].body.cliente_id, 2, "el que queda no tenía renglón: pasa el del que sale");
+  ({ escrito } = mockApi({ personas: [{ id: 9 }] }));
+  await pedir("gerencial", "POST", { accion: "unir", a: 2, b: 1 });
+  assert.equal(escrito.find((x) => x.tabla === "fin_personas").body.cliente_id, null, "si el que queda ya tiene renglón, el otro lo suelta");
   assert.equal((await pedir("gerencial", "POST", { accion: "crear", cliente: { nombre: "stom" } })).status, 409, "ya está");
 });
 

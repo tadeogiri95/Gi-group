@@ -21,16 +21,21 @@ export const BOTONES_GESTION = {
     label: "Producción",
     detalle: "Órdenes de trabajo, planificación y reportes",
     opciones: [
-      { id: "vivo", label: "En vivo", modulo: "actividad", conTareas: true },
-      { id: "ot", label: "OT", modulo: "proyectos" },
-      { id: "reportes", label: "Reportes", modulo: "actividad" },
-      // Auditoría 12/11 (parte 13): las instalaciones con lugar propio, abre
-      // directo el 🔧 Gantt de instalación (antes estaba escondido dentro de OT)
-      { id: "instalaciones", label: "Instalaciones", modulo: "proyectos" },
+      // 23/11 (Tadeo): orden y nombres de las pestañas de Producción:
+      // Órdenes de trabajo, Panel de control, Planificación, Reportes, Minuta
+      { id: "ot", label: "Órdenes de trabajo", modulo: "proyectos" },
+      // Panel de control de la producción (Tadeo, 23/11): indicadores con
+      // semáforo, la semana contra las 4 anteriores. Dueño y supervisores
+      { id: "panel", label: "Panel de control", modulo: "proyectos", soloGerencia: true },
       // Planificación de la producción (parte 38): la arman el Dueño y los supervisores
       { id: "planificacion", label: "Planificación", modulo: "proyectos", soloGerencia: true },
+      { id: "reportes", label: "Reportes", modulo: "actividad" },
       // Minuta de la reunión de Buenos Días (Minuta, parte M1, 150): Dueño y supervisores
       { id: "minuta", label: "Minuta", modulo: "minutas", soloGerencia: true },
+      // 23/11 (Tadeo): sin pestaña "Instalaciones"; solo abría el Gantt de
+      // instalación, que sigue en OT → 📅 Gantt → 🔧 Instalación
+      // En vivo solo aparece si la empresa registra tareas ("Iniciar Tarea")
+      { id: "vivo", label: "En vivo", modulo: "actividad", conTareas: true },
     ],
   },
   inventario: {
@@ -38,6 +43,10 @@ export const BOTONES_GESTION = {
     detalle: "Stock y compras",
     opciones: [
       { id: "stock", label: "Stock", modulo: "stock" },
+      // 17/11 (pedido de Tadeo): inventario valorizado a una fecha (solo la
+      // oficina, muestra precios) y Movimientos con lugar propio
+      { id: "inventario-valorizado", label: "Inventario valorizado", modulo: "stock", soloOficina: true },
+      { id: "movimientos", label: "Movimientos", modulo: "stock" },
       { id: "compras", label: "Compras", modulo: "compras" },
     ],
   },
@@ -56,46 +65,46 @@ export const BOTONES_GESTION = {
     detalle: "Cuentas, cajas, bancos y movimientos",
     opciones: [
       // Parte 10 del 11/11: Inicio primero y el resto por tema (finanzasInicio.js).
-      // 14/11 (etapa 4 de la auditoría): 6 lugares — Inicio, Tesorería, Cuentas
-      // corrientes, Contabilidad, Informes y Ajustes — y lo que estaba
-      // escondido adentro de otras pantallas con su renglón propio.
+      // 19/11 (punto 17): por lo que se hace — Pagar y cobrar, Saldos,
+      // Informes, Cierre y ajustes — en el orden de GRUPOS_FINANZAS.
       { id: "fin-inicio", label: "Inicio", modulo: "finanzas", soloDueno: true },
-      // Tesorería: 13/11 (parte 3 del plan de Tesorería) Movimientos y Cajas y bancos en una sola
-      { id: "fin-tesoreria", label: "Cajas y bancos", modulo: "finanzas", soloDueno: true },
-      { id: "fin-cheques", label: "Cheques", modulo: "finanzas", soloDueno: true },
-      { id: "fin-inversiones", label: "Inversiones", modulo: "finanzas", soloDueno: true },
-      // Cuentas corrientes
-      { id: "fin-clientes", label: "Clientes", modulo: "finanzas", soloDueno: true },
-      { id: "fin-cuenta-ot", label: "Cuenta por OT", modulo: "finanzas", soloDueno: true },
-      { id: "fin-proveedores", label: "Proveedores", modulo: "finanzas", soloDueno: true },
+      // Pagar y cobrar
       { id: "fin-pagos", label: "Órdenes de pago", modulo: "finanzas", soloDueno: true },
+      { id: "fin-cheques", label: "Cheques", modulo: "finanzas", soloDueno: true },
       { id: "fin-sueldos", label: "Sueldos", modulo: "finanzas", soloDueno: true },
+      // Saldos: 13/11 (parte 3 del plan de Tesorería) Movimientos y Cajas y bancos en una sola
+      { id: "fin-tesoreria", label: "Cajas y bancos", modulo: "finanzas", soloDueno: true },
+      { id: "fin-cuentas", label: "Cuentas corrientes", modulo: "finanzas", soloDueno: true },
+      { id: "fin-inversiones", label: "Inversiones", modulo: "finanzas", soloDueno: true },
       { id: "fin-personas", label: "Agenda", modulo: "finanzas", soloDueno: true },
-      { id: "fin-unificados", label: "Cliente y proveedor", modulo: "finanzas", soloDueno: true },
-      // Contabilidad: 13/11 (pedido de Tadeo) el mayor de cada cuenta y los asientos; lo que se devenga en el mes
-      { id: "fin-mayor", label: "Mayor de cuentas", modulo: "finanzas", soloDueno: true },
-      { id: "fin-devengamiento", label: "Devengamiento", modulo: "finanzas", soloDueno: true },
-      { id: "fin-sos", label: "Importar S.O.S", modulo: "finanzas", soloDueno: true },
-      // 14/11 (etapa 7): Gypi es el libro oficial; lo cargado a mano en el libro de Google, para incorporar o ignorar
-      { id: "fin-libro", label: "Libro de Google", modulo: "finanzas", soloDueno: true },
-      // Informes
+      // Informes (14/11, etapa 6: situación patrimonial; 13/11: el mayor de cada cuenta)
       { id: "fin-resultados", label: "Resultados", modulo: "finanzas", soloDueno: true },
-      // 14/11 (etapa 6): situación patrimonial, liquidez y orígenes y aplicaciones de fondos
       { id: "fin-patrimonio", label: "Situación patrimonial", modulo: "finanzas", soloDueno: true },
       { id: "fin-flujo", label: "Flujo de caja", modulo: "finanzas", soloDueno: true },
+      { id: "fin-cxp", label: "Cuentas a cobrar y pagar", modulo: "finanzas", soloDueno: true },
       { id: "fin-reporte", label: "Reporte financiero", modulo: "finanzas", soloDueno: true },
-      // Ajustes
-      { id: "fin-config", label: "Configuración", modulo: "finanzas", soloDueno: true },
-      // Etapa 7: con Gypi como libro oficial, comparar con el libro queda como control
+      // 19/11: fondos, inversiones, calce de cheques y plazos fijos, cheques a cobrar
+      { id: "fin-informe-tesoreria", label: "Informe de tesorería", modulo: "finanzas", soloDueno: true },
+      { id: "fin-mayor", label: "Mayor de cuentas", modulo: "finanzas", soloDueno: true },
+      // Cierre y ajustes (14/11, etapa 7: Gypi es el libro oficial; lo cargado a mano en el libro de Google)
+      { id: "fin-devengamiento", label: "Devengamiento", modulo: "finanzas", soloDueno: true },
       { id: "fin-cierre", label: "Cierre de mes", modulo: "finanzas", soloDueno: true },
+      { id: "fin-libro", label: "Libro de Google", modulo: "finanzas", soloDueno: true },
+      { id: "fin-sos", label: "Importar S.O.S", modulo: "finanzas", soloDueno: true },
+      { id: "fin-config", label: "Configuración", modulo: "finanzas", soloDueno: true },
+      // Sin renglón en el menú (19/11): se abren desde Clientes (📋 Cuenta por
+      // OT) y desde Agenda, Clientes o Proveedores (🔗 Cliente y proveedor).
+      // Siguen acá para los enlaces y los avisos que llevan a ellas.
+      { id: "fin-cuenta-ot", label: "Cuenta por OT", modulo: "finanzas", soloDueno: true, enMenu: false },
+      { id: "fin-unificados", label: "Cliente y proveedor", modulo: "finanzas", soloDueno: true, enMenu: false },
     ],
   },
 };
 
 /** El ícono de cada opción (menú de la izquierda y tarjetas del Inicio de Finanzas). */
 export const ICONO_GESTION = {
-  vivo: "🟢", ot: "📋", reportes: "📊", instalaciones: "🔧", planificacion: "📅", minuta: "📝",
-  stock: "📦", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-clientes": "👥", "fin-sueldos": "👷", "fin-proveedores": "🏭", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-mayor": "📚", "fin-devengamiento": "📆", "fin-resultados": "📊", "fin-patrimonio": "⚖️", "fin-flujo": "💵", "fin-reporte": "📑", "fin-cierre": "🔍", "fin-libro": "📗", "fin-config": "🧾", "fin-inversiones": "📈", "fin-cuenta-ot": "📋", "fin-unificados": "🔗", "fin-sos": "📄",
+  vivo: "🟢", ot: "📋", reportes: "📊", panel: "📈", planificacion: "📅", minuta: "📝",
+  stock: "📦", "inventario-valorizado": "💲", movimientos: "📥", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-cuentas": "📒", "fin-sueldos": "👷", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-mayor": "📚", "fin-devengamiento": "📆", "fin-resultados": "📊", "fin-patrimonio": "⚖️", "fin-flujo": "💵", "fin-cxp": "🗂", "fin-reporte": "📑", "fin-informe-tesoreria": "🏧", "fin-cierre": "🔍", "fin-libro": "📗", "fin-config": "🧾", "fin-inversiones": "📈", "fin-cuenta-ot": "📋", "fin-unificados": "🔗", "fin-sos": "📄",
 };
 
 /** Pestañas de un botón para esta empresa: sin lo apagado, lo que pide el
@@ -104,6 +113,7 @@ export function opcionesBoton(boton, empresa, usuario = null) {
   return (BOTONES_GESTION[boton]?.opciones || [])
     .filter((o) => (!o.conTareas || conRegistroTareas(empresa)) && !moduloApagado(empresa, o.modulo))
     .filter((o) => !o.soloGerencia || comoDueno(usuario))
+    .filter((o) => !o.soloOficina || usuario?.rol === "gerencial" || usuario?.rol === "administrativo")
     .filter((o) => !o.soloDueno || usuario?.rol === "gerencial");
 }
 
@@ -114,7 +124,7 @@ export function conBoton(boton, empresa, usuario = null) {
 }
 
 // Los enlaces viejos a "Planta" (?screen=planta, "planta:compras") van al botón nuevo
-const PLANTA_A_BOTON = { vivo: "proyectos", ot: "proyectos", reportes: "proyectos", instalaciones: "proyectos", minuta: "proyectos", stock: "inventario", compras: "inventario", flota: "mantenimiento", maquinaria: "mantenimiento" };
+const PLANTA_A_BOTON = { vivo: "proyectos", ot: "proyectos", reportes: "proyectos", panel: "proyectos", instalaciones: "proyectos", minuta: "proyectos", stock: "inventario", movimientos: "inventario", compras: "inventario", flota: "mantenimiento", maquinaria: "mantenimiento" };
 
 export function esSupervisor(usuario) {
   return usuario?.rol === "administrativo" && !!usuario?.solo_su_division;

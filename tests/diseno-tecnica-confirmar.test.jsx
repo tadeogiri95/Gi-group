@@ -185,7 +185,7 @@ test("📐 Mis planillas — en orden, la de ahora destacada y lo que se corrió
   assert.match(screen.getByText(/Planillas técnicas · 2/).textContent, /2/);
 });
 
-test("📐 Mis planillas — en el Inicio del operario y en el Panel; la ruta solo devuelve lo suyo", () => {
+test("📐 Mis planillas — en el Inicio del operario y al final del Panel; la ruta solo devuelve lo suyo", () => {
   const home = readFileSync(new URL("../app/components/screens/HomeEmp.jsx", import.meta.url), "utf8");
   assert.match(home, /useMisPlanillas\(conProyectos\)/);
   assert.match(home, /titulo="Mis planillas"/);

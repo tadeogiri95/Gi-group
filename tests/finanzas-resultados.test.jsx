@@ -63,12 +63,12 @@ test("meses, nombres y neto en pesos", () => {
   assert.equal(importeResultado({ neto: 100, total: 121, total_ars: 121000 }), 100000, "en USD, el neto al tipo de cambio");
   assert.equal(importeResultado({ neto: 0, total: 50, total_ars: 50 }), 50);
   assert.deepEqual([seccionDe("GO_ADM_SUE").seccion.id, seccionDe("GO_ADM_SUE").grupo, seccionDe("IMP_IVA").seccion.id, seccionDe("XYZ")], ["GO", "ADM", "IVA", null]);
-  assert.deepEqual(configResultados(null), { materiales_pct: 40, ponderador: {} });
+  assert.deepEqual(configResultados(null), { materiales_pct: 30, ponderador: {} });
   assert.deepEqual(configResultados({ materiales_pct: 0, ponderador: { MUEBLES: 80, ALUMINIO: 20 } }), { materiales_pct: 0, ponderador: { MUEBLES: 80, ALUMINIO: 20 } });
 });
 
 test("estado de resultados — renglones, materiales estimados, IVA aparte, resultados y %", () => {
-  const r = estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: PROYECTOS, hasta: "2026-10" });
+  const r = estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: PROYECTOS, hasta: "2026-10", materialesPct: 40 });
   const fila = (id) => r.filas.find((f) => f.id === id);
   const oct = (id) => fila(id).valores[11];
   assert.equal(r.meses[11], "2026-10");
@@ -135,6 +135,32 @@ test("NIIF — solo las entregas son ingreso; ventas aparte; gastos por función
   assert.ok(r.filas.some((f) => f.nombre === "Impuestos: ingresos brutos"));
 });
 
+test("20/11 — intereses ganados (plazos fijos y FCI) van en Resultados financieros, no en Otros ingresos", () => {
+  const cuentas = [
+    ...CUENTAS,
+    { codigo: "04.01.02.002.001", nombre: "Intereses Ganados", rubro: "RESULTADO", linea_eerr: "ING_RENTA_FIN" },
+    { codigo: "01.01.05", nombre: "Plazo fijo Credicoop", rubro: "ACTIVO CORRIENTE" },
+  ];
+  const ops = [
+    op("2026-10-05", "01.01.02.001.001", "04.01.01.001.002", 100000),
+    // El interés aparte que registra Gypi: Debe el plazo fijo / Haber Intereses Ganados
+    op("2026-10-15", "01.01.05", "04.01.02.002.001", 8000, { tipo: "RENDIMIENTOS FINANCIEROS" }),
+    op("2026-10-10", "04.02.01.001.008", "01.01.01.003.002", 600),
+  ];
+  const r = estadoResultados({ ops, cuentas, hasta: "2026-10", materialesPct: 0 });
+  const oct = (id) => r.filas.find((f) => f.id === id)?.valores[11];
+  assert.equal(oct("OTR"), 0, "ya no cae en Otros ingresos y gastos");
+  assert.equal(oct("FIN"), -7400, "costo neto: 600 de comisiones menos 8.000 de intereses");
+  const grupo = r.filas.find((f) => f.id === "FIN_FIN_RENTA");
+  assert.equal(grupo.nombre, "Intereses ganados (plazos fijos y FCI)");
+  assert.equal(grupo.valores[11], -8000);
+  assert.equal(oct("RAI"), 100000 - 600 + 8000, "el interés suma al resultado");
+  // Sin renglón en el plan de cuentas también entra (antes quedaba en "sin renglón")
+  const sinLinea = estadoResultados({ ops, cuentas: cuentas.map((c) => (c.codigo === "04.01.02.002.001" ? { ...c, linea_eerr: null } : c)), hasta: "2026-10", materialesPct: 0 });
+  assert.equal(sinLinea.filas.find((f) => f.id === "FIN").valores[11], -7400);
+  assert.ok(!sinLinea.sin_linea.some((x) => x.codigo === "04.01.02.002.001"));
+});
+
 test("plan de cuentas — trae clasificacion_eerr y atribucion_div; editar a mano no las borra", () => {
   const r = cuentasDeHoja([
     ["codigo", "nombre", "tipo", "rubro", "imputable", "naturaleza", "clasificacion_eerr", "naturaleza_costo", "atribucion_div"],
@@ -167,7 +193,7 @@ test("ponderador: suman 100, de qué división es cada operación", () => {
 });
 
 test("estado por división: lo suyo entero y su % de lo compartido", () => {
-  const base = { ops: OPS_DIV, cuentas: CUENTAS, proyectos: PROYECTOS, centros: CENTROS, hasta: "2026-10", ponderador: PONDERADOR };
+  const base = { ops: OPS_DIV, cuentas: CUENTAS, proyectos: PROYECTOS, centros: CENTROS, hasta: "2026-10", ponderador: PONDERADOR, materialesPct: 40 };
   const t = (r, id) => r.filas.find((f) => f.id === id).valores[11];
   const muebles = estadoResultados({ ...base, division: "MUEBLES" });
   // Entrega 1.000.000 suya; materiales 40 %; sueldos 300.000, adm. 100.000, banco 5.000 e impuesto 2.000 al 80 %
@@ -248,7 +274,7 @@ test("/api/finanzas/resultados — una división y el resumen", async () => {
 // ─── Pantalla ───
 
 test("Resultados — muestra el estado y cierra una sección", async () => {
-  const datos = { hasta: "2026-10", config: { materiales_pct: 40 }, ...estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: PROYECTOS, hasta: "2026-10" }) };
+  const datos = { hasta: "2026-10", config: { materiales_pct: 40 }, ...estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: PROYECTOS, hasta: "2026-10", materialesPct: 40 }) };
   global.fetch = async () => new Response(JSON.stringify(datos), { status: 200 });
   render(<FinanzasResultados />);
   assert.ok(await screen.findByText("Resultado del período"));
@@ -263,7 +289,7 @@ test("Resultados — muestra el estado y cierra una sección", async () => {
 });
 
 test("Resultados — resumen por división y elegir una", async () => {
-  const base = { ops: OPS_DIV, cuentas: CUENTAS, proyectos: PROYECTOS, centros: CENTROS, hasta: "2026-10", ponderador: PONDERADOR };
+  const base = { ops: OPS_DIV, cuentas: CUENTAS, proyectos: PROYECTOS, centros: CENTROS, hasta: "2026-10", ponderador: PONDERADOR, materialesPct: 40 };
   const pedidos = [];
   global.fetch = async (u) => {
     pedidos.push(String(u));
@@ -288,7 +314,7 @@ test("entregas estimadas: renglón aparte por división, cuentan para materiales
     { proyecto_id: 3, fecha: "2025-01-12", valor: 999 }, // fuera de la ventana
     { proyecto_id: 1, fecha: "2026-10-20", valor: 777 }, // ya tiene su entrega de verdad
   ];
-  const r = estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: [...PROYECTOS, { id: 3, division: "MUEBLES" }], hasta: "2026-10", entregasEstimadas: estimadas });
+  const r = estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: [...PROYECTOS, { id: 3, division: "MUEBLES" }], hasta: "2026-10", materialesPct: 40, entregasEstimadas: estimadas });
   const est = r.filas.filter((f) => f.entrega_estimada);
   assert.equal(est.length, 1);
   assert.equal(est[0].nombre, "Entregas con valor estimado (OT sin precio en el Plan) · MUEBLES");
@@ -302,11 +328,11 @@ test("entregas estimadas: renglón aparte por división, cuentan para materiales
   // Materiales: 40 % de todas las entregas (con precio y estimadas)
   assert.equal(r.filas.find((f) => f.id === "materiales|estimado" || f.nombre.startsWith("Costo de materiales")).valores[11], 600000);
   // Vista de ALUMINIO: la OT de Muebles no está
-  const alu = estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: [...PROYECTOS, { id: 3, division: "MUEBLES" }], hasta: "2026-10", entregasEstimadas: estimadas, ponderador: PONDERADOR, division: "ALUMINIO" });
+  const alu = estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: [...PROYECTOS, { id: 3, division: "MUEBLES" }], hasta: "2026-10", materialesPct: 40, entregasEstimadas: estimadas, ponderador: PONDERADOR, division: "ALUMINIO" });
   assert.equal(alu.filas.filter((f) => f.entrega_estimada).length, 0);
 });
 
-test("/api/finanzas/resultados — estima las OT terminadas sin precio con sus necesidades ÷ 0,3", async () => {
+test("/api/finanzas/resultados — estima las OT terminadas sin precio con sus necesidades ÷ el % de materiales (30 %)", async () => {
   const pedidos = [];
   global.fetch = createFetchMock([
     ...authPassHandlers(),
@@ -331,7 +357,7 @@ test("/api/finanzas/resultados — estima las OT terminadas sin precio con sus n
     { match: (u) => u.includes("/rest/v1/v_precios_articulos"), respond: () => ({ status: 200, body: [{ sku: "PL1", fecha: "2026-01-01", precio_ars: 30000 }] }) },
     {
       match: (u) => u.includes("/rest/v1/config_sistema"),
-      respond: (u) => ({ status: 200, body: [{ valor: u.includes("finanzas_entregas_estimadas") ? { fechas: { p3: "2026-10-12", p4: "2026-10-13", p5: "2026-10-14" } } : { materiales_pct: 40 } }] }),
+      respond: (u) => ({ status: 200, body: [{ valor: u.includes("finanzas_entregas_estimadas") ? { fechas: { p3: "2026-10-12", p4: "2026-10-13", p5: "2026-10-14" } } : { materiales_pct: 30 } }] }),
     },
   ]);
   const r = await api.GET(new Request("http://localhost/api/finanzas/resultados?hasta=2026-10", { headers: { Authorization: `Bearer ${await token("gerencial")}` } }));
@@ -353,7 +379,7 @@ test("/api/finanzas/resultados — estima las OT terminadas sin precio con sus n
 
 test("Resultados — el renglón estimado se ve con otro color y la lista de OT", async () => {
   const proyectos = [...PROYECTOS, { id: 3, division: "MUEBLES" }];
-  const datos = { hasta: "2026-10", config: { materiales_pct: 40 }, estimadas_ot: [{ ot: "7001", fecha: "2026-10-12", valor: 300000 }], ...estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos, hasta: "2026-10", entregasEstimadas: [{ proyecto_id: 3, fecha: "2026-10-12", valor: 300000 }] }) };
+  const datos = { hasta: "2026-10", config: { materiales_pct: 40 }, estimadas_ot: [{ ot: "7001", fecha: "2026-10-12", valor: 300000 }], ...estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos, hasta: "2026-10", materialesPct: 40, entregasEstimadas: [{ proyecto_id: 3, fecha: "2026-10-12", valor: 300000 }] }) };
   global.fetch = async () => new Response(JSON.stringify(datos), { status: 200 });
   render(<FinanzasResultados />);
   const celda = await screen.findByText(/Entregas con valor estimado \(OT sin precio en el Plan\) · MUEBLES/);
@@ -364,7 +390,7 @@ test("Resultados — el renglón estimado se ve con otro color y la lista de OT"
 });
 
 test("Resultados — lista de las OT sin precio que no se pudieron estimar, por motivo", async () => {
-  const datos = { hasta: "2026-10", config: { materiales_pct: 40 }, no_estimadas_ot: [{ ot: "7100", cliente: "Gómez", fecha: "2026-07-01", motivo: "sin_necesidades", motivo_texto: "No tiene materiales en Gypi (no pasó por el MRP)" }, { ot: "9001", cliente: "", fecha: "", motivo: "sin_fecha", motivo_texto: "Está terminada pero no tiene fecha de entrega en el Plan" }], ...estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: PROYECTOS, hasta: "2026-10" }) };
+  const datos = { hasta: "2026-10", config: { materiales_pct: 40 }, no_estimadas_ot: [{ ot: "7100", cliente: "Gómez", fecha: "2026-07-01", motivo: "sin_necesidades", motivo_texto: "No tiene materiales en Gypi (no pasó por el MRP)" }, { ot: "9001", cliente: "", fecha: "", motivo: "sin_fecha", motivo_texto: "Está terminada pero no tiene fecha de entrega en el Plan" }], ...estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: PROYECTOS, hasta: "2026-10", materialesPct: 40 }) };
   global.fetch = async () => new Response(JSON.stringify(datos), { status: 200 });
   render(<FinanzasResultados />);
   assert.ok(await screen.findByText(/2 OT sin precio que no se pudieron estimar/));

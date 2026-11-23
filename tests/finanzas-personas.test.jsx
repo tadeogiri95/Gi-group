@@ -217,3 +217,53 @@ test("Agenda única — la persona cliente y proveedor cuenta como unida", () =>
     { id: 1, cliente_id: 7, proveedor_id: 10 }, { id: 2, cliente_id: 8 }, { id: 3, cliente_id: 9, proveedor_id: 11, unido_a: 1 },
   ]), [{ cliente_id: 7, proveedor_id: 10, persona_id: 1 }]);
 });
+
+// 19/11: "FELIPE OMAR GUZMAN" dos veces (dos clientes o dos proveedores) no salía para unir
+test("Personas — los de nombre igual también salen como posibles repetidos", () => {
+  const agenda = armarAgenda({
+    clientes: [{ id: 7, nombre: "Felipe Omar Guzmán" }, { id: 8, nombre: "GUZMAN FELIPE OMAR" }],
+    proveedores: [{ id: 10, nombre: "Maderas Sur", activo: true }, { id: 11, nombre: "MADERAS SUR", activo: true }],
+  });
+  assert.equal(agenda.length, 4, "son fichas distintas: la Agenda no las junta sola");
+  const rep = posiblesRepetidos(agenda).map((r) => [r.a.cliente_id || r.a.proveedor_id, r.b.cliente_id || r.b.proveedor_id].sort());
+  assert.deepEqual(rep.sort(), [[10, 11], [7, 8]]);
+});
+
+test("/api/finanzas/personas — unir dos clientes o dos proveedores distintos lo hace todo de una vez", async () => {
+  const escrito = [];
+  let rpc = null;
+  const clientes = [{ id: 7, nombre: "Felipe Omar Guzmán", activo: true }, { id: 8, nombre: "GUZMAN FELIPE OMAR", activo: true }];
+  const proveedores = [{ id: 10, nombre: "Maderas Sur", activo: true }, { id: 11, nombre: "MADERAS SUR", activo: true }];
+  const registrar = (tabla, cuerpo = []) => (u, o) => {
+    if (o?.method === "POST" || o?.method === "PATCH") {
+      const body = JSON.parse(o.body);
+      escrito.push({ tabla, metodo: o.method, url: u, body });
+      return { status: 201, body: Array.isArray(body) ? body.map((b, i) => ({ id: 100 + i, ...b })) : [{ id: 99, ...body }] };
+    }
+    return { status: 200, body: typeof cuerpo === "function" ? cuerpo(u) : cuerpo };
+  };
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
+    { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
+    { match: (u) => u.includes("/rest/v1/config_sistema"), respond: () => ({ status: 200, body: [] }) },
+    { match: (u) => u.includes("/rest/v1/rpc/compras_unir_proveedores"), respond: (u, o) => { rpc = JSON.parse(o.body); return { status: 200, body: { ok: true, movidos: 3 } }; } },
+    { match: (u) => u.includes("/rest/v1/fin_personas"), respond: registrar("fin_personas") },
+    { match: (u) => u.includes("/rest/v1/proveedores"), respond: registrar("proveedores", proveedores) },
+    { match: (u) => u.includes("/rest/v1/fin_clientes"), respond: registrar("fin_clientes", clientes) },
+    { match: (u) => /\/rest\/v1\/(fin_operaciones|fin_cheques|proyectos)/.test(u), respond: (u, o) => registrar(u.split("/rest/v1/")[1].split("?")[0])(u, o) },
+  ]);
+  const { agenda } = await (await llamar("GET")).json();
+  const clave = (pred) => agenda.find(pred).clave;
+  escrito.length = 0;
+  let r = await llamar("POST", { accion: "unir", a: clave((e) => e.cliente_id === 7), b: clave((e) => e.cliente_id === 8) });
+  assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
+  const movidas = escrito.filter((x) => ["fin_operaciones", "fin_cheques", "proyectos"].includes(x.tabla)).map((x) => [x.tabla, /cliente_id=eq\.8/.test(x.url), x.body.cliente_id]);
+  assert.deepEqual(movidas, [["fin_operaciones", true, 7], ["fin_cheques", true, 7], ["proyectos", true, 7]], "todo lo del 8 pasa al 7");
+  assert.ok(escrito.some((x) => x.tabla === "fin_clientes" && x.url.includes("id=eq.8&") && x.body.unido_a === 7));
+
+  escrito.length = 0;
+  r = await llamar("POST", { accion: "unir", a: clave((e) => e.proveedor_id === 10), b: clave((e) => e.proveedor_id === 11) });
+  assert.equal(r.status, 200, JSON.stringify(await r.clone().json()));
+  assert.deepEqual([rpc.p_queda, rpc.p_sale], [10, 11], "la base pasa todo el proveedor repetido al que queda");
+});

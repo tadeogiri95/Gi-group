@@ -20,40 +20,46 @@ test("Finanzas: fuera de Finanzas un solo renglón; adentro, todo por tema", () 
   const fuera = gruposMenu(empresa, dueno, 0, "home").find((g) => g.id === "finanzas").items;
   assert.deepEqual(fuera.map((i) => i.label), ["Inicio y todo Finanzas"]);
   const adentro = gruposMenu(empresa, dueno, 0, "finanzas").find((g) => g.id === "finanzas").items;
-  assert.equal(adentro.length, 21, "21: lo que estaba escondido (etapa 4), la situación patrimonial (etapa 6) y el libro de Google (etapa 7, 14/11)");
-  assert.equal(adentro.find((i) => i.opcion === "fin-libro").tema, "Contabilidad");
-  assert.equal(adentro.find((i) => i.opcion === "fin-cierre").tema, "Ajustes");
+  assert.equal(adentro.length, 20, "20: Informe de tesorería en Informes; Cuentas a cobrar y pagar en Informes; Cuenta por OT y Cliente y proveedor se abren desde las fichas; Clientes y Proveedores son una sola, Cuentas corrientes (19/11)");
+  assert.ok(!adentro.some((i) => ["fin-cuenta-ot", "fin-unificados"].includes(i.opcion)));
+  assert.equal(adentro.find((i) => i.opcion === "fin-libro").tema, "Cierre y ajustes");
+  assert.equal(adentro.find((i) => i.opcion === "fin-cierre").tema, "Cierre y ajustes");
   assert.equal(adentro[0].tema, undefined, "Inicio va sin tema");
   assert.equal(adentro.find((i) => i.opcion === "fin-flujo").tema, "Informes");
-  assert.equal(adentro.find((i) => i.opcion === "fin-inversiones").tema, "Tesorería");
-  assert.equal(adentro.find((i) => i.opcion === "fin-cuenta-ot").tema, "Cuentas corrientes");
-  assert.equal(adentro.find((i) => i.opcion === "fin-sos").tema, "Contabilidad");
+  assert.equal(adentro.find((i) => i.opcion === "fin-inversiones").tema, "Saldos");
+  assert.equal(adentro.find((i) => i.opcion === "fin-pagos").tema, "Pagar y cobrar");
+  assert.equal(adentro.find((i) => i.opcion === "fin-sos").tema, "Cierre y ajustes");
 });
 
 test("Finanzas en la computadora: subtítulos por tema", () => {
   render(<MenuLateral empresa={empresa} usuario={dueno} screen="finanzas" seccion="fin-flujo" onIr={() => {}} />);
   const menu = screen.getByRole("complementary", { name: "Menú" });
-  for (const t of ["Tesorería", "Cuentas corrientes", "Contabilidad", "Informes", "Ajustes"]) assert.ok(within(menu).getByText(t));
+  for (const t of ["Pagar y cobrar", "Saldos", "Informes", "Cierre y ajustes"]) assert.ok(within(menu).getByText(t));
   assert.equal(within(menu).getByRole("button", { name: /Flujo de caja/ }).getAttribute("aria-current"), "page");
 });
 
 test("Finanzas en el celular: sin pestañas en su Inicio; afuera, Inicio y las del mismo tema", () => {
   const ops = opcionesBoton("finanzas", empresa, dueno);
   assert.deepEqual(pestanasCelular("finanzas", ops, "fin-inicio"), []);
-  assert.deepEqual(pestanasCelular("finanzas", ops, "fin-flujo").map((o) => o.label), ["Inicio", "Resultados", "Situación patrimonial", "Flujo de caja", "Reporte financiero"]);
+  assert.deepEqual(pestanasCelular("finanzas", ops, "fin-flujo").map((o) => o.label), ["Inicio", "Resultados", "Situación patrimonial", "Flujo de caja", "Cuentas a cobrar y pagar", "Reporte financiero", "Informe de tesorería", "Mayor de cuentas"]);
+  // Las que no están en el menú muestran las pestañas de la pantalla de donde se abren
+  assert.equal(pestanasCelular("finanzas", ops, "fin-cuenta-ot").find((o) => o.id === "fin-cuenta-ot")?.label, "Cuenta por OT");
   const prod = opcionesBoton("proyectos", empresa, dueno);
   assert.equal(pestanasCelular("proyectos", prod, "ot"), prod, "los otros botones no cambian");
 });
 
-test("Personal con grupo propio e Instalaciones en Producción", () => {
+test("Personal con grupo propio; Producción sin la pestaña Instalaciones (23/11)", () => {
   const g = gruposMenu(empresa, dueno, 4, "home");
   const personal = g.find((x) => x.id === "personal");
   assert.deepEqual(personal.items.map((i) => [i.label, i.destino]), [["Equipo y horarios", "equipo"], ["Permisos", "solicitudes"]]);
   assert.equal(personal.items[1].badge, 4);
-  assert.ok(opcionesBoton("proyectos", empresa, { rol: "administrativo" }).some((o) => o.id === "instalaciones"));
+  assert.equal(opcionesBoton("proyectos", empresa, { rol: "administrativo" }).some((o) => o.id === "instalaciones"), false);
   assert.deepEqual(partirDestino("planta:instalaciones"), { pantalla: "proyectos", seccion: "instalaciones" });
   const boton = leer("components/screens/BotonGestionScreen.jsx");
-  assert.match(boton, /actual\.id === "instalaciones" && <ProyectosScreen [^>]*vistaInicial="gantt" ganttTipo="instalacion"/);
+  // Los enlaces viejos a la pestaña abren OT; el Gantt de instalación sigue en OT → 📅 Gantt
+  assert.match(boton, /const ALIAS = \{ instalaciones: "ot",/);
+  assert.doesNotMatch(boton, /actual\.id === "instalaciones"/);
+  assert.match(leer("components/GanttOt.jsx"), /onClick=\{\(\) => cambiar\("instalacion"\)\}>🔧 Instalación/);
   assert.match(leer("components/GanttOt.jsx"), /if \(props\.tipoInicial\) return props\.tipoInicial;/);
 });
 

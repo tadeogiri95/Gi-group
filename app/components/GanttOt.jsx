@@ -53,8 +53,8 @@ import { diaLaborable, feriadosDe } from "../lib/secuencia";
 import { textoDias } from "../lib/instalacionPlan";
 import { finesVencidos, minutosArg } from "../lib/finProceso";
 import { ventanasDeGrilla } from "../lib/leadTimeHoras";
-import { itemsVigentes, diasExtraVigentes, planVivo, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla, personalGantt, planVigente, ultimaConfirmacion } from "../lib/ganttPlan";
-import { ETAPAS_PLAN, normalizarParametros, divisionPlan } from "../lib/planificacion";
+import { itemsVigentes, itemsConFuera, otsFueraDelPlan, motivoSinDibujar, diasExtraVigentes, planVivo, etapasDelPlan, leerPlanesConfirmados, horasSemanaDeGrilla, personalGantt, planVigente, ultimaConfirmacion } from "../lib/ganttPlan";
+import { ETAPAS_PLAN, normalizarParametros, divisionPlan, buscarOts } from "../lib/planificacion";
 import { MODO_POR_DEFECTO, normalizarModo } from "../lib/semanaObjetivo";
 import { planReordenado, baseGuardada, mover } from "../lib/reordenarPlan";
 import { modulosPorOt } from "../lib/cargaPlanta";
@@ -94,6 +94,7 @@ const diaMes = (iso) => { const [, m, d] = String(iso).split("-"); return `${Num
 const estadoDe = (q) => (q.tarde ? "tarde" : q.corrido ? "corrido" : q.completo ? "completo" : "pendiente");
 const CONTORNO = { tarde: "stroke-gypi-red", corrido: "stroke-proc-margen" };
 const SIN_MODULOS = new Map();
+const GRUPO_FUERA = "⚠ Fuera del plan confirmado";
 const dias = (n) => `${n} ${n === 1 ? "día" : "días"}`;
 /** Las alertas de un proceso, para leer en voz alta. */
 /** "12/11; entrega 14/11 − 2 días de instalación" (parte 45). */
@@ -203,9 +204,13 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
   const espera = planDT?.espera || null;
   const noAntes = useMemo(() => (espera ? noAntesDeTecnica(espera) : null), [espera]);
   // Lo que necesita el plan vivo (también para ver cuánto se corre con un "Faltan X h" nuevo)
+  // Las OT abiertas que no están en el último plan confirmado (Tadeo, 19/11:
+  // M-7877 estaba planificada y no salía): van al final, en su propio grupo
+  const fuera = useMemo(() => (planes ? otsFueraDelPlan({ planes, proyectos: abiertasPorOt, pausadas }) : []), [planes, abiertasPorOt, pausadas]);
+  const fueraSet = useMemo(() => new Set(fuera), [fuera]);
   const vivoCon = useMemo(() => {
     if (!planes) return null;
-    const items = itemsVigentes(planes);
+    const items = itemsConFuera(itemsVigentes(planes), fuera, hoy);
     const opciones = {
       proyectos: abiertasPorOt, modulos: modulos || SIN_MODULOS,
       etapasCodigo: etapasDelPlan(cfgValor, etapas, divisiones),
@@ -215,36 +220,39 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
       personal: personalGantt(empleados, divisiones, cfgValor), diasExtra: diasExtraVigentes(planes), pausadas, noAntes,
     };
     return (m) => planVivo(items, { ...opciones, manual: m, retrabajo, retrabajoHecho });
-  }, [planes, abiertasPorOt, modulos, cfgValor, params, empleados, proyectos, etapas, divisiones, avanceHoras, hoy, retrabajo, retrabajoHecho, pausadas, noAntes]);
+  }, [planes, fuera, abiertasPorOt, modulos, cfgValor, params, empleados, proyectos, etapas, divisiones, avanceHoras, hoy, retrabajo, retrabajoHecho, pausadas, noAntes]);
 
   // Días que se trabajan: con horas en la grilla de horarios o de horas extra del plan
   const feriados = useMemo(() => feriadosDe(params), [params]);
   const laborable = useMemo(() => diaLaborable(horasSemanaDeGrilla(empleados, divisiones, cfgValor), planes ? diasExtraVigentes(planes) : null, feriados),
     [empleados, divisiones, cfgValor, planes, feriados]);
 
-  const { renglones, escala, grupos, tardes, corridas, sinMotivo } = useMemo(() => {
+  const { renglones, todos, escala, grupos, tardes, corridas, sinMotivo } = useMemo(() => {
     // Mientras carga, listas vacías: los avisos se cuentan antes de saber si hay renglones
-    if (!vivoCon) return { renglones: null, tardes: [], corridas: [], sinMotivo: [] };
+    if (!vivoCon) return { renglones: null, todos: null, tardes: [], corridas: [], sinMotivo: [] };
     const abiertas = abiertasPorOt;
     const procesos = vivoCon(manual);
     // En el orden del plan: la que arranca primero arriba
-    const renglones = [...procesos.values()].filter((r) => abiertas.has(r.ot)).map((r) => ({ ...r, proyecto: abiertas.get(r.ot) }));
+    const todos = [...procesos.values()].filter((r) => abiertas.has(r.ot)).map((r) => ({ ...r, proyecto: abiertas.get(r.ot), fuera: fueraSet.has(r.ot) }));
     const grupos = new Map();
-    for (const r of renglones) {
-      const n = nombreDivisionOt(divisiones, r.proyecto.division);
+    for (const r of todos) {
+      const n = r.fuera ? GRUPO_FUERA : nombreDivisionOt(divisiones, r.proyecto.division);
       if (!grupos.has(n)) grupos.set(n, []);
       grupos.get(n).push(r);
     }
+    // Los avisos y el Gantt de instalación siguen siendo solo del plan confirmado
+    const renglones = todos.filter((r) => !r.fuera);
     return {
       renglones,
-      escala: escalaGantt(renglones, { hoy, modo }),
-      grupos: [...grupos].sort((a, b) => a[0].localeCompare(b[0], "es")),
+      todos,
+      escala: escalaGantt(todos, { hoy, modo }),
+      grupos: [...grupos].sort((a, b) => (a[0] === GRUPO_FUERA) - (b[0] === GRUPO_FUERA) || a[0].localeCompare(b[0], "es")),
       tardes: renglones.filter((r) => r.tarde).sort((a, b) => b.diasTarde - a.diasTarde),
       corridas: renglones.filter((r) => r.diasCorrido > 0).sort((a, b) => b.diasCorrido - a.diasCorrido),
       // Corridos solos por el plan vivo sin motivo anotado desde que se confirmó el plan
       sinMotivo: puedeAjustar && ajustes ? atrasosSinMotivo(new Map(renglones.map((r) => [r.ot, r])), ajustes, ultimaConfirmacion(planes)) : [],
     };
-  }, [vivoCon, manual, abiertasPorOt, divisiones, hoy, modo, puedeAjustar, ajustes, planes]);
+  }, [vivoCon, manual, abiertasPorOt, fueraSet, divisiones, hoy, modo, puedeAjustar, ajustes, planes]);
   // El Gantt de instalación usa el fin de producción de este mismo plan vivo (parte 43)
   useEffect(() => {
     if (onPlanVivo && renglones) onPlanVivo({ renglones, cfgValor, modulos: modulos || SIN_MODULOS });
@@ -383,6 +391,7 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
   // En pantalla completa en el celular, botones, colores y avisos ocupaban media pantalla (Tadeo, 05/11):
   // quedan plegados detrás de "☰ Opciones" y "🔔" para que el Gantt use toda la pantalla.
   const [verOpciones, setVerOpciones] = useState(false);
+  const [buscar, setBuscar] = useState("");
   const cerrarGrande = () => { setGrande(false); setVerOpciones(false); setVerAvisos(false); salirPantallaCompleta(); };
   useEscape(cerrarGrande, grande);
   useEffect(() => () => { salirPantallaCompleta(); }, []);
@@ -421,7 +430,7 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
   const irAHoy = () => (recortado ? setCorrimiento(0) : desplazar(xHoy - 7 * px));
 
   if (!renglones) return <div className="gypi-dots py-6" role="status" aria-label="Cargando"><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /><span className="bg-gypi-amber" /></div>;
-  if (!renglones.length) {
+  if (!todos.length) {
     return (
       <div className="g-card py-8 px-6 text-center">
         <div className="text-[28px] mb-2">📅</div>
@@ -565,9 +574,22 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
 
   const verDetalle = (p) => { if (grande) cerrarGrande(); onVerDetalle?.(p); };
   // Con un horizonte elegido, solo las OT con algún proceso en esas semanas
+  // 🔎 Buscar (19/11): solo cambia lo que se ve; el orden y el plan siguen con todas
+  const buscadas = buscar.trim() ? new Set(buscarOts(todos.map((r) => r.proyecto), buscar).map((p) => String(p.ot))) : null;
+  const enLoElegido = (r) => !recortado || r.procesos.some((q) => enVentana(q, ventana));
   const gruposVistos = grupos
-    .map(([division, filas]) => [division, recortado ? filas.filter((r) => r.procesos.some((q) => enVentana(q, ventana))) : filas])
+    .map(([division, filas]) => [division, filas.filter((r) => (!buscadas || buscadas.has(r.ot)) && enLoElegido(r))])
     .filter(([, filas]) => filas.length);
+  // Lo buscado que no se ve, con el motivo
+  const noSeVen = buscar.trim() ? (() => {
+    const dibujadas = new Map(todos.map((r) => [r.ot, r]));
+    const vigentes = new Set(itemsVigentes(planes || []).map((i) => String(i.ot)));
+    return buscarOts([...abiertasPorOt.values()], buscar).slice(0, 20).map((p) => {
+      const r = dibujadas.get(String(p.ot));
+      if (r) return enLoElegido(r) ? null : { p, texto: `Arranca el ${fechaCorta(r.inicio)} y termina el ${fechaCorta(r.fin)}: queda fuera de lo elegido arriba. Tocá "Ver: Todo".` };
+      return { p, texto: motivoSinDibujar(p, { dibujadas: new Set(dibujadas.keys()), pausadas, fuera: fueraSet, vigentes }) };
+    }).filter((x) => x?.texto);
+  })() : [];
 
   const verControles = !grande || verOpciones;
   // En pantalla completa, botones más angostos para que entren en una sola fila del celular
@@ -607,6 +629,8 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
           <Chip active={forma === "procesos"} onClick={() => cambiarForma("procesos")}>Procesos por OT</Chip>
           <Chip active={forma === "ots"} onClick={() => cambiarForma("ots")}>OT por proceso</Chip>
         </div>
+        <input type="search" className="g-input !w-auto min-w-[180px] min-h-11" value={buscar} onChange={(e) => setBuscar(e.target.value)}
+          placeholder="🔎 Buscar OT" aria-label="Buscar una OT en el Gantt" />
         <div className="flex flex-wrap gap-1.5 items-center" role="group" aria-label="Qué se ve">
           <span className="text-[14px] text-gypi-dim">Ver:</span>
           {HORIZONTES_GANTT.map((h) => (
@@ -773,10 +797,18 @@ function GanttProduccion({ proyectos = SIN_LISTA, etapas = SIN_LISTA, divisiones
               {vista === "dias" ? cabeceraDias : vista === "semanas" ? cabeceraSemanas : cabeceraMes}
             </svg>
           </div>
-          {!gruposVistos.length && <div className="px-3 py-6 text-[15px] text-gypi-dim">No hay procesos planificados {horizonte === "1d" ? "para hoy" : `en lo elegido (${HORIZONTES_GANTT.find((h) => h.id === horizonte)?.label} desde hoy)`}.</div>}
+          {noSeVen.length > 0 && (
+            <ul aria-label="OT buscadas que no se ven" className="sticky left-0 w-[min(100%,640px)] list-none m-0 px-3 py-2 flex flex-col gap-1 text-[15px] text-gypi-text">
+              {noSeVen.map(({ p, texto }) => <li key={p.id ?? p.ot}><b>{p.ot}</b>: {texto}</li>)}
+            </ul>
+          )}
+          {!gruposVistos.length && !noSeVen.length && <div className="px-3 py-6 text-[15px] text-gypi-dim">No hay procesos planificados {horizonte === "1d" ? "para hoy" : `en lo elegido (${HORIZONTES_GANTT.find((h) => h.id === horizonte)?.label} desde hoy)`}.</div>}
           {gruposVistos.map(([division, filas]) => (
             <div key={division}>
               <div className="sticky left-0 w-[260px] px-2 pt-2 pb-1 text-[15px] font-bold text-gypi-text bg-gypi-bg">{division} · {filas.length}</div>
+              {division === GRUPO_FUERA && (
+                <p className="sticky left-0 w-[min(100%,640px)] m-0 px-2 pb-1 text-[14px] text-gypi-dim">Están abiertas y no figuran en el último plan confirmado. Van al final, después de todas las del plan. Para darles su lugar, volvé a confirmar el plan en Planificación.</p>
+              )}
               {forma === "ots" && porProceso(filas).map(({ etapa: e, filas: enProceso }) => (
                 <section key={e.id} aria-label={`${e.nombre}: ${enProceso.length} OT`} data-bloque={e.id}>
                   <div className="sticky left-0 w-[260px] px-2 pt-2 pb-1 flex items-center gap-1.5 text-[15px] font-bold text-gypi-text bg-gypi-bg">
@@ -901,7 +933,7 @@ const CLAVE_TIPO = "gypi_gantt_tipo";
  * de ese mismo plan. El de producción queda armado aunque se mire el otro.
  */
 export default function GanttOt(props) {
-  // tipoInicial: lo pide el menú (Producción → 🔧 Instalaciones); si no, el último elegido
+  // tipoInicial: si se pide un tipo; si no, el último elegido
   const [tipo, setTipo] = useState(() => { if (props.tipoInicial) return props.tipoInicial; try { const t = localStorage.getItem(CLAVE_TIPO); return t === "instalacion" || t === "diseno" ? t : "produccion"; } catch { return "produccion"; } });
   const cambiar = (t) => { setTipo(t); try { localStorage.setItem(CLAVE_TIPO, t); } catch { /* sin almacenamiento */ } };
   const [vivo, setVivo] = useState(null);

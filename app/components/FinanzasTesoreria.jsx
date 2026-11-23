@@ -22,14 +22,18 @@
 // ninguna (todo) y abajo se ven sus movimientos (FinanzasMovimientos), con el
 // saldo renglón por renglón si hay una sola y "➕ Cargar" con esa caja puesta
 // (14/11, etapa 3: factura o gasto, pago, cobro, entre cajas u otra). Tocando un movimiento se ve, se corrige o se anula.
+// 15/11: ➕ Nueva caja (el código lo pone Gypi) y, con una caja elegida, 🗑
+// Eliminar caja: se borra si nunca se usó, si no se archiva (FinanzasCajaAlta.jsx).
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { EliminarCaja, NuevaCaja, reactivarCaja } from "./FinanzasCajaAlta";
 import { apiFetch } from "../lib/supabase";
 import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import { ORIGEN_SALDO_INICIAL } from "../lib/finanzasProveedores";
 import { ORIGEN_LIBRO } from "../lib/finanzasHistorico";
 import { NOMBRE_GRUPO, ORDEN_TIPOS, movimientosDeCaja, saldosCajasDelLibro, saldosTesoreria, totalesTesoreria } from "../lib/finanzasTesoreria";
-import { paraRevisarMiCaja, tiposParaMiCaja } from "../lib/finanzasMiCaja";
+import { conceptosMiCajaTodos, nombreNormal, paraRevisarMiCaja } from "../lib/finanzasMiCaja";
+import { conceptoDeOperacion } from "../lib/finanzasConceptosCaja";
 import SubirExtracto, { Repetidos } from "./FinanzasExtracto";
 import { repetidosEnCuenta } from "../lib/finanzasBanco";
 import FinanzasMovimientos, { Detalle } from "./FinanzasMovimientos";
@@ -160,8 +164,8 @@ function SaldosIniciales({ datos, onCerrar, onCargados }) {
 
 function ConfigMiCaja({ datos, onCerrar, onGuardado }) {
   const toast = useToast();
-  const sirven = useMemo(() => tiposParaMiCaja(datos.tipos || []), [datos.tipos]);
-  // Se guardan los que el dueño escondió: un tipo nuevo aparece solo.
+  const sirven = useMemo(() => conceptosMiCajaTodos(datos.tipos || [], datos.cuentas || []), [datos.tipos, datos.cuentas]);
+  // Se guardan los que el dueño escondió: un concepto nuevo aparece solo.
   const [ocultos, setOcultos] = useState({ gastos: new Set(datos.mi_caja?.ocultos?.gastos || []), ingresos: new Set(datos.mi_caja?.ocultos?.ingresos || []) });
   const [buscar, setBuscar] = useState("");
   const [guardando, setGuardando] = useState(false);
@@ -178,7 +182,7 @@ function ConfigMiCaja({ datos, onCerrar, onGuardado }) {
     setError(null);
     try {
       await postTesoreria({ accion: "config_mi_caja", ocultos: { gastos: [...ocultos.gastos], ingresos: [...ocultos.ingresos] } });
-      toast.success("Listo: Mi caja ya ofrece esos tipos");
+      toast.success("Listo: Mi caja ya ofrece esos conceptos");
       onGuardado();
     } catch (e) {
       setError(e.message);
@@ -190,11 +194,14 @@ function ConfigMiCaja({ datos, onCerrar, onGuardado }) {
     <fieldset className="border border-gypi-border rounded-lg p-2 m-0 min-w-0">
       <legend className="px-1 text-[13px] font-bold">{titulo} ({sirven[lado].filter((t) => !ocultos[lado].has(t.codigo)).length} de {sirven[lado].length})</legend>
       <ul className="list-none m-0 p-0 max-h-[30vh] overflow-y-auto">
-        {sirven[lado].filter((t) => !b || normal(`${t.codigo} ${t.nombre}`).includes(b)).map((t) => (
+        {sirven[lado].filter((t) => !b || normal(`${t.codigo} ${t.nombre} ${t.grupo || ""} ${t.leyenda || ""}`).includes(b)).map((t) => (
           <li key={t.codigo}>
-            <label className="flex items-center gap-2 py-1 text-[13px] cursor-pointer">
-              <input type="checkbox" checked={!ocultos[lado].has(t.codigo)} onChange={() => alternar(lado, t.codigo)} />
-              <span className="flex-1 min-w-0">{t.nombre || t.codigo}</span>
+            <label className="flex items-start gap-2 py-1 text-[13px] cursor-pointer">
+              <input type="checkbox" className="mt-0.5" checked={!ocultos[lado].has(t.codigo)} onChange={() => alternar(lado, t.codigo)} />
+              <span className="flex-1 min-w-0">
+                <span className="block">{t.nombre || t.codigo}{sirven.fijos && t.grupo ? <span className="text-gypi-dim"> · {t.grupo}</span> : null}</span>
+                {sirven.fijos && t.leyenda && <span className="block text-[12px] text-gypi-dim">{t.leyenda}</span>}
+              </span>
             </label>
           </li>
         ))}
@@ -207,10 +214,12 @@ function ConfigMiCaja({ datos, onCerrar, onGuardado }) {
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
         <p className="m-0">
           Cada responsable de una caja la ve en su celular (📱 Mi caja) y carga lo que gastó y la plata que recibió.
-          Le aparecen todos los tipos de gasto y de plata que entra: él ve el nombre y la cuenta la pone el tipo. Destildá los que no quieras que vea.
+          {sirven.fijos
+            ? "Le aparece la lista de conceptos de caja, cada uno con su reseña y su cuenta del plan. Destildá los que no quieras que vea."
+            : "Le aparecen todos los tipos de gasto y de plata que entra: él ve el nombre y la cuenta la pone el tipo. Destildá los que no quieras que vea."}
           Lo que carga te queda &quot;Para revisar&quot; acá.
         </p>
-        <input className="g-input w-full" placeholder="Buscar tipo…" aria-label="Buscar tipo" value={buscar} onChange={(e) => setBuscar(e.target.value)} />
+        <input className="g-input w-full" placeholder="Buscar…" aria-label="Buscar concepto" value={buscar} onChange={(e) => setBuscar(e.target.value)} />
         {listaDe("gastos", "Gastos")}
         {listaDe("ingresos", "Plata que recibe")}
         {error && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {error}</p>}
@@ -229,14 +238,19 @@ function RevisarMiCaja({ datos, pendientes, onCerrar, onCambio }) {
   const [tipos, setTipos] = useState({});
   const [error, setError] = useState(null);
   const cuentasCaja = useMemo(() => new Set(datos.tesoreria.map((t) => t.cuenta)), [datos.tesoreria]);
-  const sirven = useMemo(() => tiposParaMiCaja(datos.tipos || []), [datos.tipos]);
-  const nombreTipo = (c) => (datos.tipos || []).find((t) => t.codigo === c)?.nombre || c;
+  const sirven = useMemo(() => conceptosMiCajaTodos(datos.tipos || [], datos.cuentas || []), [datos.tipos, datos.cuentas]);
+  const nombreTipo = (c) => nombreNormal((datos.tipos || []).find((t) => t.codigo === c)?.nombre || c);
+  // Con la lista de conceptos de caja (14/11) se cambia el concepto (tipo y
+  // cuenta); sin ella, el tipo, como antes
+  const actual = (op, caja) => (sirven.fijos ? conceptoDeOperacion(op, caja, sirven)?.codigo || "" : op.tipo);
 
   async function hacer(op, accion) {
     setOcupado(op.id);
     setError(null);
     try {
-      await postTesoreria(accion === "revisar" ? { accion, id: op.id, tipo: tipos[op.id] || op.tipo } : { accion, id: op.id });
+      const elegido = tipos[op.id];
+      const cambio = !elegido ? {} : sirven.fijos ? { concepto: elegido } : { tipo: elegido };
+      await postTesoreria(accion === "revisar" ? { accion, id: op.id, ...cambio } : { accion, id: op.id });
       toast.success(accion === "revisar" ? "Confirmado" : "Anulado");
       onCambio();
     } catch (e) {
@@ -264,9 +278,9 @@ function RevisarMiCaja({ datos, pendientes, onCerrar, onCambio }) {
                 <span className="text-[12px] text-gypi-dim">{fechaCorta(op.fecha)} · {op.descripcion}</span>
                 {op.comprobante_url && <a href={op.comprobante_url} target="_blank" rel="noopener noreferrer" className="text-[13px] text-gypi-cyan underline self-start">🧾 Ver ticket</a>}
                 <span className="flex flex-wrap items-center gap-2">
-                  <SelectBuscable className="g-input flex-1 min-w-[180px]" aria-label={`Tipo del movimiento ${op.id}`} value={tipos[op.id] || op.tipo} onChange={(e) => setTipos((x) => ({ ...x, [op.id]: e.target.value }))}>
-                    {!opciones.some((t) => t.codigo === op.tipo) && <option value={op.tipo}>{nombreTipo(op.tipo)}</option>}
-                    {opciones.map((t) => <option key={t.codigo} value={t.codigo}>{t.nombre || t.codigo}</option>)}
+                  <SelectBuscable className="g-input flex-1 min-w-[180px]" aria-label={`${sirven.fijos ? "Concepto" : "Tipo"} del movimiento ${op.id}`} value={tipos[op.id] || actual(op, caja?.cuenta)} onChange={(e) => setTipos((x) => ({ ...x, [op.id]: e.target.value }))}>
+                    {!opciones.some((t) => t.codigo === actual(op, caja?.cuenta)) && <option value={actual(op, caja?.cuenta)}>{nombreTipo(op.tipo)}</option>}
+                    {opciones.map((t) => <option key={t.codigo} value={t.codigo} data-detalle={t.leyenda || undefined}>{t.nombre || t.codigo}</option>)}
                   </SelectBuscable>
                   <button type="button" className="g-btn g-btn-primary" disabled={ocupado === op.id} onClick={() => hacer(op, "revisar")}>✓ Confirmar</button>
                   <button type="button" className="g-btn g-btn-secondary" disabled={ocupado === op.id} onClick={() => hacer(op, "anular_mi_caja")}>Anular</button>
@@ -336,6 +350,9 @@ export default function FinanzasTesoreria({ onIr = null } = {}) {
   const [extracto, setExtracto] = useState(null);
   const [verRepetidos, setVerRepetidos] = useState(false);
   const [masOpciones, setMasOpciones] = useState(false);
+  const toast = useToast();
+  const [nuevaCaja, setNuevaCaja] = useState(false);
+  const [eliminar, setEliminar] = useState(null);
   // Lo que cambia desde acá (pasar plata, extracto, Mi caja) también recarga la lista de abajo
   const [version, setVersion] = useState(0);
 
@@ -383,6 +400,7 @@ export default function FinanzasTesoreria({ onIr = null } = {}) {
         <button type="button" className={`g-btn ${nRepetidos ? "g-btn-primary" : "g-btn-secondary"}`} onClick={() => setVerRepetidos(true)}>
           🔎 Posibles repetidos{nRepetidos ? ` (${nRepetidos})` : ""}
         </button>
+        <button type="button" className="g-btn g-btn-secondary" onClick={() => setNuevaCaja(true)}>➕ Nueva caja</button>
         <button type="button" className="g-btn g-btn-secondary" aria-expanded={masOpciones} onClick={() => setMasOpciones((v) => !v)}>⋯ Más</button>
       </div>
       {masOpciones && (
@@ -450,6 +468,9 @@ export default function FinanzasTesoreria({ onIr = null } = {}) {
             <>
               {una.tipo === "banco" && una.moneda !== "USD" && <button type="button" className="g-btn g-btn-secondary" onClick={() => setExtracto(una.cuenta)}>📥 Subir extracto</button>}
               {["caja", "otro"].includes(una.tipo) && una.moneda !== "USD" && <button type="button" className="g-btn g-btn-secondary" onClick={() => setExtracto(una.cuenta)}>📥 Subir planilla</button>}
+              {una.activa !== false
+                ? <button type="button" className="g-btn g-btn-secondary" onClick={() => setEliminar(una)}>🗑 Eliminar caja</button>
+                : <button type="button" className="g-btn g-btn-secondary" onClick={() => reactivarCaja(una).then(() => { toast.success(`✅ ${una.nombre} activa de nuevo`); cambioAca(); }).catch((e) => toast.error(e.message))}>↩ Volver a activar</button>}
             </>
           ) : null} />
       </section>
@@ -460,6 +481,8 @@ export default function FinanzasTesoreria({ onIr = null } = {}) {
       )}
 
       {verRepetidos && <PosiblesRepetidos datos={datos} porCaja={porCaja} onCerrar={() => setVerRepetidos(false)} onCambio={cambioAca} />}
+      {nuevaCaja && <NuevaCaja personal={datos.personal} onCerrar={() => setNuevaCaja(false)} onCreada={(c) => { setNuevaCaja(false); setElegidas([c.cuenta]); cambioAca(); }} />}
+      {eliminar && <EliminarCaja caja={eliminar} operaciones={datos.operaciones} onCerrar={() => setEliminar(null)} onHecho={() => { setEliminar(null); setElegidas([]); cambioAca(); }} />}
       {extracto && <SubirExtracto caja={saldos.find((s) => s.cuenta === extracto) || { cuenta: extracto, nombre: extracto }} datos={datos} onCerrar={() => setExtracto(null)} onCargado={() => { setExtracto(null); cambioAca(); }} onCambio={cambioAca} />}
       {verRevisar && <RevisarMiCaja datos={datos} pendientes={pendientes} onCerrar={() => setVerRevisar(false)} onCambio={cambioAca} />}
       {verConfig && <ConfigMiCaja datos={datos} onCerrar={() => setVerConfig(false)} onGuardado={() => { setVerConfig(false); cargar(); }} />}

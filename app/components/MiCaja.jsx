@@ -12,7 +12,7 @@ import Modal from "./ui/Modal";
 import SelectBuscable from "./ui/SelectBuscable";
 import BotonFoto from "./BotonFoto";
 import ExplicacionConcepto, { leyendaCorta } from "./ExplicacionConcepto";
-import BotonNuevaPersona from "./AltaPersona";
+import BotonNuevaPersona, { VentanaAltaPersona } from "./AltaPersona";
 import { Chip } from "./ui";
 import { ayerDe, conceptosPorUso } from "../lib/finanzasMiCaja";
 
@@ -168,16 +168,53 @@ function porGrupo(lista) {
   return [...grupos.entries()];
 }
 
+/**
+ * Anticipos de sueldo del dueño (14/11): por mes, lo que lleva por cargas de
+ * combustible y lo que queda del sueldo fijo para liquidar.
+ */
+export function AnticiposSueldo({ resumen }) {
+  return (
+    <section aria-label="Anticipos de sueldo" className="rounded-lg border border-gypi-border p-2.5 flex flex-col gap-2">
+      {resumen.meses.map((m) => (
+        <div key={m.mes} className="flex flex-col gap-0.5 text-[14px]">
+          {m.lineas.length ? m.lineas.map((l) => (
+            <div key={l.nombre} className="flex items-baseline gap-2">
+              <span className="flex-1 min-w-0">{l.nombre}</span>
+              <span className="font-mono">{plata(l.importe)}</span>
+            </div>
+          )) : (
+            <div className="flex items-baseline gap-2 text-gypi-dim">
+              <span className="flex-1 min-w-0">Anticipos de sueldo por cargas de combustible - {m.nombre}</span>
+              <span className="font-mono">{plata(0)}</span>
+            </div>
+          )}
+          <div className="flex items-baseline gap-2 font-semibold">
+            <span className="flex-1 min-w-0">Sueldo {m.nombre} a liquidar</span>
+            <span className={`font-mono ${m.a_liquidar < 0 ? "text-gypi-red" : ""}`}>{plata(m.a_liquidar)}</span>
+          </div>
+        </div>
+      ))}
+      <span className="text-[12px] text-gypi-dim">Sueldo fijo {plata(resumen.sueldo)}. Al pagar el sueldo del mes, los anticipos se descuentan.</span>
+    </section>
+  );
+}
+
 /** Gasté / Recibí plata (parte 10 del 11/11: muy fácil). Primero la foto del
  *  ticket (Gypi lee importe, fecha y concepto), los conceptos en botones con
  *  los más usados primero y la fecha en Hoy / Ayer / Otro día. */
-function Cargar({ caja, clase, conceptos, hoy, conStock = false, clientes = [], proyectos = [], onCerrar, onHecho }) {
+function Cargar({ caja, clase, conceptos, hoy, conStock = false, clientes: clientesLista = [], proyectos = [], onCerrar, onHecho }) {
   const gasto = clase === "gasto";
+  // 19/11: el cliente nuevo se da de alta acá mismo y queda elegido
+  const [clientesNuevos, setClientesNuevos] = useState([]);
+  const [altaCliente, setAltaCliente] = useState(null);
+  const clientes = [...clientesLista, ...clientesNuevos.filter((n) => !clientesLista.some((c) => String(c.id) === String(n.id)))];
   const lista = conceptosPorUso(gasto ? conceptos.gastos : conceptos.ingresos, caja.movimientos);
   const [f, setF] = useState({
     concepto: lista.length === 1 ? lista[0].codigo : "", importe: "", fecha: hoy, descripcion: "", tipo_cambio: "", comprobante_url: "",
     comercio: "", cuit: "", proveedor_id: "", letra: "", punto_venta: "", numero: "", neto: "", iva: "", otros_impuestos: "",
     cliente_id: "", proyecto_id: "",
+    // 19/11 (punto 14): con proveedor, el gasto y el pago quedan en su cuenta; sin tildar, solo la deuda
+    pagado: true,
   });
   const [verDatos, setVerDatos] = useState(false);
   const [repetido, setRepetido] = useState(null);
@@ -318,13 +355,20 @@ function Cargar({ caja, clase, conceptos, hoy, conStock = false, clientes = [], 
             </div>
             {pideCliente && (
               <div className="flex flex-col gap-2">
-                {campo("¿De qué cliente?", clientes.length ? (
+                {campo("¿De qué cliente?", (
                   <SelectBuscable className="g-input w-full" aria-label="Cliente" value={f.cliente_id}
+                    nuevo={{ etiqueta: "Nuevo cliente", onElegir: (nombre) => setAltaCliente({ nombre }) }}
                     onChange={(e) => { const v = e.target.value; setF((x) => ({ ...x, cliente_id: v, proyecto_id: otDeOtro(x.proyecto_id, v) ? "" : x.proyecto_id })); }}>
                     <option value="">Elegí el cliente…</option>
                     {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                   </SelectBuscable>
-                ) : <span className="text-[13px] font-normal text-gypi-dim">Todavía no hay clientes en la lista: el dueño los carga en Finanzas → Clientes.</span>)}
+                ))}
+                <VentanaAltaPersona abierta={!!altaCliente} onCerrar={() => setAltaCliente(null)} rol="cliente" nombre={altaCliente?.nombre || ""}
+                  onCreada={(p) => {
+                    if (!p.cliente_id) return;
+                    setClientesNuevos((x) => [...x.filter((c) => String(c.id) !== String(p.cliente_id)), { id: p.cliente_id, nombre: p.nombre }]);
+                    setF((x) => ({ ...x, cliente_id: String(p.cliente_id), proyecto_id: otDeOtro(x.proyecto_id, String(p.cliente_id)) ? "" : x.proyecto_id }));
+                  }} />
                 {clientes.length > 0 && proyectos.length > 0 && campo("¿De qué OT? (opcional)", (
                   <SelectBuscable className="g-input w-full" aria-label="OT" value={f.proyecto_id}
                     onChange={(e) => { const v = e.target.value; const p = proyectos.find((x) => String(x.id) === v); setF((x) => ({ ...x, proyecto_id: v, cliente_id: p?.cliente_id ? String(p.cliente_id) : x.cliente_id })); }}>
@@ -350,8 +394,19 @@ function Cargar({ caja, clase, conceptos, hoy, conStock = false, clientes = [], 
               </div>
             </div>
             {campo(gasto ? "Qué compraste (opcional)" : "Detalle (opcional)", <input className="g-input w-full" aria-label="Detalle" maxLength={300} placeholder={gasto ? "Ej.: nafta camioneta" : "Ej.: me la dio Tadeo"} value={f.descripcion} onChange={set("descripcion")} />)}
-            {gasto && <DatosTicket f={f} setF={setF} abierto={verDatos} onAbrir={setVerDatos} separa={separaIva(lista.find((c) => c.codigo === f.concepto))} />}
+            {gasto && <DatosTicket f={f} setF={setF} abierto={verDatos} onAbrir={setVerDatos} separa={separaIva(elegido ? { grupo: elegido.grupo_tipo || elegido.grupo } : null)} />}
           </>
+        )}
+        {gasto && (f.proveedor_id || f.comercio.trim()) && (
+          <label className="flex items-start gap-2 text-[13px] text-gypi-text cursor-pointer">
+            <input type="checkbox" className="mt-0.5" checked={f.pagado} onChange={(e) => setF((x) => ({ ...x, pagado: e.target.checked }))} />
+            <span>
+              <b>Lo pagué ahora</b> con esta caja.{" "}
+              <span className="text-gypi-dim">{f.pagado
+                ? "Queda en la cuenta del proveedor la factura y el pago."
+                : "Queda solo la deuda con el proveedor, para pagarla después: no sale de tu caja."}</span>
+            </span>
+          </label>
         )}
         {repetido && <p role="alert" className="m-0 text-[13px] text-gypi-red">⚠ {repetido} No lo cargues de nuevo.</p>}
         {parecido && (
@@ -464,6 +519,7 @@ export default function MiCaja({ datos, onClose, onCambio }) {
           <div className="text-[14px] text-gypi-dim">{caja.nombre}</div>
           <div className={`text-[30px] font-extrabold font-mono ${caja.saldo < 0 ? "text-gypi-red" : ""}`}>{plata(caja.saldo, caja.moneda)}</div>
         </div>
+        {caja.propia !== false && datos.anticipos_sueldo?.meses?.length > 0 && <AnticiposSueldo resumen={datos.anticipos_sueldo} />}
         <div className="grid grid-cols-2 gap-2">
           <button type="button" className="g-btn g-btn-primary min-h-[56px] text-[16px]" onClick={() => { setAviso(null); setCargar("gasto"); }}>➖ Gasté</button>
           <button type="button" className="g-btn g-btn-secondary min-h-[56px] text-[16px]" onClick={() => { setAviso(null); setCargar("ingreso"); }}>➕ Recibí plata</button>

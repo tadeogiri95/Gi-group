@@ -8,12 +8,13 @@ import { fechaDebito } from "./finanzasDiasHabiles";
 
 /** Las pantallas de Finanzas agrupadas por tema, en el orden del menú. */
 export const GRUPOS_FINANZAS = [
-  // 14/11 (etapa 4 de la auditoría de Finanzas integrada): los 6 lugares (el Inicio va solo, arriba)
-  { id: "tesoreria", titulo: "Tesorería", opciones: ["fin-tesoreria", "fin-cheques", "fin-inversiones"] },
-  { id: "cuentas", titulo: "Cuentas corrientes", opciones: ["fin-clientes", "fin-cuenta-ot", "fin-proveedores", "fin-pagos", "fin-sueldos", "fin-personas", "fin-unificados"] },
-  { id: "contabilidad", titulo: "Contabilidad", opciones: ["fin-mayor", "fin-devengamiento", "fin-sos", "fin-libro"] },
-  { id: "informes", titulo: "Informes", opciones: ["fin-resultados", "fin-patrimonio", "fin-flujo", "fin-reporte"] },
-  { id: "ajustes", titulo: "Ajustes", opciones: ["fin-config", "fin-cierre"] },
+  // 19/11 (punto 17 del plan, pedido de Tadeo): por lo que se hace, no por
+  // tema contable. ➕ Cargar va arriba del Inicio. Cuenta por OT queda adentro
+  // de Clientes y Cliente y proveedor adentro de Agenda (sus botones de siempre).
+  { id: "pagar", titulo: "Pagar y cobrar", opciones: ["fin-pagos", "fin-cheques", "fin-sueldos"] },
+  { id: "saldos", titulo: "Saldos", opciones: ["fin-tesoreria", "fin-cuentas", "fin-inversiones", "fin-personas"] },
+  { id: "informes", titulo: "Informes", opciones: ["fin-resultados", "fin-patrimonio", "fin-flujo", "fin-cxp", "fin-reporte", "fin-informe-tesoreria", "fin-mayor"] },
+  { id: "cierre", titulo: "Cierre y ajustes", opciones: ["fin-devengamiento", "fin-cierre", "fin-libro", "fin-sos", "fin-config"] },
 ];
 
 /** Para qué sirve cada pantalla, en una línea (las tarjetas del Inicio). */
@@ -21,16 +22,17 @@ export const DETALLE_FINANZAS = {
   "fin-tesoreria": "Cajas y bancos con su saldo y todo lo que se cargó; cargar, corregir o anular",
   "fin-pagos": "Órdenes de pago: armar, aprobar y pagar",
   "fin-cheques": "Cheques y e-cheq propios y de terceros",
-  "fin-proveedores": "Cuánto se le debe a cada uno",
-  "fin-clientes": "Cuánto nos debe cada uno y cobros",
+  "fin-cxp": "Cuánto nos deben y cuánto debemos, de quién y hace cuánto",
+  "fin-cuentas": "Clientes y proveedores juntos: cuánto nos debe y cuánto le debemos a cada uno",
   "fin-sueldos": "Liquidar y pagar sueldos",
-  "fin-personas": "Agenda única: clientes, proveedores y empleados, cada uno una vez",
+  "fin-personas": "Clientes, proveedores y empleados, cada uno una vez; quién es cliente y proveedor",
   "fin-mayor": "Movimientos y saldo de cada cuenta contable; asientos de registro y de ajuste",
   "fin-devengamiento": "Lo que hay que devengar cada mes, lo que falta y las provisiones",
   "fin-resultados": "Ganancia o pérdida por mes",
   "fin-patrimonio": "Lo que tiene y lo que debe la empresa, la liquidez y de dónde salió la plata",
   "fin-flujo": "Cuánta plata entra y sale, y lo que viene",
   "fin-reporte": "Resumen para el contador o los socios",
+  "fin-informe-tesoreria": "Plata en cajas, bancos e inversiones; calce de cheques con plazos fijos; cheques a cobrar",
   "fin-cierre": "Control: Gypi contra el libro y stock valorizado",
   "fin-libro": "Lo cargado a mano en el libro de Google: incorporarlo a Gypi o ignorarlo",
   "fin-config": "Plan de cuentas, tipos y revisión contable",

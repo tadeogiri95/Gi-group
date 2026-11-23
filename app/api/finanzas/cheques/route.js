@@ -16,6 +16,15 @@
 //       cuenta corriente. cliente_id null lo suelta.
 //   POST { accion: "copiar_libro", filas } → los vivos de R-CHEQUES, sin
 //       operación (ya están en el libro). Los ya copiados no se repiten.
+//   POST { accion: "deshacer", id, probar? } → 19/11: el cheque vuelve a
+//       como estaba antes del último cambio (deshacerCambio); el movimiento
+//       que había cargado Gypi queda anulado. probar = solo dice qué pasaría.
+//   POST { accion: "a_terceros", id } → 19/11: un cheque por debitar que en
+//       realidad es de terceros pasa a la cartera (pasarATerceros).
+//   16/11: GET trae también "repetidos": cheques cuyo débito o depósito
+//       está dos veces (el de Gypi y el del extracto; chequesRepetidos en
+//       finanzasCorregir.js). POST { accion: "anular_repetidos" } une cada
+//       cheque al movimiento del banco y anula el que cargó Gypi.
 //
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige).
 import { NextResponse } from "next/server";
@@ -25,10 +34,11 @@ import { CLAVE_PLANIFICACION } from "../../../lib/planificacion";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
-import { ESTADOS_CHEQUE, TIPOS_CHEQUE, cambioDeEstado, operacionAlta, validarCheque } from "../../../lib/finanzasCheques";
+import { ESTADOS_CHEQUE, TIPOS_CHEQUE, cambioDeEstado, deshacerCambio, operacionAlta, pasarATerceros, validarCheque } from "../../../lib/finanzasCheques";
 import { hoyAr } from "../../../lib/finanzasOperaciones";
 import { frenoRepetidos, repetidosEnBase } from "../../../lib/finanzasRepetidosServidor";
 import { clienteDeLista, faltaColumna192 } from "../../../lib/elegirDeLista";
+import { chequesRepetidos } from "../../../lib/finanzasCorregir";
 
 const MAX_COPIAR = 2000;
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
@@ -59,6 +69,52 @@ function error(err, donde) {
   return errorFinanzas(err, donde);
 }
 
+const moverDias = (fecha, d) => new Date(Date.parse(`${fecha}T12:00:00Z`) + d * 86400000).toISOString().slice(0, 10);
+
+/** 16/11: los cheques del último año con el débito o el depósito dos veces. */
+async function repetidosDeCheques(sesion, tesoreria) {
+  const e = sesion.empresa_id;
+  const desde = moverDias(hoyAr(), -365);
+  const cheques = await leer(sesion, `fin_cheques?empresa_id=eq.${e}&estado=in.(debitado,depositado)&op_cierre_id=not.is.null&fecha_pago=gte.${desde}&select=id,clase,estado,numero,importe,fecha_pago,beneficiario,recibido_de,librador,op_cierre_id&order=fecha_pago.asc,id.asc`, 20000);
+  if (!cheques?.length) return [];
+  const bancos = tesoreria.filter((t) => t.tipo === "banco").map((t) => `"${String(t.cuenta).replace(/"/g, "")}"`);
+  if (!bancos.length) return [];
+  const l = encodeURIComponent(bancos.join(","));
+  const ops = await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&fecha=gte.${moverDias(desde, -10)}&or=(cuenta_debe.in.(${l}),cuenta_haber.in.(${l}))&select=id,fecha,tipo,descripcion,origen,total,total_ars,cuenta_debe,cuenta_haber,anulada_at&order=fecha.asc,id.asc`, 50000);
+  // Los cheques de otros que ya tienen su movimiento del banco no se tocan
+  const todos = await leer(sesion, `fin_cheques?empresa_id=eq.${e}&op_cierre_id=not.is.null&select=id,op_cierre_id`, 20000);
+  const otros = (todos || []).filter((c) => !cheques.some((x) => x.id === c.id)).map((c) => ({ ...c, estado: "otro" }));
+  return chequesRepetidos([...cheques, ...otros], ops || []);
+}
+
+const ORIGEN_TEXTO = { banco: "del extracto del banco", libro: "copiado del libro", manual: "cargado a mano" };
+const parCheque = ({ cheque, gypi, otra }) => ({
+  id: cheque.id, numero: cheque.numero, estado: cheque.estado, importe: cheque.importe, fecha_pago: cheque.fecha_pago,
+  quien: cheque.beneficiario || cheque.recibido_de || cheque.librador || "",
+  gypi: { id: gypi.id, fecha: gypi.fecha }, otra: { id: otra.id, fecha: otra.fecha, descripcion: otra.descripcion || "", origen: ORIGEN_TEXTO[otra.origen] || "cargado en otra pantalla" },
+});
+
+async function anularRepetidos(sesion) {
+  const e = sesion.empresa_id;
+  const ctx = await contexto(sesion);
+  const pares = await repetidosDeCheques(sesion, ctx.tesoreria);
+  if (!pares.length) return NextResponse.json({ ok: true, anuladas: 0 });
+  const ahora = new Date().toISOString();
+  const quien = await nombreEmpleado(sesion);
+  let anuladas = 0;
+  for (const { cheque, gypi, otra } of pares) {
+    const [unido] = (await sbPatch(`fin_cheques?id=eq.${cheque.id}&empresa_id=eq.${e}&op_cierre_id=eq.${gypi.id}`, { op_cierre_id: otra.id, updated_at: ahora }, { sesion })) || [];
+    if (!unido) continue;
+    const filas = await sbPatch(`fin_operaciones?id=eq.${gypi.id}&empresa_id=eq.${e}&origen=eq.cheque&anulada_at=is.null`, {
+      anulada_at: ahora, anulada_por_nombre: `${quien || "Dueño"} (repetida con el extracto)`.slice(0, 120), updated_at: ahora,
+    }, { sesion });
+    anuladas += filas?.length || 0;
+  }
+  broadcastRefresh(e, "fin_cheques");
+  broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, anuladas });
+}
+
 export async function GET(request) {
   const { sesion, response } = await sesionDueno(request);
   if (response) return response;
@@ -70,8 +126,9 @@ export async function GET(request) {
       leer(sesion, `fin_cheques?empresa_id=eq.${e}${anulados ? "" : "&estado=neq.anulado"}&select=*&order=fecha_pago.asc,id.asc`, 20000),
       sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_PLANIFICACION}&select=valor&limit=1`, { silent: true, fallback: [] }).then((r) => r?.[0]?.valor || null).catch(() => null),
     ]);
+    const repetidos = await repetidosDeCheques(sesion, ctx.tesoreria).catch(() => []);
     // Los días sin bancos, para saber cuándo se debita o acredita cada cheque
-    return NextResponse.json({ ...ctx, cheques, feriados: [...feriadosFinanzas(planificacion)].sort() });
+    return NextResponse.json({ ...ctx, cheques, feriados: [...feriadosFinanzas(planificacion)].sort(), repetidos: repetidos.map(parCheque) });
   } catch (err) {
     return error(err, "cheques GET");
   }
@@ -157,6 +214,61 @@ async function cambiar(sesion, d) {
   return NextResponse.json({ ok: true, cheque: final });
 }
 
+/** 19/11: deshacer el último cambio de un cheque marcado por error. */
+async function deshacer(sesion, d) {
+  const e = sesion.empresa_id;
+  const id = Number(d.id);
+  if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta el cheque" }, { status: 400 });
+  const [ch] = (await leer(sesion, `fin_cheques?id=eq.${id}&empresa_id=eq.${e}&select=*&limit=1`)) || [];
+  if (!ch) return NextResponse.json({ error: "No encontré ese cheque" }, { status: 404 });
+  const [ops, ordenes] = await Promise.all([
+    leer(sesion, `fin_operaciones?empresa_id=eq.${e}&origen=eq.cheque&origen_id=like.${id}:*&select=id,fecha,total,origen,origen_id,anulada_at&order=id.asc`),
+    leer(sesion, `fin_ordenes_pago?empresa_id=eq.${e}&estado=neq.anulada&select=id,numero,estado,generado`).catch(() => []),
+  ]);
+  const r = deshacerCambio(ch, { ops: ops || [], ordenes: ordenes || [] });
+  if (r.error) return NextResponse.json({ error: r.error }, { status: 400 });
+  if (d.probar === true) return NextResponse.json({ ok: true, a: r.a, texto: r.texto });
+  const ahora = new Date().toISOString();
+  const quien = await nombreEmpleado(sesion);
+  const nota = `↩ ${ESTADOS_CHEQUE[ch.estado]?.nombre} deshecho por ${quien || "el Dueño"} el ${ahora.slice(8, 10)}/${ahora.slice(5, 7)}`;
+  const notas = [ch.notas, nota].filter(Boolean).join(" · ").slice(-300);
+  // Solo si el cheque sigue como lo leímos (dos personas a la vez)
+  const [hecho] = (await sbPatch(`fin_cheques?id=eq.${id}&empresa_id=eq.${e}&estado=eq.${ch.estado}`, { ...r.cambios, notas, updated_at: ahora }, { sesion })) || [];
+  if (!hecho) return NextResponse.json({ error: "El cheque cambió mientras tanto. Actualizá la pantalla." }, { status: 409 });
+  for (const opId of r.anular) {
+    await sbPatch(`fin_operaciones?id=eq.${opId}&empresa_id=eq.${e}&anulada_at=is.null`, { anulada_at: ahora, anulada_por_nombre: `${quien || "Dueño"} (cheque deshecho)`.slice(0, 120), updated_at: ahora }, { sesion });
+  }
+  for (const opId of r.revivir) {
+    await sbPatch(`fin_operaciones?id=eq.${opId}&empresa_id=eq.${e}`, { anulada_at: null, anulada_por_nombre: null, updated_at: ahora }, { sesion });
+  }
+  broadcastRefresh(e, "fin_cheques");
+  broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, cheque: hecho, texto: r.texto });
+}
+
+/** 19/11: un "propio" que es de terceros pasa a la cartera. */
+async function aTerceros(sesion, d) {
+  const e = sesion.empresa_id;
+  const id = Number(d.id);
+  if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta el cheque" }, { status: 400 });
+  const [ch] = (await leer(sesion, `fin_cheques?id=eq.${id}&empresa_id=eq.${e}&select=*&limit=1`)) || [];
+  if (!ch) return NextResponse.json({ error: "No encontré ese cheque" }, { status: 404 });
+  const ops = await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&origen=eq.cheque&origen_id=like.${id}:*&select=id,origen,origen_id,anulada_at&order=id.asc`);
+  const r = pasarATerceros(ch, { ops: ops || [] });
+  if (r.error) return NextResponse.json({ error: r.error }, { status: 400 });
+  const ahora = new Date().toISOString();
+  const quien = await nombreEmpleado(sesion);
+  const notas = [ch.notas, `Pasado de propio a de terceros por ${quien || "el Dueño"} el ${ahora.slice(8, 10)}/${ahora.slice(5, 7)}`].filter(Boolean).join(" · ").slice(-300);
+  const [hecho] = (await sbPatch(`fin_cheques?id=eq.${id}&empresa_id=eq.${e}&clase=eq.propio&estado=eq.${ch.estado}`, { ...r.cambios, notas, updated_at: ahora }, { sesion })) || [];
+  if (!hecho) return NextResponse.json({ error: "El cheque cambió mientras tanto. Actualizá la pantalla." }, { status: 409 });
+  for (const opId of r.anular) {
+    await sbPatch(`fin_operaciones?id=eq.${opId}&empresa_id=eq.${e}&anulada_at=is.null`, { anulada_at: ahora, anulada_por_nombre: `${quien || "Dueño"} (no era cheque propio)`.slice(0, 120), updated_at: ahora }, { sesion });
+  }
+  broadcastRefresh(e, "fin_cheques");
+  broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, cheque: hecho });
+}
+
 async function asignarCliente(sesion, d) {
   const e = sesion.empresa_id;
   const id = Number(d.id);
@@ -238,8 +350,11 @@ export async function POST(request) {
   try {
     if (d?.accion === "crear") return await crear(sesion, d);
     if (d?.accion === "cambiar") return await cambiar(sesion, d);
+    if (d?.accion === "deshacer") return await deshacer(sesion, d);
+    if (d?.accion === "a_terceros") return await aTerceros(sesion, d);
     if (d?.accion === "cliente") return await asignarCliente(sesion, d);
     if (d?.accion === "copiar_libro") return await copiarLibro(sesion, d);
+    if (d?.accion === "anular_repetidos") return await anularRepetidos(sesion);
     return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
   } catch (err) {
     return error(err, `cheques ${d?.accion}`);

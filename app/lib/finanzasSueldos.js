@@ -17,6 +17,8 @@
 //   { conceptos: [{ codigo, nombre, clase, cuenta, usa_area, activo }], areas: { <empleado_id>: <cuenta> } }
 import { claveNombre } from "./finanzasProveedores";
 
+import { leerFijos } from "./finanzasAnticipos";
+
 export const CLAVE_SUELDOS = "finanzas_sueldos";
 export const ORIGEN_LIQUIDACION = "liquidacion";
 export const ORIGEN_PAGO_SUELDO = "pago_sueldo";
@@ -78,7 +80,8 @@ export function leerConfigSueldos(valor, cuentas = []) {
   const orden = new Map(guardados.map((c, i) => [c.codigo, i]));
   const todos = [...base, ...extra].sort((a, b) => (orden.get(a.codigo) ?? 1000 + CONCEPTOS_BASE.findIndex((x) => x.codigo === a.codigo)) - (orden.get(b.codigo) ?? 1000 + CONCEPTOS_BASE.findIndex((x) => x.codigo === b.codigo)));
   const areas = valor?.areas && typeof valor.areas === "object" ? valor.areas : {};
-  return { conceptos: todos, areas };
+  // 14/11: sueldo mensual fijo de cada dueño (anticipos en su caja)
+  return { conceptos: todos, areas, fijos: leerFijos(valor?.fijos) };
 }
 
 /** Valida la configuración que manda la pantalla. */
@@ -105,7 +108,14 @@ export function validarConfigSueldos(d = {}, cuentas = []) {
     if (!hay.has(String(cuenta))) { errores.push("La cuenta del área de un empleado no está en el plan"); break; }
     areas[emp] = String(cuenta);
   }
-  return { valor: { conceptos, areas }, errores };
+  const fijos = {};
+  for (const [emp, v] of Object.entries(d.fijos && typeof d.fijos === "object" ? d.fijos : {}).slice(0, 500)) {
+    if (!/^[0-9a-f-]{1,40}$/i.test(emp) || v === "" || v == null) continue;
+    const n = typeof v === "number" ? v : numeroSueldo(v);
+    if (!(n > 0) || n >= 1e11) { errores.push("El sueldo fijo tiene que ser un número mayor a cero"); break; }
+    fijos[emp] = centavos(n);
+  }
+  return { valor: { conceptos, areas, fijos }, errores };
 }
 
 /** Un número escrito a la argentina ("1.234,50") o con punto ("1234.5"); null si está vacío o no es un número. */

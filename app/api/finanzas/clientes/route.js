@@ -15,6 +15,9 @@
 //   POST { accion: "saldos_iniciales", fecha, filas: [{ cliente_id?, nombre, saldo }] }
 //       → el saldo de cada cliente a la fecha de corte contra Ajuste De Capital
 //       (los que no están en la lista se crean). Reemplaza el anterior.
+//   POST { accion: "ajuste_saldo", clave, saldo_nuevo, fecha, motivo } → deja el
+//       saldo del cliente en ese importe contra "Ajuste de resultados de
+//       ejercicios anteriores" (punto 15 del 19/11; finanzasAjusteSaldo.js).
 //   POST { accion: "config_ventas", activo, desde } → prende o apaga la venta y
 //       la entrega automática de las OT (F4b, app/lib/finanzasVentas.js) y la
 //       corre una vez.
@@ -24,6 +27,7 @@
 // Solo el rol Dueño, con el pase del usuario (la base también lo exige).
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
+import { unirClientesEnBase } from "../../../lib/unirServidor";
 import { sbGet, sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { broadcastRefresh } from "../../../lib/broadcast";
@@ -33,8 +37,9 @@ import { FECHA } from "../../../lib/finanzasOperaciones";
 import { CUENTA_AJUSTE_CAPITAL, ORIGEN_SALDO_INICIAL } from "../../../lib/finanzasProveedores";
 import { operacionAlta } from "../../../lib/finanzasCheques";
 import {
-  ORIGEN_COBRO, armarCobro, clientesNuevosDeOt, cuentasDeudores, emparejarCliente, operacionSaldoInicialCliente, unirClientes, validarCliente,
+  ORIGEN_COBRO, armarCobro, clientesNuevosDeOt, cuentasDeudores, emparejarCliente, operacionSaldoInicialCliente, validarCliente,
 } from "../../../lib/finanzasClientes";
+import { ajustarSaldo } from "../../../lib/finanzasAjusteSaldoServidor";
 import { CLAVE_VENTAS_OT, configVentas, cuentasVentas, sincronizarVentasOt } from "../../../lib/finanzasVentas";
 
 const MAX_SALDOS = 2000;
@@ -120,12 +125,9 @@ async function unir(sesion, d) {
   const a = clientes.find((c) => Number(c.id) === Number(d.a));
   const b = clientes.find((c) => Number(c.id) === Number(d.b));
   if (!a || !b || a.id === b.id || a.activo === false || b.activo === false) return NextResponse.json({ error: "Elegí dos clientes distintos" }, { status: 400 });
-  const { a: ca, b: cb } = unirClientes(a, b);
-  const ahora = new Date().toISOString();
-  await sbPatch(`fin_clientes?id=eq.${a.id}&empresa_id=eq.${e}`, { ...ca, updated_at: ahora }, { sesion });
-  await sbPatch(`fin_clientes?id=eq.${b.id}&empresa_id=eq.${e}`, { ...cb, updated_at: ahora }, { sesion });
-  await sbPatch(`fin_operaciones?empresa_id=eq.${e}&cliente_id=eq.${b.id}`, { cliente_id: a.id, updated_at: ahora }, { sesion });
+  await unirClientesEnBase(sesion, a, b);
   broadcastRefresh(e, "fin_operaciones");
+  broadcastRefresh(e, "finanzas");
   return NextResponse.json({ ok: true });
 }
 
@@ -267,6 +269,7 @@ export async function POST(request) {
     if (d.accion === "saldos_iniciales") return await saldosIniciales(sesion, d);
     if (d.accion === "config_ventas") return await configurarVentas(sesion, d);
     if (d.accion === "revisar_ventas") return await revisarVentas(sesion);
+    if (d.accion === "ajuste_saldo") return await ajustarSaldo(sesion, d, "cliente");
     return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
   } catch (err) {
     if (falta177(err)) return NextResponse.json({ error: FALTA_177, falta_migracion: true }, { status: 409 });

@@ -85,8 +85,8 @@ test("Inicio — aviso de lo cargado a mano; menú con 📗 Libro de Google y Ci
   const p = pendientesFinanzas({ hoy: "2026-11-14", libroManual: 3 });
   assert.deepEqual(p.map((x) => [x.id, x.ir, x.cantidad]), [["libro_manual", "fin-libro", 3]]);
   assert.match(p[0].texto, /3 renglones cargados a mano en el libro de Google/);
-  assert.ok(GRUPOS_FINANZAS.find((g) => g.id === "contabilidad").opciones.includes("fin-libro"));
-  assert.deepEqual(GRUPOS_FINANZAS.find((g) => g.id === "ajustes").opciones, ["fin-config", "fin-cierre"]);
+  // 19/11 (menú nuevo): el libro y el cierre van en "Cierre y ajustes"
+  assert.deepEqual(GRUPOS_FINANZAS.find((g) => g.id === "cierre").opciones, ["fin-devengamiento", "fin-cierre", "fin-libro", "fin-sos", "fin-config"]);
 });
 
 test("respaldo — el zip trae Finanzas, Compras, Stock, Flota y Maquinaria", () => {

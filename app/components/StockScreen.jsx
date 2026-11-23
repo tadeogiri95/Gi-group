@@ -15,8 +15,9 @@ import {
   AVISO_DEMORA_GOOGLE, CLAVE_STOCK_CSV, MAX_ETIQUETAS_ARTICULO, cantidadTexto, divisionesDe, filtrarArticulos, imprimirEtiquetasArticulos, syncAtrasada,
 } from "../lib/stock";
 import FichaArticulo, { Semaforo } from "./FichaArticulo";
-import MovimientosStock from "./MovimientosStock";
+import { BotonesCargar } from "./MovimientosStock";
 import ArticuloNuevo from "./ArticuloNuevo";
+import { textoFechaPrecio, textoPrecio, ultimosPrecios, veePrecios } from "../lib/preciosArticulos";
 
 const GREEN = "#16A34A";
 const RED = "#DC2626";
@@ -28,7 +29,7 @@ function leerTamano() {
   try { return localStorage.getItem(CLAVE_TAMANO) || TAMANOS_ETIQUETA[0].id; } catch { return TAMANOS_ETIQUETA[0].id; }
 }
 
-export default function StockScreen({ empresa, empresaId, usuario = null, onPlanillas = null }) {
+export default function StockScreen({ empresa, empresaId, usuario = null, onPlanillas = null, onCargar = null }) {
   const toast = useToast();
   const [articulos, setArticulos] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -44,7 +45,9 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
   const [elegidos, setElegidos] = useState(() => new Set());
   const [tamano, setTamano] = useState(leerTamano);
   const [ficha, setFicha] = useState(null);
-  const [vista, setVista] = useState("articulos");
+  // Último precio con fecha de cada artículo (solo Dueño, Supervisor y Administración)
+  const conPrecios = veePrecios(usuario);
+  const [precios, setPrecios] = useState([]);
 
   const cargar = useCallback(async () => {
     if (!empresaId) return;
@@ -72,6 +75,17 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
 
   useEffect(() => { cargar(); cargarCfg(); }, [cargar, cargarCfg]);
 
+  const cargarPrecios = useCallback(async () => {
+    if (!conPrecios || !empresaId) return;
+    try {
+      // De la más nueva a la más vieja: si se corta, se pierden solo las viejas
+      const { data } = await sbGetAll("v_precios_articulos?select=sku,fecha,precio,moneda,precio_ars,origen,proveedor&order=fecha.desc", { maxFilas: 20000 });
+      setPrecios(data || []);
+    } catch { /* sin la migración 164 o sin permiso: no se muestran */ }
+  }, [conPrecios, empresaId]);
+  useEffect(() => { cargarPrecios(); }, [cargarPrecios]);
+  const ultimos = useMemo(() => (conPrecios ? ultimosPrecios(precios, articulos) : new Map()), [conPrecios, precios, articulos]);
+
   const divisiones = useMemo(() => divisionesDe(articulos), [articulos]);
   const filtrados = useMemo(() => filtrarArticulos(articulos, { texto, division, urgentes, negativos }), [articulos, texto, division, urgentes, negativos]);
   const urgentesTotal = useMemo(() => filtrarArticulos(articulos, { urgentes: true }).length, [articulos]);
@@ -89,6 +103,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
       else toast.show(`✅ ${data.articulos} artículos sincronizados${data.desactivados ? ` (${data.desactivados} ya no están en la planilla)` : ""}`, GREEN);
       setCfg((c) => ({ ...c, ultima_sync: new Date().toISOString() }));
       await cargar();
+      cargarPrecios();
     } catch (e) {
       toast.show(e.message, RED);
     }
@@ -120,11 +135,8 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
 
   return (
     <div className="flex-1 overflow-y-auto px-[18px] pb-28 text-gypi-text">
-      <div className="flex gap-1.5 mb-3" role="group" aria-label="Ver">
-        <Chip active={vista === "articulos"} onClick={() => setVista("articulos")}>Artículos</Chip>
-        <Chip active={vista === "movimientos"} onClick={() => setVista("movimientos")}>Movimientos</Chip>
-      </div>
-      {vista === "movimientos" ? <MovimientosStock usuario={usuario} articulos={articulos} onArticuloNuevo={(n) => setArticulos((prev) => [...prev.filter((x) => x.sku !== n.sku), n])} /> : (<>
+      {/* 17/11: Movimientos tiene su pestaña en Materiales; cargar, a la vista */}
+      {onCargar && <BotonesCargar puedeIngresar={puedeCrear} onElegir={onCargar} />}
       {/* Los links del libro MRP se configuran en Más → Planillas conectadas
           (auditoría 01/11, PR 3); el supervisor no los ve */}
       {/* Planilla y sincronización en una fila (11/11, revisión de interfaz): en el
@@ -227,6 +239,11 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
                 <button onClick={() => setFicha(a)} className="flex-1 min-w-0 min-h-[44px] text-left bg-transparent border-none p-0 cursor-pointer text-gypi-text font-body">
                   <div className="text-[14px] font-semibold truncate">{a.nombre || a.sku}</div>
                   <div className="text-[12px] text-gypi-dim truncate">{a.origen === "gypi" ? "🆕 Nuevo, falta pasar a la planilla · " : ""}{a.sku}{a.division ? ` · ${a.division}` : ""}</div>
+                  {ultimos.has(a.sku) && (
+                    <div className="text-[12px] text-gypi-dim truncate">
+                      💲 <b className="text-gypi-text">{textoPrecio(ultimos.get(a.sku).precio)}</b> · {textoFechaPrecio(ultimos.get(a.sku))}
+                    </div>
+                  )}
                 </button>
                 <div className="text-right shrink-0">
                   <div className="text-[14px] font-bold">{cantidadTexto(a.disponible ?? a.stock)} <span className="text-[12px] font-semibold text-gypi-dim">{a.unidad || ""}</span></div>
@@ -237,7 +254,6 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
           </ul>
         </>
       )}
-      </>)}
       {ficha && <FichaArticulo sku={ficha.sku} articulo={ficha} usuario={usuario} empresaId={empresaId} onClose={() => setFicha(null)} />}
     </div>
   );

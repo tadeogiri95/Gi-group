@@ -9,6 +9,9 @@
 //       hay otra por el mismo importe con hasta 3 días (13/11), responde 409
 //       con los repetidos hasta que venga confirmar_repetido (lo mismo en
 //       gasto y corregir).
+//       Con pago: { cuenta_caja, fecha } (19/11, punto 14; finanzasPagoJunto.js)
+//       y una operación que no toca caja y deja una deuda o un crédito, se
+//       carga también el pago o el cobro desde esa caja, las dos juntas.
 //   POST { accion: "gasto", gasto } → un gasto devengado con o sin factura (y
 //       su pago, si ya se pagó): reglas en app/lib/finanzasGastos.js.
 //       Con proveedor sin tipo guardado, el tipo queda guardado para la próxima.
@@ -28,9 +31,20 @@
 //       Un gasto se anula junto con su pago.
 //   POST { accion: "anular_varias", ids } → lo mismo, varias juntas (los plazos
 //       fijos repetidos, 12/11).
-//   POST { accion: "corregir", id, cambios } → anula la operación ("corregida")
-//       y carga una nueva con la fecha, el importe, las cuentas, la descripción
-//       o la referencia cambiadas (12/11).
+//   POST { accion: "corregir", id, cambios } → corrige en su lugar la fecha, el
+//       importe, las cuentas, la descripción o la referencia, y anota en el
+//       historial qué cambió, quién y cuándo (19/11, migración 199). Sin la
+//       199, como antes (12/11): la anula ("corregida") y carga una nueva.
+//       Con el libro como copia completa de Gypi, también lo que vino del
+//       libro y los saldos iniciales.
+//   POST { accion: "imputar", ids, campo, valor } → (19/11, punto 13) a una o
+//       varias juntas les pone el cliente, el proveedor, la OT, el centro de
+//       costo, la cuenta, la caja, el vehículo o la máquina (vehículo y
+//       máquina con la migración 200; reglas en app/lib/finanzasImputar.js).
+//       Cada una anota el cambio en su historial (199). Las que no se pueden
+//       vuelven en saltadas, con el motivo.
+//   GET ?vehiculo=<id> o ?maquina=<id> → lo imputado a ese vehículo o esa
+//       máquina, para su ficha de Flota o Maquinaria (punto 13).
 //   POST { accion: "comprobantes", id, comprobantes } → cambia la lista de
 //       comprobantes (PDF o fotos) de un movimiento (13/11, parte 4; migración
 //       187). "crear" y "gasto" también aceptan comprobantes al cargar.
@@ -58,19 +72,43 @@ import { avisoRepetido } from "../../../lib/finanzasComprobantes";
 import { buscarComprobanteRepetido } from "../../../lib/finanzasComprobantesServidor";
 import { randomUUID } from "node:crypto";
 import { frenoRepetidos, repetidosEnBase } from "../../../lib/finanzasRepetidosServidor";
-import { clienteDeOperacion } from "../../../lib/finanzasClientes";
+import { clienteDeOperacion, indiceClientes } from "../../../lib/finanzasClientes";
 import { listasFinanzas } from "../../../lib/finanzasListas";
+import { GRUPO_DOLARES, ORIGEN_DOLARES } from "../../../lib/finanzasDolares";
 import { columnasComprobantes, falta187, validarComprobantes } from "../../../lib/finanzasAdjuntos";
 import { MARCA_CORREGIDA, MAX_ANULAR_JUNTAS, SE_ANULAN, SE_CONFIRMAN, operacionCorregida, puedeCorregir } from "../../../lib/finanzasCorregir";
+import { AVISO_FALTA_199, conEntrada, entradaCorreccion, falta199 } from "../../../lib/historialCambios";
+import { CLAVE_LIBRO_FIN } from "../../../lib/finanzasLibro";
+import { CAMPOS_200, CAMPOS_IMPUTAR, MAX_IMPUTAR, imputacion } from "../../../lib/finanzasImputar";
+import { operacionDelPago } from "../../../lib/finanzasPagoJunto";
 
-const ANULABLES = `origen=in.(${[...SE_ANULAN].filter((o) => o !== ORIGEN_GASTO).join(",")})`;
+/** ¿Faltan vehiculo_id o maquina_id (migración 200)? */
+const falta200 = (err) => /vehiculo_id|maquina_id/.test(String(err?.message)) && /42703|does not exist|PGRST204|schema cache/.test(String(err?.message));
+const AVISO_FALTA_200 = "Para imputar a un vehículo o una máquina falta correr la migración 200 en Supabase.";
+
+// El gasto y la compra o venta de dólares se anulan con su grupo (abajo), nunca sueltos
+const ANULABLES = `origen=in.(${[...SE_ANULAN].filter((o) => o !== ORIGEN_GASTO && o !== ORIGEN_DOLARES).join(",")})`;
 
 const ORIGENES_COMPRA = ["factura_oc", "factura_oc_otra", "factura_suelta"];
-const COLUMNAS = "id,fecha,tipo,proveedor_id,cliente_id,entidad,proyecto_id,centro_costo,neto,iva,otros_impuestos,total,moneda,tipo_cambio,total_ars,cuenta_debe,cuenta_haber,descripcion,referencia,origen,origen_id,estado,cargada_por_nombre,anulada_at,anulada_por_nombre,created_at";
+const COLUMNAS = "id,fecha,tipo,proveedor_id,cliente_id,entidad,proyecto_id,centro_costo,neto,iva,otros_impuestos,total,moneda,tipo_cambio,total_ars,cuenta_debe,cuenta_haber,descripcion,referencia,origen,origen_id,estado,cargada_por_nombre,anulada_at,anulada_por_nombre,created_at,updated_at";
+
+/** ¿El libro ya es copia completa de Gypi (PR 11)? Entonces lo del libro también se corrige acá. */
+async function espejoCompleto(sesion) {
+  const [cfg] = (await sbGet(`config_sistema?empresa_id=eq.${sesion.empresa_id}&clave=eq.${CLAVE_LIBRO_FIN}&select=valor&limit=1`, { sesion, silent: true, fallback: [] })) || [];
+  return !!cfg?.valor?.espejo_completo_at;
+}
 
 const listas = listasFinanzas;
 
 /** Los clientes de la lista (sin la 177, ninguno): para dejar el cobro a mano en su cuenta (13/11). */
+/** El cliente que mandó la pantalla (o el que quedó si se unió a otro), o null. */
+function clienteElegido(id, clientes) {
+  if (!id || !Number.isInteger(Number(id))) return null;
+  const destino = indiceClientes(clientes).destino(Number(id));
+  const c = clientes.find((x) => Number(x.id) === destino);
+  return c ? { cliente_id: Number(c.id), entidad: String(c.nombre || "").slice(0, 120) } : null;
+}
+
 async function clientesDe(sesion) {
   return sbGetAll(`fin_clientes?empresa_id=eq.${sesion.empresa_id}&select=id,nombre,alias,activo,unido_a&order=id.asc`, { sesion, maxFilas: 5000 })
     .then((r) => r.data || []).catch(() => []);
@@ -219,6 +257,51 @@ async function cambiarComprobantes(sesion, d) {
   }
 }
 
+/** Punto 13 (19/11): imputar después, una o varias juntas. */
+async function imputar(sesion, d) {
+  const e = sesion.empresa_id;
+  const ids = [...new Set((Array.isArray(d.ids) ? d.ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  if (!ids.length) return NextResponse.json({ error: "Tildá al menos una operación" }, { status: 400 });
+  if (ids.length > MAX_IMPUTAR) return NextResponse.json({ error: `Hasta ${MAX_IMPUTAR} por vez` }, { status: 400 });
+  const campo = String(d.campo || "");
+  if (!CAMPOS_IMPUTAR[campo]) return NextResponse.json({ error: "No sé imputar eso" }, { status: 400 });
+  const valor = d.valor === null || d.valor === undefined ? null : String(d.valor).slice(0, 60);
+  const [ctx, espejo, ops] = await Promise.all([
+    listas(sesion, { paraImputar: true }),
+    espejoCompleto(sesion),
+    sbGetAll(`fin_operaciones?empresa_id=eq.${e}&id=in.(${ids.join(",")})&select=*`, { sesion, maxFilas: MAX_IMPUTAR }).then((r) => r.data || []),
+  ]);
+  const quien = (await nombreEmpleado(sesion)) || "Dueño";
+  const porId = new Map(ops.map((o) => [Number(o.id), o]));
+  const saltadas = [];
+  const cambios = [];
+  for (const id of ids) {
+    const op = porId.get(id);
+    if (CAMPOS_200.has(campo) && op && !(campo === "vehiculo" ? "vehiculo_id" in op : "maquina_id" in op)) {
+      return NextResponse.json({ error: AVISO_FALTA_200 }, { status: 409 });
+    }
+    const r = imputacion(op, campo, valor, ctx, { espejo });
+    if (r.error) saltadas.push({ id, motivo: r.error });
+    else cambios.push({ op, ...r });
+  }
+  const ahora = new Date().toISOString();
+  let imputadas = 0;
+  // De a 10 por vez: cada una lleva su propio historial
+  for (let i = 0; i < cambios.length; i += 10) {
+    const tanda = await Promise.all(cambios.slice(i, i + 10).map(async ({ op, campos, detalle }) => {
+      const fila = { ...campos, updated_at: ahora };
+      if ("historial" in op) fila.historial = conEntrada(op.historial, entradaCorreccion({ por: quien, at: ahora, cambios: detalle, nota: `Imputada: ${CAMPOS_IMPUTAR[campo].toLowerCase()}` }));
+      const mismaVersion = op.updated_at ? `&updated_at=eq.${encodeURIComponent(op.updated_at)}` : "";
+      const filas = await sbPatch(`fin_operaciones?id=eq.${op.id}&empresa_id=eq.${e}&anulada_at=is.null${mismaVersion}`, fila, { sesion });
+      if (!filas?.length) saltadas.push({ id: Number(op.id), motivo: "Alguien la cambió recién" });
+      return filas?.length ? 1 : 0;
+    }));
+    imputadas += tanda.reduce((a, b) => a + b, 0);
+  }
+  if (imputadas) broadcastRefresh(e, "fin_operaciones");
+  return NextResponse.json({ ok: true, imputadas, saltadas });
+}
+
 export async function GET(request) {
   const { sesion, response } = await sesionDueno(request);
   if (response) return response;
@@ -227,18 +310,38 @@ export async function GET(request) {
   const desde = FECHA.test(url.searchParams.get("desde") || "") ? url.searchParams.get("desde") : inicioMes(hoy);
   const hasta = FECHA.test(url.searchParams.get("hasta") || "") ? url.searchParams.get("hasta") : hoy;
   if (desde > hasta) return NextResponse.json({ error: "La fecha desde es posterior a la fecha hasta" }, { status: 400 });
+  // Punto 13: lo imputado a un vehículo o una máquina, para su ficha
+  for (const [param, col] of [["vehiculo", "vehiculo_id"], ["maquina", "maquina_id"]]) {
+    if (!url.searchParams.has(param)) continue;
+    const id = Number(url.searchParams.get(param));
+    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta el vehículo o la máquina" }, { status: 400 });
+    try {
+      const r = await sbGetAll(`fin_operaciones?empresa_id=eq.${sesion.empresa_id}&${col}=eq.${id}&anulada_at=is.null&select=id,fecha,tipo,total,total_ars,moneda,descripcion,referencia,entidad,proveedor_id&order=fecha.desc,id.desc`, { sesion, maxFilas: 2000 });
+      return NextResponse.json({ operaciones: r.data || [], truncado: !!r.truncado });
+    } catch (err) {
+      if (falta200(err)) return NextResponse.json({ operaciones: [], aviso: AVISO_FALTA_200 });
+      return errorFinanzas(err, "operaciones GET imputadas");
+    }
+  }
   try {
     const e = sesion.empresa_id;
-    const [ops, datos] = await Promise.all([
-      // Con los comprobantes (176 y 187); sin las migraciones, sin ellos
-      sbGetAll(`fin_operaciones?empresa_id=eq.${e}&fecha=gte.${desde}&fecha=lte.${hasta}&select=${COLUMNAS},comprobante_url,comprobantes&order=fecha.desc,id.desc`, { sesion, maxFilas: MAX_OPERACIONES })
-        .catch((err) => {
-          if (!/comprobante/.test(String(err?.message))) throw err;
-          return sbGetAll(`fin_operaciones?empresa_id=eq.${e}&fecha=gte.${desde}&fecha=lte.${hasta}&select=${COLUMNAS}&order=fecha.desc,id.desc`, { sesion, maxFilas: MAX_OPERACIONES });
-        }),
-      listas(sesion),
-    ]);
-    return NextResponse.json({ desde, hasta, operaciones: ops.data, truncado: ops.truncado, ...datos });
+    // Con los comprobantes (176 y 187) y el historial (199); sin las migraciones, sin ellos
+    const leerOps = async () => {
+      let extra = ["comprobante_url", "comprobantes", "historial", "vehiculo_id", "maquina_id"];
+      for (;;) {
+        try {
+          return await sbGetAll(`fin_operaciones?empresa_id=eq.${e}&fecha=gte.${desde}&fecha=lte.${hasta}&select=${[COLUMNAS, ...extra].join(",")}&order=fecha.desc,id.desc`, { sesion, maxFilas: MAX_OPERACIONES });
+        } catch (err) {
+          const sin = falta200(err) && extra.includes("vehiculo_id") ? ["vehiculo_id", "maquina_id"]
+            : falta199(err) && extra.includes("historial") ? ["historial"]
+            : /comprobante/.test(String(err?.message)) && extra.some((x) => x.startsWith("comprobante")) ? ["comprobante_url", "comprobantes"] : null;
+          if (!sin) throw err;
+          extra = extra.filter((x) => !sin.includes(x));
+        }
+      }
+    };
+    const [ops, datos, espejo] = await Promise.all([leerOps(), listas(sesion, { paraImputar: true }), espejoCompleto(sesion)]);
+    return NextResponse.json({ desde, hasta, operaciones: ops.data, truncado: ops.truncado, espejo_completo: espejo, ...datos });
   } catch (err) {
     return errorFinanzas(err, "operaciones GET");
   }
@@ -259,17 +362,38 @@ export async function POST(request) {
       if (errores.length) return NextResponse.json({ error: errores.join(" "), errores }, { status: 400 });
       const adj = adjuntos(sesion, d.operacion?.comprobantes);
       if (adj.error) return NextResponse.json({ error: adj.error }, { status: 400 });
+      // 19/11 (punto 14): "Lo pagué ahora" / "Lo cobré ahora" — el pago o el cobro va junto
+      let pago = null;
+      if (d.pago) {
+        const r = operacionDelPago(op, d.pago, ctx);
+        if (r.error) return NextResponse.json({ error: r.error, errores: [r.error] }, { status: 400 });
+        pago = r.op;
+      }
       // 13/11: mismo importe en la misma caja y fecha cerca = sospechoso (finanzasRepetidos.js)
       if (d.confirmar_repetido !== true) {
-        const freno = frenoRepetidos(await repetidosEnBase(sesion, [op], { tesoreria: ctx.tesoreria }));
+        const freno = frenoRepetidos(await repetidosEnBase(sesion, pago ? [op, pago] : [op], { tesoreria: ctx.tesoreria }));
         if (freno) return freno;
       }
       const ahora = new Date().toISOString();
       const nueva = { ...op, empresa_id: e, cargada_por_nombre: await nombreEmpleado(sesion), created_at: ahora, updated_at: ahora };
       // 13/11: el cobro (o la venta) de un cliente queda en su cuenta corriente con su id
-      const delCliente = clienteDeOperacion(op, { cuentas: ctx.cuentas, proveedores: ctx.proveedores, clientes: await clientesDe(sesion) });
+      const clientes = await clientesDe(sesion);
+      // 19/11: el cliente que se eligió (o se dio de alta recién) en la pantalla
+      const elegido = !op.proveedor_id ? clienteElegido(d.operacion?.cliente_id, clientes) : null;
+      const delCliente = elegido || clienteDeOperacion(op, { cuentas: ctx.cuentas, proveedores: ctx.proveedores, clientes });
       if (delCliente) Object.assign(nueva, delCliente, { proveedor_id: null });
       if (adj.lista.length) Object.assign(nueva, columnasComprobantes(adj.lista));
+      if (pago) {
+        // El pago o cobro, con la misma persona (y los mismos comprobantes)
+        const segunda = {
+          ...pago, empresa_id: e, cargada_por_nombre: nueva.cargada_por_nombre, created_at: ahora, updated_at: ahora,
+          proveedor_id: nueva.proveedor_id ?? null, entidad: nueva.entidad ?? null, ...(nueva.cliente_id ? { cliente_id: nueva.cliente_id } : {}),
+          ...(adj.lista.length ? columnasComprobantes(adj.lista) : {}),
+        };
+        const { filas, aviso } = await guardarConAdjuntos(sesion, [nueva, segunda]);
+        broadcastRefresh(e, "fin_operaciones");
+        return NextResponse.json({ ok: true, operacion: filas[0], pago: filas[1] || null, ...(aviso ? { aviso } : {}) });
+      }
       const { filas: [fila], aviso } = await guardarConAdjuntos(sesion, [nueva], { suelta: true });
       broadcastRefresh(e, "fin_operaciones");
       return NextResponse.json({ ok: true, operacion: fila, ...(aviso ? { aviso } : {}) });
@@ -309,6 +433,7 @@ export async function POST(request) {
       return NextResponse.json({ ok: true, operaciones: filas, ...(aviso ? { aviso } : {}) });
     }
     if (d.accion === "comprobantes") return await cambiarComprobantes(sesion, d);
+    if (d.accion === "imputar") return await imputar(sesion, d);
     if (d.accion === "leer_gasto") return await leerGasto(request, sesion, d);
     if (d.accion === "proveedor_nuevo") return await proveedorNuevo(sesion, d);
     if (d.accion === "anular") {
@@ -321,6 +446,22 @@ export async function POST(request) {
       if (suya?.origen === ORIGEN_GASTO && /^g[0-9a-f]{12}/.test(String(suya.origen_id || ""))) {
         const grupo = String(suya.origen_id).slice(0, 13);
         const filas = await sbPatch(`fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&origen=eq.${ORIGEN_GASTO}&origen_id=in.(${grupo},${grupo}-p)`, marca, { sesion });
+        if (!filas?.length) return NextResponse.json({ error: "No encontré esa operación o ya estaba anulada" }, { status: 404 });
+        broadcastRefresh(e, "fin_operaciones");
+        return NextResponse.json({ ok: true, operacion: filas.find((f) => f.id === id) || filas[0], anuladas: filas.length });
+      }
+      // 💱 Una venta de dólares se anula junto con su diferencia de cotización
+      if (suya?.origen === ORIGEN_DOLARES && GRUPO_DOLARES.test(String(suya.origen_id || "").slice(0, 13))) {
+        const grupo = String(suya.origen_id).slice(0, 13);
+        const filas = await sbPatch(`fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&origen=eq.${ORIGEN_DOLARES}&origen_id=in.(${grupo},${grupo}-dif)`, marca, { sesion });
+        if (!filas?.length) return NextResponse.json({ error: "No encontré esa operación o ya estaba anulada" }, { status: 404 });
+        broadcastRefresh(e, "fin_operaciones");
+        return NextResponse.json({ ok: true, operacion: filas.find((f) => f.id === id) || filas[0], anuladas: filas.length });
+      }
+      // 19/11 (punto 14): el gasto de un proveedor en Mi caja y su pago se anulan juntos
+      if (suya?.origen === "mi_caja" && /^mc[0-9a-f]{12}(-p)?$/.test(String(suya.origen_id || ""))) {
+        const grupo = String(suya.origen_id).slice(0, 14);
+        const filas = await sbPatch(`fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&origen=eq.mi_caja&origen_id=in.(${grupo},${grupo}-p)`, marca, { sesion });
         if (!filas?.length) return NextResponse.json({ error: "No encontré esa operación o ya estaba anulada" }, { status: 404 });
         broadcastRefresh(e, "fin_operaciones");
         return NextResponse.json({ ok: true, operacion: filas.find((f) => f.id === id) || filas[0], anuladas: filas.length });
@@ -358,9 +499,10 @@ export async function POST(request) {
       if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Falta la operación" }, { status: 400 });
       const [op] = (await sbGet(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null&select=*&limit=1`, { sesion })) || [];
       if (!op) return NextResponse.json({ error: "No encontré esa operación o ya está anulada" }, { status: 404 });
-      if (!puedeCorregir(op)) return NextResponse.json({ error: "Esta operación sale de otra pantalla: se corrige desde ahí" }, { status: 400 });
+      const espejo = await espejoCompleto(sesion);
+      if (!puedeCorregir(op, { espejo })) return NextResponse.json({ error: "Esta operación sale de otra pantalla: se corrige desde ahí" }, { status: 400 });
       const cuentas = (await sbGetAll(`fin_cuentas?empresa_id=eq.${e}&select=codigo`, { sesion, maxFilas: 5000 })).data || [];
-      const { nueva, errores } = operacionCorregida(op, d.cambios || {}, { cuentas });
+      const { campos, detalle, nueva, errores } = operacionCorregida(op, d.cambios || {}, { cuentas, espejo });
       if (errores.length) return NextResponse.json({ error: errores.join(" "), errores }, { status: 400 });
       // Si cambia la fecha o el importe, que no quede igual a otra (la que se corrige no cuenta)
       if (d.confirmar_repetido !== true) {
@@ -369,7 +511,17 @@ export async function POST(request) {
       }
       const ahora = new Date().toISOString();
       const quien = await nombreEmpleado(sesion);
-      // Primero se anula la vieja (si otro la anuló recién, no se carga la nueva)
+      // 19/11 (199): en su lugar, con lo que cambió en el historial. Solo si nadie
+      // la tocó desde que se leyó (si no, el historial perdería un cambio)
+      if ("historial" in op) {
+        const historial = conEntrada(op.historial, entradaCorreccion({ por: quien || "Dueño", at: ahora, cambios: detalle }));
+        const mismaVersion = op.updated_at ? `&updated_at=eq.${encodeURIComponent(op.updated_at)}` : "";
+        const filas = await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null${mismaVersion}`, { ...campos, historial, updated_at: ahora }, { sesion });
+        if (!filas?.length) return NextResponse.json({ error: "Alguien la cambió o la anuló recién: cerrala y volvé a abrirla." }, { status: 409 });
+        broadcastRefresh(e, "fin_operaciones");
+        return NextResponse.json({ ok: true, operacion: filas[0], en_su_lugar: true });
+      }
+      // Sin la 199: como antes, primero se anula la vieja (si otro la anuló recién, no se carga la nueva)
       const anulada = await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}&anulada_at=is.null`, {
         anulada_at: ahora, anulada_por_nombre: `${quien || "Dueño"} ${MARCA_CORREGIDA}`.slice(0, 120), updated_at: ahora,
       }, { sesion });
@@ -377,7 +529,7 @@ export async function POST(request) {
       try {
         const [fila] = await sbPost("fin_operaciones", { ...nueva, empresa_id: e, cargada_por_nombre: quien, created_at: ahora, updated_at: ahora }, { sesion });
         broadcastRefresh(e, "fin_operaciones");
-        return NextResponse.json({ ok: true, operacion: fila, anulada: id });
+        return NextResponse.json({ ok: true, operacion: fila, anulada: id, aviso: AVISO_FALTA_199 });
       } catch (err) {
         // Si la nueva no se pudo guardar, la vieja vuelve a estar viva
         await sbPatch(`fin_operaciones?id=eq.${id}&empresa_id=eq.${e}`, { anulada_at: null, anulada_por_nombre: null, updated_at: new Date().toISOString() }, { sesion, silent: true }).catch(() => null);

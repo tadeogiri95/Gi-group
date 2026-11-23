@@ -180,10 +180,10 @@ class Hoja {
   }
 }
 
-function correrScript(script, { hojas, respuestas, props = {} }) {
+function correrScript(script, { hojas, respuestas, props = {}, extra = {}, llamar = "traerMovimientosGypi" }) {
   const pedidos = [];
   const entorno = {
-    SpreadsheetApp: { getActiveSpreadsheet: () => ({ getSheetByName: (n) => hojas[n] || null }) },
+    SpreadsheetApp: { getActiveSpreadsheet: () => ({ getSheetByName: (n) => hojas[n] || null, ...(extra.planilla || {}) }), ...(extra.SpreadsheetApp || {}) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = v; } }) },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },
     UrlFetchApp: {
@@ -194,8 +194,9 @@ function correrScript(script, { hojas, respuestas, props = {} }) {
       },
     },
     ScriptApp: { getProjectTriggers: () => [], newTrigger: () => ({ timeBased: () => ({ everyHours: () => ({ create: () => {} }) }) }) },
+    ...(extra.Utilities ? { Utilities: extra.Utilities } : {}),
   };
-  const correr = new Function(...Object.keys(entorno), `${script}\ntraerMovimientosGypi();`);
+  const correr = new Function(...Object.keys(entorno), `${script}\n${llamar}();`);
   correr(...Object.values(entorno));
   return { pedidos, props };
 }
@@ -255,6 +256,79 @@ test("script de la planilla — anota al final, reconoce al colaborador, no repi
   });
   assert.equal(cons.f.some((r) => r[0] === "GY-11"), false);
   assert.equal(cons.f.some((r) => r[0] === "GY-14"), true);
+});
+
+test("script de la planilla — 20/11: proveedor fuera de la lista, fecha en la zona de la planilla y rehacer lo de Gypi al instalar", () => {
+  const script = scriptPlanilla({ url: "https://gypi.test/api/stock/planilla", clave: "gyp_x" });
+  // Una regla de lista que rechaza lo que no está (como PROVEEDOR en fact_ingresos_stock)
+  class Regla {
+    constructor(lista, permite = false) { this.lista = lista; this.permite = permite; }
+    getAllowInvalid() { return this.permite; }
+    copy() { const r = this; return { setAllowInvalid: (v) => ({ build: () => new Regla(r.lista, v) }) }; }
+  }
+  class HojaConListas extends Hoja {
+    constructor(filas, ancho, columna, lista) { super(filas, ancho); this.reglas = this.f.map((_, i) => (i === 0 ? null : new Regla(lista))); this.columna = columna; }
+    insertRowsAfter(r, n) { super.insertRowsAfter(r, n); for (let i = 0; i < n; i++) this.reglas.push(new Regla(this.reglas[1].lista)); }
+    deleteRow(r) { super.deleteRow(r); this.reglas.splice(r - 1, 1); }
+    getRange(r, c, nr, nc) {
+      const base = super.getRange(r, c, nr, nc);
+      const hoja = this;
+      const col = hoja.columna - c;
+      return {
+        ...base,
+        getDataValidations: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => (j === col ? hoja.reglas[r - 1 + i] : null))),
+        setDataValidations: (v) => v.forEach((fila, i) => { if (col >= 0 && col < nc) hoja.reglas[r - 1 + i] = fila[col]; }),
+        setValues: (v) => {
+          v.forEach((fila, i) => {
+            const regla = hoja.reglas[r - 1 + i];
+            const x = col >= 0 && col < nc ? fila[col] : "";
+            if (regla && !regla.permite && x !== "" && !regla.lista.includes(x)) throw new Error(`Los datos de la celda infringen las reglas de validación`);
+          });
+          base.setValues(v);
+        },
+      };
+    }
+  }
+  const vacia = () => Array(13).fill("");
+  const ing = new HojaConListas([["ID_INGRESO", "ID_SKU", "ID_PROVEEDOR", "FECHA CARGA", "NOMBRE NORMALIZADO", "PROVEEDOR"],
+    ["", "1.1", "", new Date(Date.UTC(2026, 10, 10, 3)), "MDF", "MASISA", "", new Date(Date.UTC(2026, 10, 10, 3)), 3],
+    ["GY-3", "1.1.1", "", new Date(Date.UTC(2026, 10, 11, 0)), "MELAMINA", "", "", "", "", ""], vacia()], 13, 6, ["MASISA"]);
+  const cons = new Hoja([["id_registro"], ["GY-8", "", "1.3", "", 11, new Date(Date.UTC(2026, 10, 18, 0)), "TORNILLO", 5]], 12);
+  // La planilla está en Buenos Aires (UTC-3)
+  const tz = "America/Argentina/Buenos_Aires";
+  const Utilities = {
+    parseDate: (t, z, f) => { assert.equal(z, tz); assert.equal(f, "yyyy-MM-dd"); const [y, m, d] = t.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d, 3)); },
+    formatDate: (d, z) => { assert.equal(z, tz); return new Date(d.getTime() - 3 * 3600e3).toISOString().slice(0, 10); },
+  };
+  let flushes = 0;
+  const mov = (id, extra) => ({ id: `GY-${id}`, hoja: "consumos", fecha: "2026-11-18", momento: "2026-11-18T15:00:00Z", sku: "1.3", nombre: "TORNILLO", cantidad: 5, origen: "CONSUMO FÁBRICA", detalle: "GYPI · Retiro", ot: "", colaborador: "", proveedor: "", comprobante: "", precio_unitario: null, anulado: false, ...extra });
+  const { pedidos, props } = correrScript(script, {
+    llamar: "instalarGypi",
+    hojas: { fact_consumos_stock: cons, fact_ingresos_stock: ing },
+    props: { GYPI_DESDE: "36" },
+    extra: { planilla: { getSpreadsheetTimeZone: () => tz }, SpreadsheetApp: { flush: () => { flushes++; } }, Utilities },
+    respuestas: [{ movimientos: [
+      mov(3, { hoja: "ingresos", sku: "1.1.1", nombre: "MELAMINA", fecha: "2026-11-11", proveedor: "Faplac Corrientes SA", cantidad: 10, precio_unitario: 100 }),
+      mov(8),
+      mov(9, { hoja: "ingresos", sku: "1.1", nombre: "MDF", fecha: "2026-11-10", proveedor: "MASISA", cantidad: 3 }),
+    ], anulados: [], hasta: 36, hayMas: false }],
+  });
+  assert.equal(pedidos[0].url, "https://gypi.test/api/stock/planilla?desde=0&ordenes=1", "al instalar pide todo de nuevo");
+  assert.equal(props.GYPI_DESDE, "36");
+  // Lo de Gypi se borró y se volvió a escribir completo
+  const gy3 = ing.f.find((r) => r[0] === "GY-3");
+  assert.equal(ing.f.filter((r) => r[0] === "GY-3").length, 1);
+  assert.equal(gy3[5], "Faplac Corrientes SA", "el proveedor entra aunque no esté en la lista");
+  assert.equal(gy3[8], 10);
+  assert.equal(ing.reglas[ing.f.indexOf(gy3)].permite, true, "la lista queda en 'mostrar advertencia' en ese renglón");
+  assert.equal(gy3[3].toISOString(), "2026-11-11T03:00:00.000Z", "el 11/11 a las 0 h de Buenos Aires");
+  assert.equal(cons.f.filter((r) => r[0] === "GY-8").length, 1);
+  const gy8 = cons.f.find((r) => r[0] === "GY-8");
+  assert.equal(gy8[4], 11);
+  assert.equal(gy8[5].toISOString(), "2026-11-18T03:00:00.000Z");
+  assert.ok(flushes > 0);
+  // El 9 coincide con el MDF cargado a mano el 10/11 (comparado en la zona de la planilla)
+  assert.deepEqual(ing.amarillas.map((a) => a.id), ["GY-9"]);
 });
 
 // ─── Pantalla ───

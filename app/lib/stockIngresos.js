@@ -55,7 +55,8 @@ export async function buscarIngresoRepetido(sbGet, empresaId, { proveedor, compr
     sbGet(`movimientos_stock?empresa_id=eq.${empresaId}&tipo=eq.ingreso&anulado=eq.false&comprobante=ilike.*${q}*&select=id,proveedor,comprobante,notas,created_at&order=id.desc&limit=100`, o),
     sbGet(`recepciones_compra?empresa_id=eq.${empresaId}&anulada=eq.false&remito=ilike.*${q}*&select=id,remito,created_at,ordenes_compra(numero,proveedor_nombre)&order=id.desc&limit=100`, o),
   ]);
-  const mov = (movs || []).find((m) => m.notas !== excluirNotas && mismoComp(c, m.comprobante) && mismoNombre(p, m.proveedor));
+  // 22/11: sin excluirNotas cuentan todos (antes un ingreso a mano sin notas no se veía)
+  const mov = (movs || []).find((m) => (excluirNotas == null || m.notas !== excluirNotas) && mismoComp(c, m.comprobante) && mismoNombre(p, m.proveedor));
   if (mov) return mov;
   const rec = (recepciones || []).find((r) => r.ordenes_compra && `OC N° ${r.ordenes_compra.numero}` !== excluirNotas
     && mismoComp(c, r.remito) && mismoNombre(p, r.ordenes_compra.proveedor_nombre));
