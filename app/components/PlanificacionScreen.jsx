@@ -41,6 +41,7 @@ import { planHorizonte, trabajoDelPeriodo, ordenEficiente } from "../lib/planAut
 import { inicioDeSemana } from "../lib/semanaObjetivo";
 import { cuerpoPlan } from "../lib/planGuardado";
 import { materialOt } from "../lib/ot";
+import { MARCA_MRP } from "../lib/materialMrp";
 import {
   CLAVE_PLANIFICACION, ETAPAS_PLAN, PARAMETROS, GRUPOS_PARAMETROS,
   leerNumero, errorParametro, normalizarParametros, normalizarFeriados, divisionPlan, etapasPlanDe,
@@ -426,7 +427,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
                     <NombreOt proyecto={p} truncar className="block text-[14px]" />
                     {semanaVencida(p, hoy) && <div className="text-xs font-bold text-gypi-red" data-vencida>🔴 Semana vencida · {textoObjetivo(p)}</div>}
                     <div className="text-xs text-gypi-dim truncate">
-                      {[textoObjetivo(p) || "sin semana", h.sinDatos ? "sin datos de la planilla" : `${(Math.round(h.placas * 10) / 10).toLocaleString("es-AR")} placas · ${(Math.round(h.mecanizados * 10) / 10).toLocaleString("es-AR")} mec. · ${(Math.round(h.gabinetes * 10) / 10).toLocaleString("es-AR")} gab.`].join(" · ")}
+                      {[textoObjetivo(p) || "sin semana", h.sinDatos ? "sin datos de la planilla" : `${(Math.round(h.placas * 10) / 10).toLocaleString("es-AR")} placas · ${(Math.round(h.mecanizados * 10) / 10).toLocaleString("es-AR")} mec. · ${(Math.round(h.gabinetes * 10) / 10).toLocaleString("es-AR")} gab.`, h.algunoDelMrp ? MARCA_MRP : null].filter(Boolean).join(" · ")}
                     </div>
                   </div>
                   <div className="text-right">

@@ -211,6 +211,7 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
               {material.map((m) => <Dato key={m.label} label={m.label} valor={m.valor} />)}
               {tipoDeOt(proyecto).id && <Dato label="Tipo de proyecto" valor={nombreTipo(tipoDeOt(proyecto).id)} />}
             </div>
+            {material.some((m) => m.delMrp) && <p className="m-0 mt-1.5 text-xs text-gypi-dim">📦 El Plan de trabajo no los trae: salen de las necesidades del MRP y se usan para estimar los tiempos.</p>}
           </section>
         )}
 
