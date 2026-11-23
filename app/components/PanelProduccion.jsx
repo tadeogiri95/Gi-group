@@ -203,7 +203,7 @@ export default function PanelProduccion() {
             <Indicador id="cuello" titulo="Cuello de botella" valor={panel.ahora.enProceso.cuello?.nombre || "Ninguno"}
               tono={panel.ahora.enProceso.cuello ? (panel.ahora.enProceso.cuello.esperando >= 3 ? "mal" : "atencion") : "bien"}
               detalle={panel.ahora.enProceso.cuello ? `${panel.ahora.enProceso.cuello.esperando} OT esperando · ${horasTxt(panel.ahora.enProceso.cuello.horasEspera)} de espera` : "Ninguna OT espera entre etapas"}
-              ayuda="La etapa donde hoy más OT esperan para empezar (si empatan, la de más horas de espera). Ahí se frena la planta: conviene reforzarla." />
+              ayuda="La etapa de producción (Corte, Canteado, Mecanizado o Armado) donde hoy más OT esperan para empezar (si empatan, la de más horas de espera). Ahí se frena la planta: conviene reforzarla." />
           </Bloque>
 
           <Bloque titulo="4. Calidad" nota="Lo que sale bien a la primera y lo que hay que volver a hacer.">

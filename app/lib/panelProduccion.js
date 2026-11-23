@@ -226,7 +226,8 @@ export function maquinasDeSemana({ s, maquinas = [], fallas = [], ahora = Date.n
 
 /**
  * OT en proceso por etapa (las columnas del 🗂️ Trello), lo que esperan y el
- * cuello de botella: la etapa con más OT esperando (y más horas de espera).
+ * cuello de botella: la etapa de producción con más OT esperando (y más
+ * horas de espera); Instalación no cuenta.
  */
 export function enProceso(columnas, precios = null) {
   const etapas = (columnas || []).filter((c) => c.id !== "terminadas").map((c) => {
@@ -239,7 +240,8 @@ export function enProceso(columnas, precios = null) {
     };
   });
   const tarjetas = (columnas || []).filter((c) => c.id !== "terminadas").flatMap((c) => c.tarjetas);
-  const conEspera = etapas.filter((e) => e.esperando > 0);
+  // Instalación no es producción (Tadeo, 23/11): nunca es el cuello de botella
+  const conEspera = etapas.filter((e) => e.esperando > 0 && e.id !== "instalacion");
   const cuello = conEspera.length ? conEspera.reduce((a, b) => (b.esperando > a.esperando || (b.esperando === a.esperando && b.horasEspera > a.horasEspera) ? b : a)) : null;
   return {
     etapas,
