@@ -168,10 +168,17 @@ test("pantalla — columnas con tarjetas, colores y registro al tocar", async ()
   assert.equal(detalle?.ot, "7100");
 });
 
-test("Producción → OT tiene 🗂️ Etapas al lado del Gantt; Reportes ya no tiene Del día, Indicadores, Lead time ni Obra", () => {
+test("Producción → OT tiene 🗂️ Trello al lado del Gantt; Reportes ya no tiene Del día, Indicadores, Lead time ni Obra", () => {
   const ot = readFileSync(new URL("../app/proyectos_screen.jsx", import.meta.url), "utf8");
-  assert.match(ot, /<Chip active=\{vista === "etapas"\} onClick=\{\(\) => setVista\("etapas"\)\}>🗂️ Etapas<\/Chip>\s*<Chip active=\{vista === "gantt"\}/);
+  assert.match(ot, /<Chip active=\{vista === "etapas"\} onClick=\{\(\) => setVista\("etapas"\)\}>🗂️ Trello<\/Chip>\s*<Chip active=\{vista === "gantt"\}/);
   assert.match(ot, /<ReportesObra empresaId=\{empresaId\} \/>/);
   const rep = readFileSync(new URL("../app/reportes_screen.jsx", import.meta.url), "utf8");
   for (const fuera of ["🗓️ Del día", "📈 Indicadores", "⏱️ Lead time", "🏗️ Obra"]) assert.ok(!rep.includes(fuera), fuera);
+});
+
+test("pantalla — el texto no sobresale de la tarjeta y la fila de columnas muestra la barra para deslizar (23/11)", () => {
+  const src = readFileSync(new URL("../app/components/TableroEtapas.jsx", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /className="fila-desliza/, "fila-desliza esconde la barra y pone white-space: nowrap a las columnas");
+  assert.match(src, /w-full min-w-0 overflow-hidden whitespace-normal break-words text-left/);
+  assert.match(src, /md:flex-1 md:w-auto md:min-w-\[170px\]/);
 });

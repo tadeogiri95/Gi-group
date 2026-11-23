@@ -356,7 +356,7 @@ function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId
 // grupo: "personal" (en Equipo: Asistencia, Descargar, Liquidación) o
 // "produccion" (en Proyectos: Producción, Costo por OT, Minutas). Del día,
 // Indicadores, Lead time y Obra salieron el 22/11 (Tadeo): el seguimiento de
-// cada OT por etapa está en OT → 🗂️ Etapas y los reportes de obra en
+// cada OT por etapa está en OT → 🗂️ Trello y los reportes de obra en
 // Instalaciones; el resumen del día sigue llegando por email.
 // Sin grupo se ven todas (revisión de la interfaz, 2026-10).
 export default function ReportesScreen({ grupo = null }) {
@@ -540,7 +540,7 @@ export default function ReportesScreen({ grupo = null }) {
 
       {tab === "ninguno" ? (
         <div className="bg-gypi-surface rounded-2xl p-6 text-center border border-gypi-border text-[13px] text-gypi-dim">
-          En qué etapa está cada OT y cuánto lleva: Producción → OT → 🗂️ Etapas.
+          En qué etapa está cada OT y cuánto lleva: Producción → OT → 🗂️ Trello.
         </div>
       ) : tab === "informe" ? (
         <InformeProduccionTab empresa={empresa} />
