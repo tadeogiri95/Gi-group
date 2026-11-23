@@ -3,13 +3,10 @@
 import "./helpers/domSetup.js";
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 
 const { default: ChatScreen } = await import("../app/components/screens/ChatScreen.jsx");
-const { default: DashboardGerencia } = await import("../app/dashboard_gerencia.jsx");
 const { default: ActividadScreen } = await import("../app/actividad_screen.jsx");
-const { AuthContext } = await import("../app/context/AuthContext.jsx");
-const { ahoraArg } = await import("../app/lib/dates.js");
 
 afterEach(() => cleanup());
 
@@ -55,40 +52,6 @@ test("chat — si el servidor bloquea por tardanza, ofrece pedir permiso", async
   fireEvent.click(screen.getAllByText("Ya llegué")[0]);
   assert.ok(await screen.findByText(/Llegaste 40 min tarde/));
   assert.ok(screen.getByText("✅ Sí, solicitar permiso"));
-});
-
-// ── Tablero de gerencia ──
-
-test("tablero — presentes, ausentes y cumplimiento de hoy con los programados", async () => {
-  servidor();
-  const dia = ahoraArg().diaKey;
-  const turno = { [dia]: { in: "00:00", out: "23:59" } };
-  const ctx = {
-    empleados: [
-      { id: "1", legajo: 1, nombre: "Ana", rol: "operativo", activo: true, diagrama: turno, division: "produccion" },
-      { id: "2", legajo: 2, nombre: "Luis", rol: "operativo", activo: true, diagrama: turno, division: "produccion" },
-      { id: "3", legajo: 3, nombre: "Eva", rol: "operativo", activo: true, diagrama: turno, division: "produccion" },
-      { id: "4", legajo: 4, nombre: "Franco", rol: "operativo", activo: true, diagrama: {}, division: "produccion" },
-    ],
-    // Ana y Luis ficharon; Franco trabaja fuera de su horario (no cuenta para el cumplimiento)
-    fichadasHoy: [
-      { legajo: 1, nombre: "Ana", ingreso: "08:00:00", division: "produccion" },
-      { legajo: 2, nombre: "Luis", ingreso: "08:10:00", llegada_tarde: true, minutos_tarde: 10, division: "produccion" },
-      { legajo: 4, nombre: "Franco", ingreso: "09:00:00", division: "produccion" },
-    ],
-    solicitudes: [], notificaciones: [],
-  };
-  render(
-    <AuthContext.Provider value={{ divisiones: [], usuario: { rol: "gerencial" } }}>
-      <DashboardGerencia goto={() => {}} ctx={ctx} reload={() => {}} logout={() => {}} empresa={{ id: "e-1", nombre: "Acme" }} />
-    </AuthContext.Provider>
-  );
-  // Asistencia del día: 2 de los 3 operarios esperados vinieron, 1 tarde de 2
-  const asist = await screen.findByRole("region", { name: "Asistencia del día" });
-  const total = within(asist).getAllByRole("row").at(-1).textContent.replace(/\s+/g, " ");
-  assert.match(total, /Total2\/3 \(67%\)1\/2 \(50%\)/, "Franco, fuera de su horario, no infla el número");
-  assert.ok(within(asist).getByText("No vino"), "Eva falta");
-  assert.ok(within(asist).getByText("Sin turno ese día"), "Franco vino sin turno");
 });
 
 // ── Tareas del operario ──

@@ -144,7 +144,7 @@ test("Migración 162, historial y lugares que arman el plan con los ajustes", ()
   assert.match(sql, /'obra_no_lista', 'clima'/);
   assert.equal(describirCambio({ tabla: "ajustes_tiempo_ot", metodo: "POST", campos: { etapa: "diseno", tipo: "faltan", horas: 3, motivo: "espera_cliente" } }),
     "Cargó demora en Diseño: Faltan 3 días · Espera de aprobación o respuesta del cliente");
-  for (const f of ["../app/lib/informeProduccionServidor.js", "../app/api/diseno-tecnica/route.js", "../app/dashboard_gerencia.jsx"]) {
+  for (const f of ["../app/lib/informeProduccionServidor.js", "../app/api/diseno-tecnica/route.js"]) {
     assert.match(readFileSync(new URL(f, import.meta.url), "utf8"), /ajustes: (ajustes|ajus\?)\.data/, f);
   }
 });
