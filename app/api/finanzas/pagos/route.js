@@ -15,6 +15,10 @@
 //       banco (del extracto, mismo importe, hasta 5 días) se une con la orden
 //       en vez de cargarse otra vez. Si hay varios posibles → 409 { elegir }
 //       y se vuelve a mandar con unir = { <n° de pago>: id | "nueva" }.
+//   POST { accion: "marcar_pagada", id, fecha } → 23/11: pagada sin generar
+//       nada (ni operaciones, ni e-cheq, ni entrega de cheques): el movimiento
+//       entra con el extracto del banco o la planilla de caja. Queda
+//       generado.sin_registro = true; después se puede registrar con "pagar".
 //   POST { accion: "anular", id } → anulada; si estaba pagada, deshace lo
 //       que generó (si ningún e-cheq se debitó ni un cheque volvió rechazado).
 //   POST { accion: "cfo", nombre, telefono } → guarda a quién se le manda.
@@ -43,7 +47,7 @@ import { broadcastRefresh } from "../../../lib/broadcast";
 import { sesionDueno, errorFinanzas } from "../../../lib/finanzasApi";
 import { cambioDeEstado, operacionAlta } from "../../../lib/finanzasCheques";
 import { hoyAr } from "../../../lib/finanzasOperaciones";
-import { CLAVE_CFO, DIAS_UNIR, accionesOrden, cambioAlUnir, generarPago, movimientosParaUnir, ponerComprobantesFacturas, validarOrden } from "../../../lib/finanzasPagos";
+import { CLAVE_CFO, DIAS_UNIR, accionesOrden, sinRegistrar, cambioAlUnir, generarPago, movimientosParaUnir, ponerComprobantesFacturas, validarOrden } from "../../../lib/finanzasPagos";
 import { validarResumen } from "../../../lib/finanzasResumenPago";
 import { comprobanteValido } from "../../../lib/finanzasMiCaja";
 import { validarComprobantes } from "../../../lib/finanzasAdjuntos";
@@ -186,8 +190,10 @@ async function pagar(sesion, d) {
   const e = sesion.empresa_id;
   const o = await leerOrden(sesion, Number(d.id));
   if (!o) return NextResponse.json({ error: "No encontré esa orden" }, { status: 404 });
-  if (!accionesOrden(o.estado).includes("pagar")) return NextResponse.json({ error: o.estado === "pagada" ? "Esta orden ya está pagada" : "Esta orden está anulada" }, { status: 400 });
-  const fecha = FECHA.test(String(d.fecha || "")) ? d.fecha : hoyAr();
+  if (!accionesOrden(o.estado, o).includes("pagar")) return NextResponse.json({ error: o.estado === "pagada" ? "Esta orden ya está pagada" : "Esta orden está anulada" }, { status: 400 });
+  // 23/11: una marcada pagada sin registrar se registra con la fecha en que se marcó
+  const yaMarcada = sinRegistrar(o);
+  const fecha = FECHA.test(String(d.fecha || "")) ? d.fecha : yaMarcada && FECHA.test(String(o.pagada_fecha || "")) ? o.pagada_fecha : hoyAr();
   const ctx = await contexto(sesion);
   const plan = generarPago(o, ctx, fecha);
   if (plan.error) return NextResponse.json({ error: plan.error }, { status: 400 });
@@ -210,9 +216,14 @@ async function pagar(sesion, d) {
   const quien = await nombreEmpleado(sesion);
   // La orden se marca primero: dos clics no pagan dos veces. El link del CFO
   // sigue sirviendo (es informativo).
-  const [tomada] = (await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}&estado=eq.${o.estado}`, {
-    estado: "pagada", pagada_at: ahora, pagada_fecha: fecha, pagada_por_nombre: quien, updated_at: ahora,
-  }, { sesion })) || [];
+  const [tomada] = yaMarcada
+    // Ya estaba pagada: se "toma" sacándole la marca, así dos clics no registran dos veces
+    ? (await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}&estado=eq.pagada&generado->>sin_registro=eq.true`, {
+      generado: { operaciones: [], cheques_emitidos: [], cheques_entregados: [], unidas: [] }, pagada_fecha: fecha, updated_at: ahora,
+    }, { sesion })) || []
+    : (await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}&estado=eq.${o.estado}`, {
+      estado: "pagada", pagada_at: ahora, pagada_fecha: fecha, pagada_por_nombre: quien, updated_at: ahora,
+    }, { sesion })) || [];
   if (!tomada) return NextResponse.json({ error: "La orden cambió mientras tanto. Actualizá la pantalla." }, { status: 409 });
 
   const generado = { operaciones: [], cheques_emitidos: [], cheques_entregados: [], unidas: [] };
@@ -256,6 +267,27 @@ async function pagar(sesion, d) {
   return NextResponse.json({ ok: true, orden: final, generado, unidas: generado.unidas.length });
 }
 
+/**
+ * 23/11: marca la orden pagada sin registrar nada. El movimiento entra con el
+ * extracto del banco o la planilla de caja (el extracto la ofrece para unir).
+ */
+async function marcarPagada(sesion, d) {
+  const e = sesion.empresa_id;
+  const o = await leerOrden(sesion, Number(d.id));
+  if (!o) return NextResponse.json({ error: "No encontré esa orden" }, { status: 404 });
+  if (!accionesOrden(o.estado, o).includes("marcar_pagada")) return NextResponse.json({ error: o.estado === "pagada" ? "Esta orden ya está pagada" : "Esta orden está anulada" }, { status: 400 });
+  const fecha = FECHA.test(String(d.fecha || "")) ? d.fecha : hoyAr();
+  const ahora = new Date().toISOString();
+  const quien = await nombreEmpleado(sesion);
+  const [hecha] = (await sbPatch(`fin_ordenes_pago?id=eq.${o.id}&empresa_id=eq.${e}&estado=eq.${o.estado}`, {
+    estado: "pagada", pagada_at: ahora, pagada_fecha: fecha, pagada_por_nombre: quien, updated_at: ahora,
+    generado: { sin_registro: true, operaciones: [], cheques_emitidos: [], cheques_entregados: [], unidas: [] },
+  }, { sesion })) || [];
+  if (!hecha) return NextResponse.json({ error: "La orden cambió mientras tanto. Actualizá la pantalla." }, { status: 409 });
+  refrescar(e, "fin_ordenes_pago");
+  return NextResponse.json({ ok: true, orden: hecha });
+}
+
 /** Los movimientos que ya están para los pagos de la orden (mismas cajas, fechas cerca). */
 async function buscarParaUnir(sesion, operaciones, proveedorId, elegidas) {
   if (!operaciones.length) return { unir: new Map(), dudas: [] };
@@ -271,7 +303,7 @@ async function anular(sesion, d) {
   const e = sesion.empresa_id;
   const o = await leerOrden(sesion, Number(d.id));
   if (!o) return NextResponse.json({ error: "No encontré esa orden" }, { status: 404 });
-  if (!accionesOrden(o.estado).includes("anular")) return NextResponse.json({ error: "Esta orden ya está anulada" }, { status: 400 });
+  if (!accionesOrden(o.estado, o).includes("anular")) return NextResponse.json({ error: "Esta orden ya está anulada" }, { status: 400 });
   const ahora = new Date().toISOString();
   const quien = await nombreEmpleado(sesion);
   const g = o.generado || {};
@@ -456,6 +488,7 @@ export async function POST(request) {
     if (d?.accion === "crear") return await crear(request, sesion, d);
     if (d?.accion === "mandar") return await mandar(request, sesion, d);
     if (d?.accion === "pagar") return await pagar(sesion, d);
+    if (d?.accion === "marcar_pagada") return await marcarPagada(sesion, d);
     if (d?.accion === "anular") return await anular(sesion, d);
     if (d?.accion === "cfo") return await guardarCfo(sesion, d);
     if (d?.accion === "resumen_crear") return await crearResumen(request, sesion, d);
