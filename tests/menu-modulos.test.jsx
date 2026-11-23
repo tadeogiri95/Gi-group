@@ -79,28 +79,21 @@ test("Actividad del operario — el reporte de obra solo con Trabajo en campo; s
   assert.equal(screen.queryByText(/Iniciar tarea/), null);
 });
 
-test("tablero de gestión — Trabajo en campo y el detalle por operario según módulos", async () => {
+test("tablero de gestión — el Panel de control no ofrece En planta ni Trabajo en campo (pedido de Tadeo 23/11)", async () => {
   global.fetch = async () => Response.json({ ok: true, data: [] });
   const ctx = { empleados: [], fichadas: [], solicitudes: [], notificaciones: [] };
-  const tablero = (modulos) => render(
-    <AuthContext.Provider value={{ divisiones: [], usuario: { rol: "gerencial" } }}>
-      <DashboardGerencia goto={() => {}} ctx={ctx} reload={() => {}} logout={() => {}} empresa={{ id: "e-1", nombre: "Acme", modulos }} />
-    </AuthContext.Provider>
-  );
-  // Sin el registro de tareas (2026-10) el panel "En planta" siempre estaba
-  // vacío, así que no se ofrece aunque la empresa tenga Planta
-  tablero(PLANTA);
-  await screen.findByRole("region", { name: "Asistencia del día" });
-  assert.equal(screen.queryByText("En planta"), null);
-  assert.equal(screen.queryByText("Trabajo en campo"), null);
-  cleanup();
-  tablero(ASISTENCIA);
-  await screen.findByRole("region", { name: "Asistencia del día" });
-  assert.equal(screen.queryByText("En planta"), null);
-  assert.equal(screen.queryByText(/Ver detalle por operario/), null);
-  cleanup();
-  tablero([...PLANTA, "obra"]);
-  assert.ok(await screen.findByText("Trabajo en campo"));
+  for (const modulos of [PLANTA, ASISTENCIA, [...PLANTA, "obra"]]) {
+    render(
+      <AuthContext.Provider value={{ divisiones: [], usuario: { rol: "gerencial" } }}>
+        <DashboardGerencia goto={() => {}} ctx={ctx} reload={() => {}} logout={() => {}} empresa={{ id: "e-1", nombre: "Acme", modulos }} />
+      </AuthContext.Provider>
+    );
+    await screen.findByRole("region", { name: "Equipo" });
+    assert.equal(screen.queryByText("En planta"), null);
+    assert.equal(screen.queryByText("Trabajo en campo"), null);
+    assert.equal(screen.queryByRole("region", { name: "Asistencia del día" }), null);
+    cleanup();
+  }
 });
 
 test("/api/empresa — con sesión manda los módulos de la empresa para armar el menú", async () => {

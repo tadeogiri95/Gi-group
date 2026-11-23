@@ -27,7 +27,7 @@ export async function panelDeEmpresa(empresaId, fecha, { sesion, conPrecios = fa
   const desdeTs = encodeURIComponent(new Date(Date.parse(`${desde}T00:00:00-03:00`)).toISOString());
   // Las fallas de antes también: una máquina puede seguir parada desde antes
   const desdeFallas = encodeURIComponent(new Date(Date.parse(`${desde}T00:00:00-03:00`) - 120 * DIA).toISOString());
-  const [base, pasos, manual, cargas, bultos, reportes, actas, precios, nc, defectos, pendientes, operarios, fichadas, maquinas, tareas, registros, fallas] = await Promise.all([
+  const [base, pasos, manual, cargas, bultos, reportes, actas, precios, nc, defectos, pendientes, maquinas, tareas, registros, fallas] = await Promise.all([
     cargarPlanVivo(e, { sesion, hoy }),
     sbGetAll(`pasos_pieza?empresa_id=eq.${e}&requerida=eq.true&created_at=gte.${desdeTs}&select=ot,etapa,created_at&order=id.asc`, { ...opts, maxFilas: 200000 }).catch(vacio),
     sbGetAll(`avance_manual_historial?empresa_id=eq.${e}&select=ot,etapa,pct,created_at&order=created_at.asc`, { ...opts, maxFilas: 50000 }).catch(vacio),
@@ -41,8 +41,6 @@ export async function panelDeEmpresa(empresaId, fecha, { sesion, conPrecios = fa
     sbGetAll(`no_conformidades?empresa_id=eq.${e}&created_at=gte.${desdeTs}&select=ot,defecto,cantidad,created_at`, { ...opts, maxFilas: 20000 }).catch(vacio),
     sbGetAll(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_DEFECTOS}&select=valor`, opts).catch(vacio),
     sbGetAll(`pendientes_obra?empresa_id=eq.${e}&select=ot,resuelto,created_at`, { ...opts, maxFilas: 20000 }).catch(vacio),
-    sbGetAll(`empleados?empresa_id=eq.${e}&activo=eq.true&rol=eq.operativo&select=id,legajo,nombre,rol,division,diagrama,activo`, { ...opts, maxFilas: 5000 }).catch(vacio),
-    sbGetAll(`fichadas?empresa_id=eq.${e}&fecha=gte.${desde}&fecha=lte.${hasta}&select=legajo,fecha,ingreso,egreso,llegada_tarde,minutos_tarde&order=fecha.asc,id.asc`, { ...opts, maxFilas: 50000 }).catch(vacio),
     sbGetAll(`maquinas?empresa_id=eq.${e}&activo=eq.true&order=id.asc`, opts).catch(vacio),
     sbGetAll(`maquina_tareas?empresa_id=eq.${e}&activa=eq.true&order=id.asc`, opts).catch(vacio),
     sbGetAll(`maquina_registros?empresa_id=eq.${e}&order=fecha.desc,id.desc`, { ...opts, maxFilas: 5000 }).catch(vacio),
@@ -53,7 +51,6 @@ export async function panelDeEmpresa(empresaId, fecha, { sesion, conPrecios = fa
     precios: precios ? new Map([...precios].map(([ot, v]) => [ot, v.valor])) : null,
     estimadas: precios ? new Set([...precios].filter(([, v]) => v.estimado).map(([ot]) => ot)) : new Set(),
     noConformidades: nc.data, defectos: normalizarDefectos(defectos.data[0]?.valor?.lista), pendientes: pendientes.data,
-    operarios: operarios.data, fichadas: fichadas.data,
     maquinas: maquinas.data, tareasMaquinas: tareas.data, registrosMaquinas: registros.data, fallas: fallas.data,
     fecha, hoy, ahora,
   });
