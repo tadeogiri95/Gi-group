@@ -42,9 +42,9 @@ test("barra de gestión — Inicio · Producción · Materiales · Mantenimiento
   assert.equal(getItems("gerencial", 3, PLANTA.modulos).find((i) => i.id === "config").badge, 3);
 });
 
-test("botones — Proyectos: OT y Reportes; Inventario: Stock y Compras; Mantenimiento: Flota vehicular", () => {
+test("botones — Proyectos: Órdenes de trabajo y Reportes; Inventario: Stock y Compras; Mantenimiento: Flota vehicular", () => {
   const labels = (boton, empresa = PLANTA) => opcionesBoton(boton, empresa).map((o) => o.label);
-  assert.deepEqual(labels("proyectos"), ["OT", "Reportes"]);
+  assert.deepEqual(labels("proyectos"), ["Órdenes de trabajo", "Reportes"]);
   // 17/11: Movimientos con lugar propio; Inventario (valorizado) solo para la oficina
   assert.deepEqual(labels("inventario"), ["Stock", "Movimientos", "Compras"]);
   assert.deepEqual(opcionesBoton("inventario", PLANTA, { rol: "gerencial" }).map((o) => o.label), ["Stock", "Inventario valorizado", "Movimientos", "Compras"]);
@@ -175,7 +175,7 @@ test("Proyectos — sin el registro de tareas no hay 'En vivo'; lo que no está 
     </AuthContext.Provider>
   );
   assert.equal(screen.queryByRole("tab", { name: /En vivo/ }), null);
-  assert.ok(screen.getByRole("tab", { name: "OT 🔒" }));
+  assert.ok(screen.getByRole("tab", { name: "Órdenes de trabajo 🔒" }));
   // Abre en lo primero que sí tiene: los reportes de producción
   assert.equal(screen.getByRole("tab", { name: "Reportes" }).getAttribute("aria-selected"), "true");
 });
