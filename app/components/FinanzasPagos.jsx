@@ -511,7 +511,7 @@ function NuevoResumen({ datos, onCerrar, onGuardado }) {
   return (
     <Modal open onClose={onCerrar} title="Resumen de órdenes de pago" maxWidth={720}>
       <div className="flex flex-col gap-3 text-[14px] text-gypi-text">
-        <p className="m-0 text-[13px] text-gypi-dim">Elegí las órdenes que van juntas. A cada una le podés cargar la foto del comprobante (no es obligatorio).</p>
+        <p className="m-0 text-[13px] text-gypi-dim">Elegí las órdenes sin pagar que van juntas. A cada una le podés cargar la foto del comprobante (no es obligatorio).</p>
         {libres.length ? (
           <fieldset className="border border-gypi-border rounded-lg p-2 m-0">
             <legend className="text-[13px] font-semibold px-1">Órdenes de pago</legend>
@@ -543,7 +543,7 @@ function NuevoResumen({ datos, onCerrar, onGuardado }) {
             </ul>
           </fieldset>
         ) : (
-          <p className="m-0 text-[13px] text-gypi-dim">No hay órdenes para juntar: las que no están pagadas ni anuladas ya están en otro resumen. Armá órdenes con &quot;+ Orden de pago&quot;.</p>
+          <p className="m-0 text-[13px] text-gypi-dim">No hay órdenes para juntar: solo entran las que todavía no están pagadas, y las que hay ya están en otro resumen. Armá órdenes con &quot;+ Orden de pago&quot;.</p>
         )}
         {seleccion.length > 0 && <Totales ordenes={seleccion} />}
         <div className="flex flex-wrap gap-2">
