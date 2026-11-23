@@ -38,6 +38,7 @@ import { SECCIONES_SEGUIMIENTO, faltantesMinuta, hora, sigueAbierto } from "../.
 import { precargaMinuta } from "../../lib/minutasPrecargaServidor";
 import { logger } from "../../lib/logger";
 import { comoDueno } from "../../lib/alcance";
+import { valoresDeOts } from "../../lib/valorOtServidor";
 
 const json = (body, status = 200) => NextResponse.json(body, { status });
 const HISTORIAL = 90;
@@ -92,16 +93,20 @@ async function otsDe(sesion, items) {
   }
 }
 
+// El valor de cada OT terminada (23/11, igual en toda la app): el PRECIO del
+// Plan o, si no tiene, estimado por sus materiales. { precios, estimadas }.
 async function preciosDe(sesion, items) {
   const ots = [...new Set(items.filter((it) => (it.seccion === "prod_terminada" || it.seccion === "inst_terminada") && it.ot).map((it) => String(it.ot)))];
-  if (!ots.length) return {};
+  if (!ots.length) return { precios: {}, estimadas: [] };
   try {
-    const lista = ots.map((o) => `"${o.replace(/["\\]/g, "")}"`).join(",");
-    const filas = (await sbGet(`precios_ot?empresa_id=eq.${sesion.empresa_id}&ot=in.(${encodeURIComponent(lista)})&precio=not.is.null&select=ot,precio`, { sesion })) || [];
-    return Object.fromEntries(filas.map((f) => [String(f.ot), Number(f.precio)]));
+    const valores = await valoresDeOts(sesion, sesion.empresa_id, { ots });
+    return {
+      precios: Object.fromEntries([...valores].map(([ot, v]) => [ot, v.valor])),
+      estimadas: [...valores].filter(([, v]) => v.estimado).map(([ot]) => ot),
+    };
   } catch (err) {
     logger.warn("[minutas] sin precios de OT", err);
-    return {};
+    return { precios: {}, estimadas: [] };
   }
 }
 
@@ -183,7 +188,8 @@ export async function GET(request) {
         const minutas = (await sbGet(`minutas?empresa_id=eq.${e}&fecha=gte.${reporte}&fecha=lte.${hasta}&select=id,fecha,inicio,cierre,estado,modera,registra,asistentes&order=fecha.asc`, { sesion })) || [];
         if (!minutas.length) return json({ ok: true, minutas: [], items: [] });
         const { data: items } = await sbGetAll(`minuta_items?empresa_id=eq.${e}&minuta_id=in.(${minutas.map((m) => m.id).join(",")})&select=id,minuta_id,seccion,orden,ot,proyecto,cliente,semaforo,texto,responsable,fecha_objetivo,area,tipo,datos,viene_de,resuelto_at&order=id.asc`, { sesion, maxFilas: 20000 });
-        return json({ ok: true, minutas, items: items || [], precios: await preciosDe(sesion, items || []), ots: await otsDe(sesion, items || []), feedbackAnterior: await feedbackAnteriorDe(sesion, reporte, hasta) });
+        const { precios, estimadas } = await preciosDe(sesion, items || []);
+        return json({ ok: true, minutas, items: items || [], precios, estimadas, ots: await otsDe(sesion, items || []), feedbackAnterior: await feedbackAnteriorDe(sesion, reporte, hasta) });
       }
       const feedback = q.get("feedback");
       if (feedback) {

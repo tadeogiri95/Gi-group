@@ -80,7 +80,7 @@ function Barra({ pct }) {
   );
 }
 
-export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], costoHora = null, verCostos = false, precio, puedeVerPrecio = false, modoObjetivo = null, puedeCambiarSemana = false, onClose, onProyectoActualizado,
+export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones = [], causas = [], defectos = [], costoHora = null, verCostos = false, precio, precioEstimado = false, puedeVerPrecio = false, modoObjetivo = null, puedeCambiarSemana = false, onClose, onProyectoActualizado,
   pausas = [], usuarioNombre = null, onPausaCambiada }) {
   useEscape(onClose);
   // Checkeo manual (141): lo guardado acá se ve sin volver a abrir el detalle
@@ -182,9 +182,11 @@ export default function DetalleOp({ proyecto, empresaId, etapas = [], divisiones
                 {[proyecto?.fecha_entrega && `Entrega ${fechaCorta(proyecto.fecha_entrega)}`, proyecto?.cantidad != null && `Cantidad ${proyecto.cantidad}`, proyecto?.total_modulos && `${proyecto.total_modulos} módulos`].filter(Boolean).join(" · ")}
               </div>
             )}
-            {precio != null && <div className="text-[13px] font-bold text-gypi-text mt-1">💲 Precio {fmtPesos(precio)} <span className="font-normal text-gypi-dim">sin IVA</span></div>}
+            {precio != null && !precioEstimado && <div className="text-[13px] font-bold text-gypi-text mt-1">💲 Precio {fmtPesos(precio)} <span className="font-normal text-gypi-dim">sin IVA</span></div>}
+            {/* Sin PRECIO en el Plan: el valor estimado por los materiales (23/11) */}
+            {precio != null && precioEstimado && <div className="text-[13px] font-bold text-gypi-text mt-1">💲 Valor ≈ {fmtPesos(precio)} estimado <span className="font-normal text-gypi-dim">sin IVA · sin PRECIO en el Plan, sale de los materiales de la OT</span></div>}
             {/* 🧾 Lleva IVA (201): quien ve los precios la marca; Finanzas suma el 21 % */}
-            {puedeVerPrecio && <IvaOt proyecto={proyecto} precio={precio} onGuardado={onProyectoActualizado} />}
+            {puedeVerPrecio && <IvaOt proyecto={proyecto} precio={precioEstimado ? undefined : precio} onGuardado={onProyectoActualizado} />}
             {puedeCambiarSemana && modoObjetivo && (
               <div className="mt-1.5">
                 <SelectorSemana proyecto={{ ...proyecto, ...semana }} modo={modoObjetivo} hoy={hoyArg()} compacto
