@@ -24,9 +24,8 @@ export const BOTONES_GESTION = {
       { id: "vivo", label: "En vivo", modulo: "actividad", conTareas: true },
       { id: "ot", label: "OT", modulo: "proyectos" },
       { id: "reportes", label: "Reportes", modulo: "actividad" },
-      // Auditoría 12/11 (parte 13): las instalaciones con lugar propio, abre
-      // directo el 🔧 Gantt de instalación (antes estaba escondido dentro de OT)
-      { id: "instalaciones", label: "Instalaciones", modulo: "proyectos" },
+      // 23/11 (Tadeo): sin pestaña "Instalaciones"; solo abría el Gantt de
+      // instalación, que sigue en OT → 📅 Gantt → 🔧 Instalación
       // Planificación de la producción (parte 38): la arman el Dueño y los supervisores
       { id: "planificacion", label: "Planificación", modulo: "proyectos", soloGerencia: true },
       // Minuta de la reunión de Buenos Días (Minuta, parte M1, 150): Dueño y supervisores
@@ -98,7 +97,7 @@ export const BOTONES_GESTION = {
 
 /** El ícono de cada opción (menú de la izquierda y tarjetas del Inicio de Finanzas). */
 export const ICONO_GESTION = {
-  vivo: "🟢", ot: "📋", reportes: "📊", instalaciones: "🔧", planificacion: "📅", minuta: "📝",
+  vivo: "🟢", ot: "📋", reportes: "📊", planificacion: "📅", minuta: "📝",
   stock: "📦", "inventario-valorizado": "💲", movimientos: "📥", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-cuentas": "📒", "fin-sueldos": "👷", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-mayor": "📚", "fin-devengamiento": "📆", "fin-resultados": "📊", "fin-patrimonio": "⚖️", "fin-flujo": "💵", "fin-cxp": "🗂", "fin-reporte": "📑", "fin-informe-tesoreria": "🏧", "fin-cierre": "🔍", "fin-libro": "📗", "fin-config": "🧾", "fin-inversiones": "📈", "fin-cuenta-ot": "📋", "fin-unificados": "🔗", "fin-sos": "📄",
 };
 
