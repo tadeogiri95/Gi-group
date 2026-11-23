@@ -61,6 +61,8 @@ export function pestanasCelular(boton, opciones, actualId) {
   return opciones.filter((o) => o.id === "fin-inicio" || o.id === actualId || grupo.opciones.includes(o.id));
 }
 
+// Panel de control de la producción (23/11): se carga recién al abrirlo
+const PanelProduccion = dynamic(() => import("../PanelProduccion"), { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div> });
 const ReportesScreen = dynamic(() => import("../../reportes_screen"), { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div> });
 
 // Nombres viejos o con un pedido extra que abren una pestaña: Movimientos quedó
@@ -117,6 +119,7 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {!bloqueado && actual.id === "maquinaria" && <MaquinariaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "maquinaria-alertas" ? "alertas" : "maquinas"} />}
         {!bloqueado && actual.id === "planificacion" && <PlanificacionScreen empresaId={empresaId} />}
         {!bloqueado && actual.id === "minuta" && <MinutaPestana empresa={empresa} />}
+        {!bloqueado && actual.id === "panel" && <PanelProduccion />}
         {!bloqueado && actual.id === "reportes" && <ReportesScreen grupo="produccion" />}
         {!bloqueado && actual.id === "fin-inicio" && <FinanzasInicio opciones={OPCIONES} onIr={(id) => (onIr ? onIr(id.includes(":") ? id : `${boton}:${id}`) : setOpcion(id))} />}
         {!bloqueado && actual.id === "fin-cheques" && <FinanzasCheques />}
