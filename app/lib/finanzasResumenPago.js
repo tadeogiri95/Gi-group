@@ -9,8 +9,9 @@
 //     que se paga con cheques (e-cheq propios y cheques de terceros) y el total.
 //   - Se le manda al CFO un link (sin usuario) para que vea lo que tiene para
 //     firmar en el banco (solo informativo desde el 13/11: puede apretar
-//     👍 Visto), o se exporta en PDF. Las anuladas no suman. Entran también
-//     las órdenes ya pagadas.
+//     👍 Visto), o se exporta en PDF. Las anuladas no suman.
+//   - 23/11: solo entran órdenes sin pagar. Las pagadas (viejas) ya no se
+//     ofrecen al armar un resumen; las que ya estaban en uno siguen ahí.
 //   - 20/11: cada e-cheq puede llevar el plazo fijo nuevo que lo calza; abajo
 //     del total, "A rescatar del FCI" = transferencias + plazos fijos.
 import { FORMAS_PAGO, ESTADOS_ORDEN, CSS_RESCATE, adjuntosDe, comprobantesFactura, fechaCorta, htmlRescate, lineasRescate, sumasPagos, textoForma, textoPlazo, vistaPorCfo } from "./finanzasPagos";
@@ -20,7 +21,7 @@ import { plata } from "./finanzasOperaciones";
 export const FORMAS_INMEDIATAS = ["efectivo", "transferencia"];
 export const FORMAS_CHEQUE = ["echeq", "cheque_tercero"];
 /** Órdenes que se pueden juntar en un resumen. */
-export const ENTRAN_EN_RESUMEN = ["borrador", "para_aprobar", "rechazada", "aprobada", "pagada"];
+export const ENTRAN_EN_RESUMEN = ["borrador", "para_aprobar", "rechazada", "aprobada"];
 export const ESTADOS_RESUMEN = {
   armado: { nombre: "Armado, sin mandar", icono: "📝" },
   enviado: { nombre: "Mandado al CFO", icono: "📲" },

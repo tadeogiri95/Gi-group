@@ -59,14 +59,15 @@ test("renglones — uno por forma, por fecha, con proveedor, medio, importe y co
   assert.match(r[3].medio, /E-cheq/);
 });
 
-test("validar — al menos una; ni anuladas ni de otro resumen; las pagadas sí entran", () => {
+test("validar — al menos una; ni anuladas, ni pagadas, ni de otro resumen", () => {
   assert.match(validarResumen({ fecha: "2026-11-12", ordenes: [] }, [O1]).errores[0], /al menos una/);
   assert.match(validarResumen({ fecha: "2026-11-12", ordenes: [3] }, [O3]).errores[0], /no entra/);
   assert.match(validarResumen({ fecha: "2026-11-12", ordenes: [1] }, [{ ...O1, resumen_id: 4 }]).errores[0], /otro resumen/);
   assert.match(validarResumen({ ordenes: [1] }, [O1]).errores[0], /fecha/);
   const ok = validarResumen({ fecha: "2026-11-12", ordenes: [1, "2", 2], notas: "  urgente " }, [O1, O2]);
   assert.deepEqual([ok.errores, ok.ids, ok.resumen.notas], [[], [1, 2], "urgente"]);
-  assert.equal(puedeEntrar({ ...O1, estado: "pagada" }), true, "el CFO también ve lo ya pagado");
+  assert.equal(puedeEntrar({ ...O1, estado: "pagada" }), false, "23/11: las pagadas ya no se ofrecen para un resumen nuevo");
+  assert.match(validarResumen({ fecha: "2026-11-12", ordenes: [1] }, [{ ...O1, estado: "pagada" }]).errores[0], /no entra/);
   assert.equal(puedeEntrar({ ...O1, estado: "anulada" }), false);
 });
 
