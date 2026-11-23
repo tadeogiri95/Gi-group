@@ -21,18 +21,21 @@ export const BOTONES_GESTION = {
     label: "Producción",
     detalle: "Órdenes de trabajo, planificación y reportes",
     opciones: [
-      { id: "vivo", label: "En vivo", modulo: "actividad", conTareas: true },
-      { id: "ot", label: "OT", modulo: "proyectos" },
-      { id: "reportes", label: "Reportes", modulo: "actividad" },
+      // 23/11 (Tadeo): orden y nombres de las pestañas de Producción:
+      // Órdenes de trabajo, Panel de control, Planificación, Reportes, Minuta
+      { id: "ot", label: "Órdenes de trabajo", modulo: "proyectos" },
       // Panel de control de la producción (Tadeo, 23/11): indicadores con
       // semáforo, la semana contra las 4 anteriores. Dueño y supervisores
-      { id: "panel", label: "Panel de producción", modulo: "proyectos", soloGerencia: true },
-      // 23/11 (Tadeo): sin pestaña "Instalaciones"; solo abría el Gantt de
-      // instalación, que sigue en OT → 📅 Gantt → 🔧 Instalación
+      { id: "panel", label: "Panel de control", modulo: "proyectos", soloGerencia: true },
       // Planificación de la producción (parte 38): la arman el Dueño y los supervisores
       { id: "planificacion", label: "Planificación", modulo: "proyectos", soloGerencia: true },
+      { id: "reportes", label: "Reportes", modulo: "actividad" },
       // Minuta de la reunión de Buenos Días (Minuta, parte M1, 150): Dueño y supervisores
       { id: "minuta", label: "Minuta", modulo: "minutas", soloGerencia: true },
+      // 23/11 (Tadeo): sin pestaña "Instalaciones"; solo abría el Gantt de
+      // instalación, que sigue en OT → 📅 Gantt → 🔧 Instalación
+      // En vivo solo aparece si la empresa registra tareas ("Iniciar Tarea")
+      { id: "vivo", label: "En vivo", modulo: "actividad", conTareas: true },
     ],
   },
   inventario: {

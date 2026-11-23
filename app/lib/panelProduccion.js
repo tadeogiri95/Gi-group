@@ -20,9 +20,10 @@
 //                 la etapa donde más OT esperan.
 //   4. Calidad    % de OT terminadas sin retrabajo, horas de retrabajo y sus
 //                 motivos, no conformidades por defecto, pendientes de obra.
-//   5. Máquinas y gente  horas de máquina parada por falla, fallas nuevas,
-//                 preventivo del mes, tiempo medio entre fallas y de arreglo;
-//                 ausentismo y llegadas tarde de los operarios.
+//   5. Máquinas   horas de máquina parada por falla, fallas nuevas,
+//                 preventivo del mes, tiempo medio entre fallas y de arreglo.
+//                 (Sin ausentismo ni llegadas tarde: la asistencia no la lleva
+//                 Gypi por ahora; Tadeo, 23/11.)
 // No hay OEE ni productividad por hora-hombre: sin "Iniciar Tarea" no se
 // registran las paradas cortas ni las horas por OT (Tadeo eligió el panel con
 // lo que ya hay, 23/11).
@@ -40,7 +41,6 @@ import { pausasAbiertas, textoMotivoPausa } from "./pausaOt";
 import { textoMotivoRetrabajo } from "./retrabajo";
 import { nombreDefecto } from "./calidad";
 import { tramosParada, indicadoresMaquinaria } from "./fallasMaquinaria";
-import { llegadasDelDia, asistenciaPorDivision, diaKeyDeFecha } from "./asistenciaDia";
 import { datosOt } from "./nombreOt";
 
 /** Semanas que se comparan: la elegida y las 4 anteriores. */
@@ -55,8 +55,6 @@ export const METAS = {
   entregas: { bien: 90, atencion: 75, texto: "Meta: 90 % o más a tiempo" },
   cumplimiento: { bien: 90, atencion: 75, texto: "Meta: 90 % o más de lo planificado" },
   sinRetrabajo: { bien: 95, atencion: 85, texto: "Meta: 95 % o más sin retrabajo" },
-  ausentismo: { bien: 3, atencion: 6, menor: true, texto: "Meta: 3 % o menos" },
-  tarde: { bien: 5, atencion: 10, menor: true, texto: "Meta: 5 % o menos" },
   preventivo: { bien: 80, atencion: 50, texto: "Meta: 80 % o más del preventivo hecho" },
 };
 
@@ -183,31 +181,6 @@ export function calidadDeSemana({ s, retrabajos = [], producidas = [], noConform
   };
 }
 
-/** Asistencia de los operarios en la semana (hasta hoy, sin feriados). */
-export function asistenciaDeSemana({ s, empleados = [], fichadas = [], divisiones = [], feriados = null, hoy, horaActual = null }) {
-  const total = { esperados: 0, vinieron: 0, tarde: 0 };
-  const porDia = new Map();
-  for (const f of fichadas || []) {
-    if (!porDia.has(f.fecha)) porDia.set(f.fecha, []);
-    porDia.get(f.fecha).push(f);
-  }
-  for (const dia of diasDelPeriodo(s.desde, s.hasta)) {
-    if (dia > hoy || feriados?.has(dia)) continue;
-    const llegadas = llegadasDelDia({ empleados, fichadas: porDia.get(dia) || [], diaKey: diaKeyDeFecha(dia), divisiones, horaActual: dia === hoy ? horaActual : null });
-    const t = asistenciaPorDivision(llegadas).total;
-    total.esperados += t.esperados;
-    total.vinieron += t.vinieron;
-    total.tarde += t.tarde;
-  }
-  return {
-    ...total,
-    faltas: total.esperados - total.vinieron,
-    ausentismo: pct(total.esperados - total.vinieron, total.esperados),
-    tarde: total.tarde,
-    pctTarde: pct(total.tarde, total.vinieron),
-  };
-}
-
 /** Horas de máquina parada por falla y fallas nuevas en la semana. */
 export function maquinasDeSemana({ s, maquinas = [], fallas = [], ahora = Date.now() }) {
   const [desde, hasta] = limites(s);
@@ -277,13 +250,12 @@ export function pausadasAhora(pausas, proyectos = new Map()) {
  *   manual, cargas, bultos, reportes, actas: los del tablero de etapas
  *   precios: Map OT → precio, o null si el usuario no ve precios
  *   noConformidades, defectos (lista de la empresa), pendientes (pendientes_obra)
- *   operarios: empleados operativos con legajo y diagrama; fichadas de las semanas
  *   maquinas, tareasMaquinas, registrosMaquinas, fallas: los de Maquinaria
  *   fecha: un día de la semana elegida; hoy; ahora (Date)
  */
 export function armarPanel(d) {
   const { base, pasos = [], manual = [], cargas = [], bultos = [], reportes = [], actas = [], precios = null,
-    noConformidades = [], defectos = null, pendientes = [], operarios = [], fichadas = [],
+    noConformidades = [], defectos = null, pendientes = [],
     maquinas = [], tareasMaquinas = [], registrosMaquinas = [], fallas = [], fecha, hoy, ahora = new Date() } = d;
   const { vivo, vigentes: items, etapasCodigo, cfgValor, proyectos = [], divisiones = [], empleados = [], piezas = [], avance = [], retrabajos = [], pausas = [] } = base;
   const semanas = semanasPanel(fecha);
@@ -304,7 +276,6 @@ export function armarPanel(d) {
   });
 
   const planta = operariosDePlanta(empleados, divisiones, null);
-  const horaActual = new Date(ahora.getTime() - 3 * 3600000).toISOString().slice(11, 16);
   const ahoraMs = ahora.getTime();
 
   const filas = semanas.map((s) => {
@@ -318,7 +289,6 @@ export function armarPanel(d) {
       plan: { cumplimiento: informe.resumen.cumplimiento, procesosPlanificados: informe.resumen.procesosPlanificados, procesosCumplidos: informe.resumen.procesosCumplidos, carga: cargaDeSemana(items, s, capacidad) },
       produccion,
       calidad: calidadDeSemana({ s, retrabajos, producidas: produccion.otsLista, noConformidades, defectos, pendientes }),
-      gente: asistenciaDeSemana({ s, empleados: operarios, fichadas, divisiones, feriados, hoy, horaActual }),
       maquinas: maquinasDeSemana({ s, maquinas, fallas, ahora: ahoraMs }),
     };
   });

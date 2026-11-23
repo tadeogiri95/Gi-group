@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { render, screen, cleanup } from "@testing-library/react";
 import {
   semanasPanel, semaforo, METAS, semaforoCarga, finProduccionDe, entregasDeSemana, produccionDeSemana, cargaDeSemana,
-  calidadDeSemana, asistenciaDeSemana, maquinasDeSemana, enProceso, atrasadasPlan, pausadasAhora, armarPanel,
+  calidadDeSemana, maquinasDeSemana, enProceso, atrasadasPlan, pausadasAhora, armarPanel,
 } from "../app/lib/panelProduccion.js";
 import { opcionesBoton } from "../app/lib/menuGestion.js";
 
@@ -31,9 +31,12 @@ test("semaforo — más alto es mejor, salvo las metas de 'menor'", () => {
   assert.equal(semaforo(95, METAS.entregas), "bien");
   assert.equal(semaforo(80, METAS.entregas), "atencion");
   assert.equal(semaforo(60, METAS.entregas), "mal");
-  assert.equal(semaforo(2, METAS.ausentismo), "bien");
-  assert.equal(semaforo(5, METAS.ausentismo), "atencion");
-  assert.equal(semaforo(9, METAS.ausentismo), "mal");
+  const menor = { bien: 3, atencion: 6, menor: true };
+  assert.equal(semaforo(2, menor), "bien");
+  assert.equal(semaforo(5, menor), "atencion");
+  assert.equal(semaforo(9, menor), "mal");
+  assert.equal(METAS.ausentismo, undefined, "sin ausentismo: la asistencia no la lleva Gypi");
+  assert.equal(METAS.tarde, undefined);
   assert.equal(semaforo(null, METAS.entregas), null);
   assert.equal(semaforoCarga(85), "bien");
   assert.equal(semaforoCarga(110), "atencion");
@@ -112,23 +115,6 @@ test("calidad — OT sin retrabajo, horas y motivos, no conformidades y pendient
   assert.equal(c.noConformidades, 3);
   assert.deepEqual(c.defectos[0], { cod: "MED", nombre: "Medida mal", cantidad: 3 });
   assert.equal(c.pendientesNuevos, 1);
-});
-
-test("asistencia — faltas y llegadas tarde de los operarios, hasta hoy y sin feriados", () => {
-  const turno = { in: "08:00", out: "16:00" };
-  const diagrama = { lun: turno, mar: turno, mie: turno, jue: turno, vie: turno };
-  const empleados = [{ id: 1, legajo: 1, nombre: "A", rol: "operativo", diagrama }, { id: 2, legajo: 2, nombre: "B", rol: "operativo", diagrama }];
-  const fichadas = [
-    { legajo: 1, fecha: "2026-11-16" }, { legajo: 2, fecha: "2026-11-16", llegada_tarde: true, minutos_tarde: 10 },
-    { legajo: 1, fecha: "2026-11-18" },
-  ];
-  // Hoy miércoles 18; el martes 17 feriado
-  const a = asistenciaDeSemana({ s: SEMANA, empleados, fichadas, feriados: new Set(["2026-11-17"]), hoy: "2026-11-18", horaActual: "12:00" });
-  assert.equal(a.esperados, 4);
-  assert.equal(a.vinieron, 3);
-  assert.equal(a.ausentismo, 25);
-  assert.equal(a.tarde, 1);
-  assert.equal(a.pctTarde, 33.3);
 });
 
 test("máquinas — horas paradas dentro de la semana y fallas nuevas", () => {
@@ -220,7 +206,6 @@ test("pantalla — bloques con semáforo y detalle, desde /api/reportes/panel", 
     plan: { cumplimiento: 92, procesosPlanificados: 10, procesosCumplidos: 9, carga: { horas: 300, disponibles: 400, pct: 75, porEtapa: [{ etapa: "corte", nombre: "Corte", horas: 100 }] } },
     produccion: { ots: 5, piezas: 900, valor: 1000000, otsLista: [], leadTime: 40 },
     calidad: { horasRetrabajo: 6, otsConRetrabajo: 1, motivos: [{ motivo: "Medida", horas: 6 }], producidas: 5, sinRetrabajo: 80, noConformidades: 2, defectos: [{ cod: "MED", nombre: "Medida mal", cantidad: 2 }], pendientesNuevos: 1 },
-    gente: { esperados: 100, vinieron: 96, faltas: 4, ausentismo: 4, tarde: 3, pctTarde: 3.1 },
     maquinas: { horasParada: 2, fallas: 1, porMaquina: [{ codigo: "CNC1", nombre: "CNC", horas: 2 }] },
     ...extra,
   });
@@ -244,14 +229,15 @@ test("pantalla — bloques con semáforo y detalle, desde /api/reportes/panel", 
   assert.equal(tono("entregas"), "atencion");
   assert.equal(tono("cumplimiento"), "bien");
   assert.equal(tono("sin-retrabajo"), "mal");
-  assert.equal(tono("ausentismo"), "atencion");
+  assert.equal(document.querySelector('[data-indicador="ausentismo"]'), null, "sin ausentismo");
+  assert.equal(document.querySelector('[data-indicador="tarde"]'), null, "sin llegadas tarde");
   assert.equal(tono("preventivo"), "atencion");
   assert.equal(tono("cuello"), "mal");
   assert.match(document.querySelector('[data-indicador="cuello"]').textContent, /Armado/);
   assert.ok(document.querySelector('[data-indicador="valor"]'), "con precios se ve $ producidos");
   assert.ok(screen.getByRole("table", { name: "OT en proceso por etapa" }).textContent.includes("cuello de botella"));
   assert.match(screen.getByRole("region", { name: "Detalle" }).textContent, /7100.*2 días tarde/s);
-  for (const b of ["2. Plan y capacidad", "3. Velocidad", "4. Calidad", "5. Máquinas y gente"]) screen.getByRole("region", { name: b });
+  for (const b of ["2. Plan y capacidad", "3. Velocidad", "4. Calidad", "5. Máquinas"]) screen.getByRole("region", { name: b });
 });
 
 test("pantalla — si no tiene permiso, lo avisa", async () => {

@@ -124,7 +124,7 @@ export default function PanelProduccion() {
   return (
     <div className="flex-1 overflow-y-auto px-4 py-3" data-panel-produccion>
       <div className="flex flex-wrap items-center gap-2 mb-2">
-        <h2 className="m-0 text-[17px] font-bold text-gypi-text font-heading mr-auto">📈 Panel de producción</h2>
+        <h2 className="m-0 text-[17px] font-bold text-gypi-text font-heading mr-auto">📈 Panel de control de producción</h2>
         <div className="flex items-center gap-1">
           <button type="button" aria-label="Semana anterior" onClick={() => setFecha(sumarDias(delLunes, -7))} disabled={cargando}
             className="min-h-[40px] min-w-[40px] rounded-lg border border-gypi-border bg-transparent text-gypi-text cursor-pointer">◀</button>
@@ -224,7 +224,7 @@ export default function PanelProduccion() {
               ayuda="Pendientes de instalación sin resolver hoy (lo que hay que volver a hacer en la obra), y cuántos se anotaron en la semana." />
           </Bloque>
 
-          <Bloque titulo="5. Máquinas y gente" nota="Si las máquinas andan y si la gente está.">
+          <Bloque titulo="5. Máquinas" nota="Si las máquinas andan.">
             <Indicador id="maquina-parada" titulo="Horas de máquina parada" valor={horasTxt(s.maquinas.horasParada)} tono={s.maquinas.horasParada > 0 ? (s.maquinas.horasParada > 8 ? "mal" : "atencion") : "bien"}
               detalle={`${s.maquinas.fallas} ${s.maquinas.fallas === 1 ? "falla nueva" : "fallas nuevas"}`} serie={serieDe(semanas, (x) => x.maquinas.horasParada, horasTxt)}
               ayuda="Horas en que alguna máquina estuvo parada por una falla avisada, desde el aviso hasta el arreglo (sumando todas las máquinas)." />
@@ -235,14 +235,6 @@ export default function PanelProduccion() {
             <Indicador id="entre-fallas" titulo="Tiempo entre fallas / de arreglo" valor={panel.maquinasMes?.entreFallasDias != null ? `${num(panel.maquinasMes.entreFallasDias)} días` : "—"}
               detalle={panel.maquinasMes?.arregloHoras != null ? `Arreglo promedio: ${horasTxt(panel.maquinasMes.arregloHoras)}` : "Sin fallas arregladas en el mes"}
               ayuda="Del mes: cuántos días anda en promedio una máquina entre una falla y la siguiente (más alto es mejor), y cuántas horas se tarda en arreglar (más bajo es mejor)." />
-            <Indicador id="ausentismo" titulo="Ausentismo de operarios" valor={pctTxt(s.gente.ausentismo)} tono={semaforo(s.gente.ausentismo, METAS.ausentismo)}
-              detalle={s.gente.esperados ? `${s.gente.faltas} faltas en ${s.gente.esperados} turnos` : "Sin turnos en la semana"}
-              meta={METAS.ausentismo.texto} serie={serieDe(semanas, (x) => x.gente.ausentismo)}
-              ayuda="Turnos de operarios (según la grilla de horarios) en que la persona no fichó, sobre los turnos de la semana hasta hoy, sin feriados. Incluye vacaciones y permisos." />
-            <Indicador id="tarde" titulo="Llegadas tarde" valor={pctTxt(s.gente.pctTarde)} tono={semaforo(s.gente.pctTarde, METAS.tarde)}
-              detalle={s.gente.vinieron ? `${s.gente.tarde} de ${s.gente.vinieron} entradas` : null}
-              meta={METAS.tarde.texto} serie={serieDe(semanas, (x) => x.gente.pctTarde)}
-              ayuda="Entradas con llegada tarde (según las reglas de asistencia) sobre las entradas de la semana." />
           </Bloque>
 
           <section aria-label="Detalle" className="mb-6">
