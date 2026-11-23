@@ -185,10 +185,12 @@ test("📐 Mis planillas — en orden, la de ahora destacada y lo que se corrió
   assert.match(screen.getByText(/Planillas técnicas · 2/).textContent, /2/);
 });
 
-test("📐 Mis planillas — en el Inicio del operario; la ruta solo devuelve lo suyo", () => {
+test("📐 Mis planillas — en el Inicio del operario y al final del Panel; la ruta solo devuelve lo suyo", () => {
   const home = readFileSync(new URL("../app/components/screens/HomeEmp.jsx", import.meta.url), "utf8");
   assert.match(home, /useMisPlanillas\(conProyectos\)/);
   assert.match(home, /titulo="Mis planillas"/);
+  const panel = readFileSync(new URL("../app/dashboard_gerencia.jsx", import.meta.url), "utf8");
+  assert.match(panel, /<TarjetaMisPlanillas \/>/);
   const ruta = readFileSync(new URL("../app/api/diseno-tecnica/route.js", import.meta.url), "utf8");
   assert.match(ruta, /misPlanillas\(plan, sesion\.empleado_id\)/);
   assert.match(ruta, /\{ sesion \}/);

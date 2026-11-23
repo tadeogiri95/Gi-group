@@ -20,6 +20,8 @@ import { textoVencimiento, SEMAFORO } from "./lib/flota";
 import { alertasMantenimiento } from "./lib/panelMantenimiento";
 import { otEnProduccion, escaneosDelDia, escaneosPorOt, inicioDelDiaArg } from "./lib/inicioGerencia";
 import NombreOt from "./components/NombreOt";
+import MisPlanillas, { detalleMisPlanillas, useMisPlanillas } from "./components/MisPlanillas";
+import MiCaja, { detalleMiCaja, useMiCaja } from "./components/MiCaja";
 
 /* ═══════════════════════════════════════════════════════
    PANEL DE CONTROL (Inicio de gerencia)
@@ -68,6 +70,44 @@ const horaArg = (iso) => {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Argentina/Buenos_Aires" });
 };
+
+/** 📐 Mis planillas de la arquitecta que entra (parte 50); nada si no es arquitecta. */
+function TarjetaMisPlanillas() {
+  const datos = useMisPlanillas(true);
+  const [ver, setVer] = useState(false);
+  if (!datos) return null;
+  return (
+    <section aria-label="Mis planillas" className="card-hover g-card mb-4">
+      <button type="button" onClick={() => setVer(true)} className="w-full flex items-center gap-3 bg-transparent border-none p-0 cursor-pointer text-left font-body text-gypi-text">
+        <span aria-hidden="true" className="text-[26px]">📐</span>
+        <span className="flex-1 min-w-0">
+          <span className="block text-[16px] font-bold">Mis planillas</span>
+          <span className="block text-[14px] text-gypi-dim">{detalleMisPlanillas(datos)}</span>
+        </span>
+      </button>
+      {ver && <MisPlanillas datos={datos} onClose={() => setVer(false)} />}
+    </section>
+  );
+}
+
+/** 📱 Mi caja del que entra (Finanzas F3b, 176); nada si no es responsable de una caja. */
+function TarjetaMiCaja() {
+  const datos = useMiCaja(true);
+  const [ver, setVer] = useState(false);
+  if (!datos.cajas.length) return null;
+  return (
+    <section aria-label="Mi caja" className="card-hover g-card mb-4">
+      <button type="button" onClick={() => setVer(true)} className="w-full flex items-center gap-3 bg-transparent border-none p-0 cursor-pointer text-left font-body text-gypi-text">
+        <span aria-hidden="true" className="text-[26px]">📱</span>
+        <span className="flex-1 min-w-0">
+          <span className="block text-[16px] font-bold">Mi caja</span>
+          <span className="block text-[14px] text-gypi-dim">{detalleMiCaja(datos.cajas, datos.para_confirmar)}</span>
+        </span>
+      </button>
+      {ver && <MiCaja datos={datos} onClose={() => setVer(false)} onCambio={datos.cargar} />}
+    </section>
+  );
+}
 
 /* ═══════════════════════════════════════════════════════
    COMPONENTE PRINCIPAL: DashboardGerencia
@@ -325,6 +365,11 @@ export default function DashboardGerencia({ goto, ctx, reload, empresa, isDemo =
           </section>
         );
       })()}
+
+      {/* ─── Atajos personales, al final: solo le aparecen a quien es responsable de una
+           caja (es la única forma de cargar sus gastos) o arquitecta de Diseño y Técnica ─── */}
+      {!isDemo && conOt && <TarjetaMisPlanillas />}
+      {!isDemo && tieneModulo(empresa, "finanzas") && <TarjetaMiCaja />}
 
       {/* ─── Footer info ─── */}
       <footer className="text-center py-2 pb-3">
