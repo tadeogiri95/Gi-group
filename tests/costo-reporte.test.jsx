@@ -120,5 +120,6 @@ test("pestaña — totales, filtro por división y exportar", async () => {
   URL.createObjectURL = orig;
   assert.ok(bajado, "bajó la planilla");
   const reportes = readFileSync(new URL("../app/reportes_screen.jsx", import.meta.url), "utf8");
-  assert.match(reportes, /conCostoOt = tieneModulo\(empresa, "proyectos"\) && comoDueno\(usuario\)/);
+  // 23/11 (Tadeo): Costo por OT ya no está en Producción → Reportes
+  assert.doesNotMatch(reportes, /CostoOtTab|Costo por OT<\/Chip>/);
 });

@@ -1217,3 +1217,12 @@ test("pantalla en vivo — en la computadora el renglón abierto se edita en el 
     window.matchMedia = antes;
   }
 });
+
+test("Producción → Minuta — 📚 Historial con el informe; Reportes ya no tiene Minutas (23/11)", () => {
+  const leer = (f) => readFileSync(new URL(`../app/${f}`, import.meta.url), "utf8");
+  const pestana = leer("components/MinutaPestana.jsx");
+  assert.match(pestana, /📚 Historial/);
+  assert.match(pestana, /<MinutasReporteTab empresa=\{empresa\} \/>/);
+  assert.match(leer("components/screens/BotonGestionScreen.jsx"), /actual\.id === "minuta" && <MinutaPestana empresa=\{empresa\} \/>/);
+  assert.doesNotMatch(leer("reportes_screen.jsx"), /MinutasReporteTab|📝 Minutas/);
+});

@@ -24,7 +24,7 @@ import MovimientosScreen, { pedirCarga } from "../MovimientosScreen";
 import FlotaScreen from "../FlotaScreen";
 import MaquinariaScreen from "../MaquinariaScreen";
 import PlanificacionScreen from "../PlanificacionScreen";
-import MinutaScreen from "../MinutaScreen";
+import MinutaPestana from "../MinutaPestana";
 import FinanzasConfig from "../FinanzasConfig";
 import FinanzasCheques from "../FinanzasCheques";
 import FinanzasTesoreria from "../FinanzasTesoreria";
@@ -118,7 +118,7 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {!bloqueado && actual.id === "flota" && <FlotaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "flota-alertas" ? "alertas" : "vehiculos"} />}
         {!bloqueado && actual.id === "maquinaria" && <MaquinariaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "maquinaria-alertas" ? "alertas" : "maquinas"} />}
         {!bloqueado && actual.id === "planificacion" && <PlanificacionScreen empresaId={empresaId} />}
-        {!bloqueado && actual.id === "minuta" && <MinutaScreen empresa={empresa} />}
+        {!bloqueado && actual.id === "minuta" && <MinutaPestana empresa={empresa} />}
         {!bloqueado && actual.id === "panel" && <PanelProduccion />}
         {!bloqueado && actual.id === "reportes" && <ReportesScreen grupo="produccion" />}
         {!bloqueado && actual.id === "fin-inicio" && <FinanzasInicio opciones={OPCIONES} onIr={(id) => (onIr ? onIr(id.includes(":") ? id : `${boton}:${id}`) : setOpcion(id))} />}

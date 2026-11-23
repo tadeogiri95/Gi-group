@@ -9,8 +9,6 @@ import { duracionMinutos } from "./lib/calc";
 import { exportCSV, exportImagen } from "./lib/exportarReporte";
 import Stat from "./components/ui/Stat";
 import InformeProduccionTab from "./components/InformeProduccionTab";
-import CostoOtTab from "./components/CostoOtTab";
-import MinutasReporteTab from "./components/MinutasReporteTab";
 
 /* ═══════════════════════════════════════════════════════
    REPORTES & CUMPLIMIENTO HORARIO
@@ -36,7 +34,6 @@ const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "
 import { getDivisionesConTodas } from "./lib/constants";
 import { useAuth } from "./context/AuthContext";
 import { tieneModulo, conRegistroTareas } from "./lib/modulos";
-import { comoDueno } from "./lib/menuGestion";
 import { detalleOt } from "./lib/nombreOt";
 
 /* ─── Helpers ─── */
@@ -354,7 +351,7 @@ function ReporteLiquidacionTab({ fechaDesde, fechaHasta, labelPeriodo, empresaId
 
 /* ═══ COMPONENTE PRINCIPAL ═══ */
 // grupo: "personal" (en Equipo: Asistencia, Descargar, Liquidación) o
-// "produccion" (en Proyectos: Producción, Costo por OT, Minutas). Del día,
+// "produccion" (en Proyectos: Producción). Costo por OT y Minutas salieron el 23/11. Del día,
 // Indicadores, Lead time y Obra salieron el 22/11 (Tadeo): el seguimiento de
 // cada OT por etapa está en OT → 🗂️ Trello y los reportes de obra en
 // Instalaciones; el resumen del día sigue llegando por email.
@@ -364,13 +361,11 @@ export default function ReportesScreen({ grupo = null }) {
   const ver = (g) => !grupo || grupo === g;
   // Informe de producción (146): gerencia, supervisores y administración, con el plan de producción
   const conInforme = tieneModulo(empresa, "proyectos") && (usuario?.rol === "gerencial" || usuario?.rol === "administrativo");
-  // Reportes de las minutas de Buenos Días (parte M5): solo gerencia
-  const conMinutas = tieneModulo(empresa, "minutas") && comoDueno(usuario);
-  // Costo por OT (costo de OT, parte F): Dueño y Supervisor
-  const conCostoOt = tieneModulo(empresa, "proyectos") && comoDueno(usuario);
+  // Minutas y Costo por OT salieron el 23/11 (Tadeo): el informe de minutas
+  // está en Producción → Minuta → 📚 Historial
   const empresaId = usuario?.empresa_id;
   const DIVISIONES = getDivisionesConTodas(divisionesCtx);
-  const primeroProduccion = conInforme ? "informe" : conRegistroTareas(empresa) ? "produccion" : conCostoOt ? "costo" : conMinutas ? "minutas" : "ninguno";
+  const primeroProduccion = conInforme ? "informe" : conRegistroTareas(empresa) ? "produccion" : "ninguno";
   const [tab, setTab] = useState(grupo === "produccion" ? primeroProduccion : "cumplimiento");
   const [periodo, setPeriodo] = useState("semana");
   const [weekOffset, setWeekOffset] = useState(0);
@@ -510,14 +505,12 @@ export default function ReportesScreen({ grupo = null }) {
         {ver("personal") && <Chip active={tab === "cumplimiento"} onClick={() => setTab("cumplimiento")} color={MARCA}>📊 Asistencia</Chip>}
         {ver("produccion") && conInforme && <Chip active={tab === "informe"} onClick={() => setTab("informe")} color={MARCA}>🏭 Producción</Chip>}
         {ver("produccion") && conRegistroTareas(empresa) && <Chip active={tab === "produccion"} onClick={() => setTab("produccion")} color={MARCA}>⚙️ Producción</Chip>}
-        {ver("produccion") && conCostoOt && <Chip active={tab === "costo"} onClick={() => setTab("costo")} color={MARCA}>💲 Costo por OT</Chip>}
-        {ver("produccion") && conMinutas && <Chip active={tab === "minutas"} onClick={() => setTab("minutas")} color={MARCA}>📝 Minutas</Chip>}
         {ver("personal") && <Chip active={tab === "reportes"} onClick={() => setTab("reportes")} color={MARCA}>📥 Descargar</Chip>}
         {ver("personal") && <Chip active={tab === "liquidacion"} onClick={() => setTab("liquidacion")} color={MARCA}>💰 Liquidación</Chip>}
       </FilaDeslizable>
 
-      {/* Periodo (el reporte del día, el informe de producción y el de minutas tienen el suyo) */}
-      {tab !== "ninguno" && tab !== "informe" && tab !== "minutas" && <>
+      {/* Periodo (el informe de producción tiene el suyo) */}
+      {tab !== "ninguno" && tab !== "informe" && <>
       <div className="flex gap-1.5 mb-2.5">
         <Chip active={periodo === "semana"} onClick={() => setPeriodo("semana")} color={MARCA}>Por semana</Chip>
         <Chip active={periodo === "mes"} onClick={() => setPeriodo("mes")} color={MARCA}>Por mes</Chip>
@@ -544,14 +537,10 @@ export default function ReportesScreen({ grupo = null }) {
         </div>
       ) : tab === "informe" ? (
         <InformeProduccionTab empresa={empresa} />
-      ) : tab === "minutas" ? (
-        <MinutasReporteTab empresa={empresa} />
       ) : loading ? (
         <Puntos />
       ) : tab === "produccion" ? (
         <ReporteProduccionTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId} />
-      ) : tab === "costo" ? (
-        <CostoOtTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} divisiones={divisionesCtx || []} division={division} />
       ) : tab === "liquidacion" ? (
         <ReporteLiquidacionTab fechaDesde={fechaDesde} fechaHasta={fechaHasta} labelPeriodo={labelPeriodo} empresaId={empresaId} empresa={empresa} />
       ) : tab === "cumplimiento" ? (
