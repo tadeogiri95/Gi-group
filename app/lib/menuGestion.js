@@ -24,6 +24,9 @@ export const BOTONES_GESTION = {
       { id: "vivo", label: "En vivo", modulo: "actividad", conTareas: true },
       { id: "ot", label: "OT", modulo: "proyectos" },
       { id: "reportes", label: "Reportes", modulo: "actividad" },
+      // Panel de control de la producción (Tadeo, 23/11): indicadores con
+      // semáforo, la semana contra las 4 anteriores. Dueño y supervisores
+      { id: "panel", label: "Panel de producción", modulo: "proyectos", soloGerencia: true },
       // Auditoría 12/11 (parte 13): las instalaciones con lugar propio, abre
       // directo el 🔧 Gantt de instalación (antes estaba escondido dentro de OT)
       { id: "instalaciones", label: "Instalaciones", modulo: "proyectos" },
@@ -98,7 +101,7 @@ export const BOTONES_GESTION = {
 
 /** El ícono de cada opción (menú de la izquierda y tarjetas del Inicio de Finanzas). */
 export const ICONO_GESTION = {
-  vivo: "🟢", ot: "📋", reportes: "📊", instalaciones: "🔧", planificacion: "📅", minuta: "📝",
+  vivo: "🟢", ot: "📋", reportes: "📊", panel: "📈", instalaciones: "🔧", planificacion: "📅", minuta: "📝",
   stock: "📦", "inventario-valorizado": "💲", movimientos: "📥", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-cuentas": "📒", "fin-sueldos": "👷", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-mayor": "📚", "fin-devengamiento": "📆", "fin-resultados": "📊", "fin-patrimonio": "⚖️", "fin-flujo": "💵", "fin-cxp": "🗂", "fin-reporte": "📑", "fin-informe-tesoreria": "🏧", "fin-cierre": "🔍", "fin-libro": "📗", "fin-config": "🧾", "fin-inversiones": "📈", "fin-cuenta-ot": "📋", "fin-unificados": "🔗", "fin-sos": "📄",
 };
 
@@ -119,7 +122,7 @@ export function conBoton(boton, empresa, usuario = null) {
 }
 
 // Los enlaces viejos a "Planta" (?screen=planta, "planta:compras") van al botón nuevo
-const PLANTA_A_BOTON = { vivo: "proyectos", ot: "proyectos", reportes: "proyectos", instalaciones: "proyectos", minuta: "proyectos", stock: "inventario", movimientos: "inventario", compras: "inventario", flota: "mantenimiento", maquinaria: "mantenimiento" };
+const PLANTA_A_BOTON = { vivo: "proyectos", ot: "proyectos", reportes: "proyectos", panel: "proyectos", instalaciones: "proyectos", minuta: "proyectos", stock: "inventario", movimientos: "inventario", compras: "inventario", flota: "mantenimiento", maquinaria: "mantenimiento" };
 
 export function esSupervisor(usuario) {
   return usuario?.rol === "administrativo" && !!usuario?.solo_su_division;

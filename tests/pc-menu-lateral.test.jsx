@@ -18,7 +18,7 @@ test("menú — los botones con sus opciones, lo no contratado con candado, y Em
   const g = gruposMenu(empresa, gerente, 3);
   assert.deepEqual(g.map((x) => x.titulo || x.id), ["inicio", "Producción", "Materiales", "Personal", "Empresa"], "sin Mantenimiento: no tiene flota ni maquinaria");
   const prod = g.find((x) => x.id === "proyectos").items;
-  assert.deepEqual(prod.map((i) => i.label), ["OT", "Reportes", "Instalaciones", "Planificación", "Minuta"]);
+  assert.deepEqual(prod.map((i) => i.label), ["OT", "Reportes", "Panel de producción", "Instalaciones", "Planificación", "Minuta"]);
   const mat = g.find((x) => x.id === "inventario").items;
   assert.deepEqual(mat.map((i) => [i.label, !!i.bloqueado]), [["Stock", false], ["Inventario valorizado", false], ["Movimientos", false], ["Compras", true]]);
   assert.equal(g.find((x) => x.id === "personal").items.find((i) => i.label === "Permisos").badge, 3);
