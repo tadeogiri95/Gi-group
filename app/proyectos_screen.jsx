@@ -594,7 +594,7 @@ export default function ProyectosScreen({ empresaId, onPlanillas = null, vistaIn
       <div className="flex flex-wrap gap-1.5 mb-3" role="group" aria-label="Cómo ver las OT">
         <Chip active={vista === "lista"} onClick={() => setVista("lista")}>Lista</Chip>
         <Chip active={vista === "tablero"} onClick={() => setVista("tablero")}>Tablero</Chip>
-        <Chip active={vista === "etapas"} onClick={() => setVista("etapas")}>🗂️ Etapas</Chip>
+        <Chip active={vista === "etapas"} onClick={() => setVista("etapas")}>🗂️ Trello</Chip>
         <Chip active={vista === "gantt"} onClick={() => setVista("gantt")}>📅 Gantt</Chip>
         <Chip active={vista === "calidad"} onClick={() => setVista("calidad")}>No conformes</Chip>
         {/* Reportes escritos de los instaladores (antes en Reportes → Obra; Tadeo, 22/11) */}
