@@ -324,3 +324,31 @@ export function linkComoLlegar(p) {
   if (!destino) return null;
   return `https://www.google.com/maps/dir/?${new URLSearchParams({ api: "1", destination: destino, travelmode: "driving" }).toString()}`;
 }
+
+// ─── Parte 4 (206): remito de cada parada ───────────────────────────────────
+
+export const AVISO_MIGRACION_REMITO = "Para el remito falta correr la migración 206 en Supabase.";
+
+/** Una parada tiene remito cuando se cumplió (entregada, parcial o rechazada). */
+export const tieneRemito = (p) => !!p && ["entregado", "parcial", "rechazado"].includes(p.estado);
+
+/** Número del remito con ceros adelante: 12 → "000012". */
+export const numeroRemito = (n) => (Number(n) > 0 ? String(Math.trunc(Number(n))).padStart(6, "0") : "");
+
+/** Quien recibió puede firmar desde el link si la parada no se rechazó y todavía no tiene firma. */
+export const puedeFirmarPorLink = (p) => tieneRemito(p) && p.estado !== "rechazado" && !p.firma_url;
+
+/** Link del remito para mandar (lo abre cualquiera que lo tenga, sin usuario de Gypi). */
+export const linkRemito = (origen, token) => (token ? `${String(origen || "").replace(/\/+$/, "")}/remito/${token}` : null);
+
+/** Mensaje para WhatsApp o mail con el link del remito. */
+export function textoRemito({ empresa = "", numero, nombre = "", url, firmar = false } = {}) {
+  const de = empresa ? ` de ${empresa}` : "";
+  const que = `Remito N° ${numeroRemito(numero)}${de}${nombre ? ` (${nombre})` : ""}`;
+  return firmar
+    ? `Hola, te mandamos el ${que}. Por favor, firmalo desde este link: ${url}`
+    : `Hola, te mandamos el ${que}. Lo podés ver y bajar en PDF desde este link: ${url}`;
+}
+
+export const linkWhatsapp = (texto) => `https://wa.me/?text=${encodeURIComponent(texto)}`;
+export const linkMail = ({ asunto, cuerpo }) => `mailto:?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;

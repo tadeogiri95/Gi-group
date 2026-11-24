@@ -20,6 +20,10 @@
 //                    Se puede corregir mientras el viaje no terminó. Si el
 //                    viaje no había salido, sale en ese momento.
 //   viaje_terminar → con todas las paradas cumplidas
+// Parte 4 (206). También el chofer del viaje (o quien gestiona Logística):
+//   remito_preparar → número correlativo y link del remito de una parada
+//                     cumplida (si ya los tenía, los mismos)
+//   remito_datos    → número del remito oficial (ARCA) y COT
 // La lectura va por /api/data (logistica_lugares, logistica_viajes y
 // logistica_paradas, solo lectura; proyectos).
 // Con RLS_RUTAS=on todo va con el pase del usuario ({ sesion }).
@@ -33,12 +37,18 @@ import { rechazarSiSinPlan } from "../../lib/planEnforcement";
 import { requireModuloSesion } from "../../lib/accesosServidor";
 import {
   puedeGestionarLogistica, puedeHacerViaje, faltaParaCumplir, avanceViaje, viajeEditable, obrasDeOts,
-  AVISO_MIGRACION_LOGISTICA, AVISO_MIGRACION_VIAJES, AVISO_MIGRACION_MIS_VIAJES,
+  AVISO_MIGRACION_LOGISTICA, AVISO_MIGRACION_VIAJES, AVISO_MIGRACION_MIS_VIAJES, AVISO_MIGRACION_REMITO, tieneRemito,
 } from "../../lib/logistica";
+import { tokenRemito } from "../../lib/logisticaRemitoServidor";
 import { logger } from "../../lib/logger";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const ACCIONES_CHOFER = new Set(["viaje_salir", "parada_cumplir", "viaje_terminar"]);
+const ACCIONES_CHOFER = new Set(["viaje_salir", "parada_cumplir", "viaje_terminar", "remito_preparar", "remito_datos"]);
+
+function faltaMigracionRemito(err) {
+  const m = String(err?.message);
+  return /remito_numero|remito_oficial|\bcot\b|\btoken\b|firmada_link_at/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m);
+}
 
 function faltaMigracionMisViajes(err) {
   const m = String(err?.message);
@@ -256,6 +266,46 @@ async function terminarViaje(sesion, { id }) {
   return NextResponse.json({ ok: true, viaje: v });
 }
 
+/** La parada con su viaje, si esta persona la puede ver y tiene remito. */
+async function paradaConRemito(sesion, id) {
+  const [p] = (await sbGet(`logistica_paradas?id=eq.${id}&empresa_id=eq.${sesion.empresa_id}&select=id,viaje_id,estado,remito_numero,token,remito_oficial,cot`, { sesion })) || [];
+  if (!p) return { error: noEncontrado("esa parada") };
+  const { error } = await viajeDelChofer(sesion, p.viaje_id);
+  if (error) return { error };
+  if (!tieneRemito(p)) return { error: NextResponse.json({ error: "El remito sale cuando la parada se entregó, se entregó una parte o se rechazó" }, { status: 409 }) };
+  return { parada: p };
+}
+
+async function prepararRemito(sesion, { id }) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const { parada, error } = await paradaConRemito(sesion, id);
+  if (error) return error;
+  if (parada.remito_numero && parada.token) return NextResponse.json({ ok: true, parada });
+  // Número correlativo por empresa; si dos se piden a la vez, el segundo toma el siguiente
+  for (let intento = 0; intento < 3; intento++) {
+    const [ultimo] = parada.remito_numero ? [] : (await sbGet(`logistica_paradas?empresa_id=eq.${e}&remito_numero=not.is.null&select=remito_numero&order=remito_numero.desc&limit=1`, opts)) || [];
+    const fila = { remito_numero: parada.remito_numero || (ultimo?.remito_numero || 0) + 1, token: parada.token || tokenRemito() };
+    try {
+      const [p] = (await sbPatch(`logistica_paradas?id=eq.${parada.id}&empresa_id=eq.${e}`, fila, opts)) || [];
+      broadcastRefresh(e, "logistica_viajes");
+      return NextResponse.json({ ok: true, parada: p || { ...parada, ...fila } });
+    } catch (err) {
+      if (!String(err?.message).includes("23505") || intento === 2) throw err;
+    }
+  }
+  return NextResponse.json({ error: "No se pudo numerar el remito. Probá de nuevo." }, { status: 409 });
+}
+
+async function datosRemitoOficial(sesion, d) {
+  const e = sesion.empresa_id;
+  const { parada, error } = await paradaConRemito(sesion, d.id);
+  if (error) return error;
+  const [p] = (await sbPatch(`logistica_paradas?id=eq.${parada.id}&empresa_id=eq.${e}`, { remito_oficial: d.remito_oficial, cot: d.cot }, { sesion })) || [];
+  broadcastRefresh(e, "logistica_viajes");
+  return NextResponse.json({ ok: true, parada: p || { ...parada, remito_oficial: d.remito_oficial, cot: d.cot } });
+}
+
 export async function POST(request) {
   try {
     const sesion = await validarToken(request);
@@ -282,8 +332,11 @@ export async function POST(request) {
       if (d.accion === "viaje_salir") return await salirViaje(sesion, d);
       if (d.accion === "parada_cumplir") return await cumplirParada(sesion, d);
       if (d.accion === "viaje_terminar") return await terminarViaje(sesion, d);
+      if (d.accion === "remito_preparar") return await prepararRemito(sesion, d);
+      if (d.accion === "remito_datos") return await datosRemitoOficial(sesion, d);
       return await direccionObra(sesion, d);
     } catch (err) {
+      if (faltaMigracionRemito(err)) return NextResponse.json({ error: AVISO_MIGRACION_REMITO }, { status: 409 });
       if (faltaMigracionMisViajes(err)) return NextResponse.json({ error: AVISO_MIGRACION_MIS_VIAJES }, { status: 409 });
       if (faltaMigracionViajes(err)) return NextResponse.json({ error: AVISO_MIGRACION_VIAJES }, { status: 409 });
       if (faltaMigracion(err)) return NextResponse.json({ error: AVISO_MIGRACION_LOGISTICA }, { status: 409 });

@@ -16,20 +16,22 @@ import { coordsValidas } from "../lib/ubicacion";
 import {
   ACCIONES_PARADA, AVISO_MIGRACION_VIAJES, ESTADOS_VIAJE, MAX_PARADAS, TIPOS_LUGAR, TIPOS_VIAJE, accionParada, accionPorTipo,
   choquesDelDia, kmEnLineaRecta, moverParada, obrasDeOts, ordenarPorCercania, puedeGestionarLogistica,
-  textoUbicacion, tipoLugar, tipoViaje, viajeEditable, avanceViaje, estadoParada, viajeEnCurso,
+  textoUbicacion, tipoLugar, tipoViaje, viajeEditable, avanceViaje, estadoParada, viajeEnCurso, tieneRemito, numeroRemito,
 } from "../lib/logistica";
 import { Chip, FilaDeslizable } from "./ui";
 import { postLogistica } from "./LogisticaScreen";
 import BotonesRecorrido from "./LogisticaRecorrido";
 import MisViajes from "./MisViajes";
 import FotoViewer from "./FotoViewer";
+import RemitoParada from "./RemitoParada";
 
 const horaDe = (ts) => (ts ? new Date(ts).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "America/Argentina/Buenos_Aires" }) : "");
 const cantTexto = (n) => String(Math.round(Number(n || 0) * 100) / 100).replace(".", ",");
 
 /** Cómo terminó una parada (parte 3): lo entregado, el motivo, las fotos y la firma. */
-function ResultadoParada({ p, empleados }) {
+function ResultadoParada({ p, empleados, onCambio }) {
   const [viendo, setViendo] = useState(null);
+  const [remito, setRemito] = useState(false);
   if (!p.estado || p.estado === "pendiente") return null;
   const e = estadoParada(p.estado, p.accion);
   const quien = empleados.find((x) => x.id === p.hecha_por)?.nombre;
@@ -57,6 +59,13 @@ function ResultadoParada({ p, empleados }) {
       )}
       {p.firma_url && (p.firma_nombre || p.firma_dni) && <span className="block text-[12px] text-gypi-dim">Firmó {[p.firma_nombre, p.firma_dni && `DNI ${p.firma_dni}`].filter(Boolean).join(", ")}</span>}
       {p.sin_firma && <span className="block text-[12px]">✍️ Sin firma: no había nadie para firmar</span>}
+      {p.firmada_link_at && <span className="block text-[12px] text-gypi-dim">Firmó después, desde el link del remito</span>}
+      {tieneRemito(p) && (
+        <button type="button" className="g-btn g-btn-secondary !min-h-[40px] mt-1 text-[13px]" onClick={() => setRemito(true)} aria-label={`Remito de ${p.nombre}`}>
+          📄 Remito{p.remito_numero ? ` N° ${numeroRemito(p.remito_numero)}` : ""}{p.remito_oficial ? ` · oficial ${p.remito_oficial}` : ""}
+        </button>
+      )}
+      {remito && <RemitoParada parada={p} onCerrar={() => setRemito(false)} onCambio={onCambio} />}
       {viendo !== null && <FotoViewer fotos={p.fotos} index={viendo} onClose={() => setViendo(null)} onNav={setViendo} />}
     </span>
   );
@@ -358,7 +367,7 @@ function FichaViaje({ viaje, paradas, lugares, vehiculos, empleados, editable, u
               <span className="block text-[12px] text-gypi-dim">{[p.ots?.length ? `OT ${p.ots.join(", ")}` : null, p.cliente].filter(Boolean).join(" · ")}</span>
               <span className="block text-[12px]">{textoUbicacion(p)}</span>
               {p.notas && <span className="block text-[12px]">📝 {p.notas}</span>}
-              <ResultadoParada p={p} empleados={empleados} />
+              <ResultadoParada p={p} empleados={empleados} onCambio={onCambio} />
             </span>
           </li>
         ))}

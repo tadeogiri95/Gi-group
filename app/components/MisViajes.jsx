@@ -16,8 +16,9 @@ import { hoyArg } from "../lib/dates";
 import { fotoBase64, subirImagen } from "../lib/foto";
 import {
   AVISO_MIGRACION_VIAJES, ESTADOS_VIAJE, MAX_FOTOS, accionParada, avanceViaje, estadoParada, faltaParaCumplir,
-  linkComoLlegar, misViajes, renglonesDeOts, resultadoDeRenglones, textoUbicacion, tipoViaje, viajeEnCurso,
+  linkComoLlegar, misViajes, renglonesDeOts, resultadoDeRenglones, textoUbicacion, tipoViaje, viajeEnCurso, tieneRemito,
 } from "../lib/logistica";
+import RemitoParada from "./RemitoParada";
 import { Chip } from "./ui";
 import BotonesRecorrido from "./LogisticaRecorrido";
 import FirmaDedo from "./FirmaDedo";
@@ -303,7 +304,7 @@ function CumplirParada({ parada, lugar, onVolver, onGuardada }) {
 }
 
 /** Un viaje: recorrido, salir, las paradas y terminar. */
-function ViajeChofer({ viaje, paradas, lugares, onVolver, onAbrirParada, onCambio, volverLabel }) {
+function ViajeChofer({ viaje, paradas, lugares, onVolver, onAbrirParada, onAbrirRemito, onCambio, volverLabel }) {
   const [error, setError] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const t = tipoViaje(viaje.tipo);
@@ -354,6 +355,11 @@ function ViajeChofer({ viaje, paradas, lugares, onVolver, onAbrirParada, onCambi
                 </span>
                 <span className="text-[12px] whitespace-nowrap">{proxima ? "👉 Sigue" : `${e.emoji} ${e.label}`}</span>
               </button>
+              {tieneRemito(p) && (
+                <button type="button" className="g-btn g-btn-secondary !min-h-[40px] mt-1 ml-9 text-[13px]" onClick={() => onAbrirRemito(p.id)} aria-label={`Remito de la parada ${p.orden}`}>
+                  📄 Remito{p.sin_firma && !p.firma_url ? " · falta firma" : ""}
+                </button>
+              )}
             </li>
           );
         })}
@@ -374,13 +380,14 @@ function ViajeChofer({ viaje, paradas, lugares, onVolver, onAbrirParada, onCambi
  * Pantalla de Mis viajes. Con `viajeId` abre directo ese viaje (desde la
  * ficha del Dueño); si no, los viajes del chofer.
  */
-export default function MisViajes({ empleadoId, viajeId = null, onClose, onCambio }) {
+export default function MisViajes({ empleadoId, viajeId = null, empresaNombre = "", onClose, onCambio }) {
   useEscape(onClose);
   const [viajes, setViajes] = useState(null);
   const [paradas, setParadas] = useState([]);
   const [lugares, setLugares] = useState([]);
   const [abierto, setAbierto] = useState(viajeId);
   const [parada, setParada] = useState(null);
+  const [remitoDe, setRemitoDe] = useState(null);
   const [error, setError] = useState(null);
 
   const cargar = useCallback(async () => {
@@ -413,11 +420,16 @@ export default function MisViajes({ empleadoId, viajeId = null, onClose, onCambi
   else if (laParada && viaje) {
     cuerpo = (
       <CumplirParada key={laParada.id} parada={laParada} lugar={lugares.find((l) => l.id === laParada.lugar_id)} onVolver={() => setParada(null)}
-        onGuardada={async () => { setParada(null); await recargar(); }} />
+        onGuardada={async (guardada) => {
+          setParada(null);
+          await recargar();
+          // Si no había nadie para firmar, el remito queda a mano para mandar el link
+          if (guardada?.sin_firma && guardada?.id) setRemitoDe(guardada.id);
+        }} />
     );
   } else if (viaje) {
     cuerpo = (
-      <ViajeChofer viaje={viaje} paradas={paradasDe(viaje.id)} lugares={lugares} onAbrirParada={setParada} onCambio={recargar}
+      <ViajeChofer viaje={viaje} paradas={paradasDe(viaje.id)} lugares={lugares} onAbrirParada={setParada} onAbrirRemito={setRemitoDe} onCambio={recargar}
         onVolver={viajeId ? null : () => setAbierto(null)} volverLabel="Mis viajes" />
     );
   } else if (!viajes.length) {
@@ -459,6 +471,9 @@ export default function MisViajes({ empleadoId, viajeId = null, onClose, onCambi
         {error && <div role="alert" className="text-[13px] text-gypi-red mb-2">{error}</div>}
         {cuerpo}
       </div>
+      {remitoDe && paradas.find((x) => x.id === remitoDe) && (
+        <RemitoParada parada={paradas.find((x) => x.id === remitoDe)} empresaNombre={empresaNombre} onCerrar={() => setRemitoDe(null)} onCambio={recargar} />
+      )}
     </div>
   );
 }
