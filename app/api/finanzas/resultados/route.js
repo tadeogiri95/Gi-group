@@ -19,6 +19,12 @@
 // antes del "desde"), su fecha de entrega del Plan o, si ENTREGA no es una
 // fecha, el último día de su SEMANA. Van en un renglón aparte de Entregas.
 //
+// Entregas del Plan (24/11): las OT terminadas CON precio que no tienen
+// entrega anotada (entraron a Gypi antes de la fecha de inicio de Ventas)
+// suman su PRECIO en el mes de su ENTREGA del Plan, en un renglón aparte;
+// las que ya figuran en una entrega del libro se saltean y se listan
+// (plan_ot y plan_en_libro_ot). Ver app/lib/finanzasEntregasPlan.js.
+//
 // 20/11: trae plazos_sin_interes { cantidad, importe, certificados }: los
 // plazos fijos vencidos cuyo interés todavía no está registrado (aviso).
 //
@@ -32,6 +38,7 @@ import { hoyAr } from "../../../lib/finanzasOperaciones";
 import { logger } from "../../../lib/logger";
 import { materialesRealesDeOts } from "../../../lib/costoRealServidor";
 import { entregasEstimadas, MOTIVOS_NO_ESTIMADA } from "../../../lib/finanzasEntregasEstimadas";
+import { entregasDelPlan } from "../../../lib/finanzasEntregasPlan";
 import { plazosSinInteres } from "../../../lib/finanzasPlazosFijosServidor";
 import { CLAVE_RESULTADOS, configResultados, estadoResultados, finDeMes, mesesHasta, resumenDivisiones, validarPonderador } from "../../../lib/finanzasResultados";
 
@@ -84,10 +91,14 @@ export async function GET(request) {
       leer(sesion, `fin_centros_costo?empresa_id=eq.${e}&select=codigo,division`).catch(() => []),
     ]);
     // Las OT terminadas sin precio en el Plan, con su valor estimado (13/11)
-    const { estimadas, noEstimadas } = await entregasEstimadas(sesion, `${meses[0]}-01`, finDeMes(hasta));
+    const [{ estimadas, noEstimadas }, plan] = await Promise.all([
+      entregasEstimadas(sesion, `${meses[0]}-01`, finDeMes(hasta)),
+      // Las OT terminadas con precio sin entrega anotada (24/11)
+      entregasDelPlan(sesion, `${meses[0]}-01`, finDeMes(hasta)),
+    ]);
     // Costo real de materiales de cada OT entregada (auditoría 12/11, parte 4), si el Dueño lo eligió
-    const materialesOt = config.materiales_real ? await materialesDeEntregas(e, ops || [], cuentas || [], estimadas.map((x) => x.proyecto_id)) : null;
-    const base = { ops: ops || [], cuentas: cuentas || [], proyectos: proyectos || [], centros: centros || [], hasta, materialesPct: config.materiales_pct, ponderador: config.ponderador, materialesOt, entregasEstimadas: estimadas };
+    const materialesOt = config.materiales_real ? await materialesDeEntregas(e, ops || [], cuentas || [], [...estimadas, ...plan.entregas].map((x) => x.proyecto_id)) : null;
+    const base = { ops: ops || [], cuentas: cuentas || [], proyectos: proyectos || [], centros: centros || [], hasta, materialesPct: config.materiales_pct, ponderador: config.ponderador, materialesOt, entregasEstimadas: estimadas, entregasPlan: plan.entregas };
     const pedida = q.get("division") || "";
     const division = Object.keys(config.ponderador).includes(pedida) ? pedida : "";
     const estado = estadoResultados({ ...base, division });
@@ -100,7 +111,8 @@ export async function GET(request) {
       .sort((a, b) => a.motivo.localeCompare(b.motivo) || (a.fecha || "").localeCompare(b.fecha || "") || a.ot.localeCompare(b.ot));
     // 20/11: plazos fijos vencidos sin el interés registrado (no entran en el resultado)
     const plazos_sin_interes = await plazosSinInteres(sesion).catch(() => null);
-    return NextResponse.json({ hasta, config, division, divisiones, por_division, estimadas_ot, no_estimadas_ot, plazos_sin_interes, ...estado });
+    const plan_ot = plan.entregas.map(({ ot, cliente, fecha, valor }) => ({ ot, cliente, fecha, valor }));
+    return NextResponse.json({ hasta, config, division, divisiones, por_division, estimadas_ot, no_estimadas_ot, plan_ot, plan_en_libro_ot: plan.enLibro, plazos_sin_interes, ...estado });
   } catch (err) {
     if (falta179(err)) return NextResponse.json({ error: FALTA_179, falta_migracion: 179 }, { status: 409 });
     return errorFinanzas(err, "resultados GET");

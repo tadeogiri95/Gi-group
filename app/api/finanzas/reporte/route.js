@@ -17,6 +17,7 @@ import { CLAVE_RESULTADOS, configResultados } from "../../../lib/finanzasResulta
 import { CLAVE_FLUJO, validarLineasFlujo } from "../../../lib/finanzasFlujo";
 import { errorPeriodo, periodoReporte, reporteFinanciero } from "../../../lib/finanzasReporte";
 import { entregasEstimadas } from "../../../lib/finanzasEntregasEstimadas";
+import { entregasDelPlan } from "../../../lib/finanzasEntregasPlan";
 
 const COLUMNAS = "id,fecha,tipo,proveedor_id,cliente_id,entidad,proyecto_id,centro_costo,neto,total,total_ars,moneda,cuenta_debe,cuenta_haber,estado,origen,origen_id,anulada_at";
 const leer = (sesion, path, maxFilas = 5000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data || []);
@@ -49,9 +50,11 @@ export async function GET(request) {
     ]);
     // Las OT terminadas sin precio en el Plan, con su valor estimado (18/11)
     const { estimadas } = await entregasEstimadas(sesion, periodo.desde, periodo.hasta);
+    // Las OT terminadas con precio sin entrega anotada, por su PRECIO (24/11)
+    const plan = await entregasDelPlan(sesion, periodo.desde, periodo.hasta);
     const reporte = reporteFinanciero({
       tipo, fecha, hasta, ops, cuentas, tesoreria, proyectos, centros, lineas: validarLineasFlujo(cfgFlujo || {}),
-      materialesPct: configResultados(cfgRes).materiales_pct, cheques, clientes, proveedores, hoy, entregasEstimadas: estimadas,
+      materialesPct: configResultados(cfgRes).materiales_pct, cheques, clientes, proveedores, hoy, entregasEstimadas: estimadas, entregasPlan: plan.entregas,
     });
     return NextResponse.json({ ...reporte, empresa: empresas?.[0]?.nombre || "" });
   } catch (err) {

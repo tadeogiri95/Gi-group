@@ -195,10 +195,11 @@ const esDeResultado = (c) => /resultado/i.test(String(c.rubro || "")) || /^0[45]
 
 /**
  * El estado de resultados.
- * @param {{ ops: object[], cuentas: object[], proyectos?: object[], hasta: string, materialesPct?: number, entregasEstimadas?: { proyecto_id: number, fecha: string, valor: number }[] }} d
+ * @param {{ ops: object[], cuentas: object[], proyectos?: object[], hasta: string, materialesPct?: number, entregasEstimadas?: { proyecto_id: number, fecha: string, valor: number }[], entregasPlan?: { proyecto_id: number, fecha: string, valor: number }[] }} d
+ *   entregasPlan: OT terminadas CON precio que no tienen entrega anotada (24/11), en su mes de ENTREGA del Plan
  * @returns {{ meses: string[], filas: object[], sin_linea: object[], para_revisar: number, clasificado: boolean, materiales_estimados: boolean }}
  */
-export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centros = [], hasta, materialesPct = MATERIALES_PCT, ponderador = {}, division = "", materialesOt = null, entregasEstimadas = [] }) {
+export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centros = [], hasta, materialesPct = MATERIALES_PCT, ponderador = {}, division = "", materialesOt = null, entregasEstimadas = [], entregasPlan = [] }) {
   const meses = mesesHasta(hasta);
   const idx = new Map(meses.map((m, i) => [m, i]));
   const porCodigo = new Map(cuentas.map((c) => [c.codigo, c]));
@@ -268,6 +269,32 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
     }
     sumar(op.cuenta_debe, op, 1, f);
     sumar(op.cuenta_haber, op, -1, f);
+  }
+
+  // OT terminadas con PRECIO sin entrega anotada (24/11): por su PRECIO, en
+  // el mes de su ENTREGA del Plan; renglón aparte por división
+  let planOt = 0;
+  for (const x of entregasPlan) {
+    const i = idx.get(String(x.fecha || "").slice(0, 7));
+    const valor = Number(x.valor) || 0;
+    if (i === undefined || !(valor > 0) || !x.proyecto_id) continue;
+    const pid = Number(x.proyecto_id);
+    // Si ya tiene su entrega anotada, no se cuenta dos veces
+    if (entregaOt.has(pid)) continue;
+    const f = factor({ proyecto_id: pid });
+    if (!f) continue;
+    const div = divisionOt.get(pid) || "";
+    const k = `entregas|plan|${div}`;
+    let l = lineas.get(k);
+    if (!l) {
+      const nombre = "Entregas con precio del Plan (OT sin entrega anotada)";
+      l = { cuenta: null, linea: "ING_ENT_PLAN", division: div, nombre: div ? `${nombre} · ${div}` : nombre, seccion: "ING", origen: "ING", grupo: "ENT", entregaPlan: true, valores: cero() };
+      lineas.set(k, l);
+    }
+    l.valores[i] += valor * f;
+    entregaOt.set(pid, cero());
+    entregaOt.get(pid)[i] += valor * f;
+    planOt += 1;
   }
 
   // Entregas sin precio en el Plan, con su valor estimado: renglón aparte por división
@@ -370,7 +397,7 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
         filas.push({ tipo: "grupo", id: `${sec.id}_${g}`, seccion: sec.id, nombre: conNombre || deG[0].grupo || "Otros", valores: redondear(tG), total: total(tG) });
       }
       for (const l of deG) {
-        filas.push({ tipo: "linea", id: `${l.cuenta || l.linea}|${l.division}`, seccion: sec.id, grupo: l.grupo, cuenta: l.cuenta, nombre: l.nombre, estimado: !!l.estimado, ...(l.entregaEstimada ? { entrega_estimada: true } : {}), valores: redondear(l.valores), total: total(l.valores) });
+        filas.push({ tipo: "linea", id: `${l.cuenta || l.linea}|${l.division}`, seccion: sec.id, grupo: l.grupo, cuenta: l.cuenta, nombre: l.nombre, estimado: !!l.estimado, ...(l.entregaEstimada ? { entrega_estimada: true } : {}), ...(l.entregaPlan ? { entrega_plan: true } : {}), valores: redondear(l.valores), total: total(l.valores) });
       }
     }
     const resultado = (id, nombre, vals, base) => {
@@ -394,6 +421,7 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
     clasificado: cuentas.some((c) => c.linea_eerr),
     materiales_estimados: estimados,
     entregas_estimadas: estimadasOt,
+    entregas_plan: planOt,
     hay_entregas: [...lineas.values()].some((l) => l.origen === "ING" && l.grupo === "ENT" && l.valores.some((v) => Math.abs(v) >= 0.01)),
   };
 }
