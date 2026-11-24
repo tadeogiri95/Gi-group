@@ -183,6 +183,30 @@ export function planHorizonte({ trabajos, dias, params, base = "objetivo", modo,
 }
 
 /**
+ * Quién trabaja cada día de horas extra y dónde (Tadeo, 24/11: "la cantidad
+ * de personas y dónde van a trabajar esas horas extra"). Un día extra dura lo
+ * que el día más largo de la grilla (jornada); las personas de cada proceso
+ * son sus horas de gente ese día sobre la jornada, redondeado para arriba
+ * (en la canteadora con 2 personas, la máquina ocupa a las 2).
+ * @param {{ fecha: string, horas: number }[]} diasExtra  los de planHorizonte
+ * @param {{ fecha: string, etapa: string, gente: number }[]} segmentos
+ * @param {number} jornada  horas del día extra
+ * @returns {{ fecha, horas, personas, procesos: { etapa, nombre, horas, personas }[] }[]}
+ */
+export function genteHorasExtra(diasExtra = [], segmentos = [], jornada = 8) {
+  const largo = jornada > EPS ? jornada : 8;
+  return (diasExtra || []).map((d) => {
+    const porEtapa = new Map();
+    for (const s of segmentos || []) if (s.fecha === d.fecha) porEtapa.set(s.etapa, (porEtapa.get(s.etapa) || 0) + (Number(s.gente) || 0));
+    const procesos = ETAPAS_PLAN.filter(({ id }) => (porEtapa.get(id) || 0) > EPS).map(({ id, nombre }) => {
+      const horas = porEtapa.get(id);
+      return { etapa: id, nombre, horas, personas: Math.max(1, Math.ceil(horas / largo - 0.05)) };
+    });
+    return { fecha: d.fecha, horas: d.horas, personas: procesos.reduce((t, x) => t + x.personas, 0), procesos };
+  });
+}
+
+/**
  * Orden más eficiente de las OT tildadas ("⚡ Ordenar de la forma más eficiente", Tadeo
  * 27/10). Arranca por la fecha objetivo más cercana (las sin semana al final)
  * y prueba cambiar de lugar OT vecinas mientras mejore, con la capacidad
