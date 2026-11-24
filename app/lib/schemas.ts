@@ -1260,3 +1260,37 @@ export const minutasBody = z.discriminatedUnion("accion", [
   // Seguimiento (parte M3): ✓ Resuelto de un renglón, o feedback revisado el jueves
   z.object({ accion: z.literal("resolver"), id: uuid, resuelto: z.boolean() }).strict(),
 ]);
+
+// ─── Logística (pedido de Tadeo, 23/11) ─────────────────────────────────────
+// Parte 1 (203): lugares con su dirección y pin, y la dirección de la obra de
+// las OT. Sin pin se puede guardar solo la dirección (y al revés).
+const latitud = z.number().min(-90).max(90).nullable().optional().transform((v) => v ?? null);
+const longitud = z.number().min(-180).max(180).nullable().optional().transform((v) => v ?? null);
+const conPinCompleto = (d: { lat: number | null; lng: number | null }) => (d.lat === null) === (d.lng === null);
+const MENSAJE_PIN = { message: "El pin necesita latitud y longitud", path: ["lat"] };
+
+export const logisticaBody = z.discriminatedUnion("accion", [
+  z.object({
+    accion: z.literal("lugar_guardar"),
+    id: idFlota.optional(),
+    nombre: z.string().trim().min(1, "Poné el nombre").max(120),
+    tipo: z.enum(["planta", "deposito", "proveedor", "cliente", "otro"]),
+    direccion: textoSuelto(300),
+    lat: latitud,
+    lng: longitud,
+    proveedor_id: idFlota.nullable().optional().transform((v) => v ?? null),
+    contacto: textoSuelto(120),
+    telefono: textoSuelto(40),
+    horario: textoSuelto(120),
+    notas: textoSuelto(500),
+  }).strict().refine(conPinCompleto, MENSAJE_PIN),
+  z.object({ accion: z.literal("lugar_baja"), id: idFlota, activo: z.boolean() }).strict(),
+  // La dirección de la obra va en cada OT: la de una sola o la de todas las de la obra
+  z.object({
+    accion: z.literal("obra_direccion"),
+    ot_ids: z.array(idFlota).min(1).max(200),
+    direccion: textoSuelto(300),
+    lat: latitud,
+    lng: longitud,
+  }).strict().refine(conPinCompleto, MENSAJE_PIN),
+]);

@@ -30,6 +30,8 @@ export const MODULOS = {
   compras:       { id: "compras",       nombre: "Compras",               disponible: true,  descripcion: "Pedidos de material, órdenes de compra, recepción y facturas." },
   flota:         { id: "flota",         nombre: "Flota",                 disponible: true,  descripcion: "Vehículos, papeles, checklist, alertas y arreglos." },
   maquinaria:    { id: "maquinaria",    nombre: "Maquinaria",            disponible: true,  descripcion: "Máquinas, plan de mantenimiento, checklists y alertas." },
+  // Logística (203): viajes con remito firmado, recorrido y lugares
+  logistica:     { id: "logistica",     nombre: "Logística",             disponible: true,  descripcion: "Viajes de abastecimiento, internos y de entrega, remitos firmados y recorridos." },
   minutas:       { id: "minutas",       nombre: "Minutas",               disponible: true,  descripcion: "Minuta de la reunión diaria, seguimiento de lo que se pide y reportes." },
   // Finanzas (F1, 171): solo la ve el rol Dueño
   finanzas:      { id: "finanzas",      nombre: "Finanzas",              disponible: true,  descripcion: "Cajas, bancos, cheques, cuentas corrientes y el libro de operaciones. Solo para el dueño." },
@@ -41,9 +43,9 @@ export const MODULOS = {
 };
 
 // Módulos que vienen con otro: Stock, Compras, Flota, Maquinaria (132) y
-// Minutas (150) y Finanzas (171) se contratan con las OT (plan Planta) y cada
+// Minutas (150), Finanzas (171) y Logística (203) se contratan con las OT (plan Planta) y cada
 // uno se puede apagar por separado.
-export const INCLUIDOS_CON = { proyectos: ["stock", "compras", "flota", "maquinaria", "minutas", "finanzas"] };
+export const INCLUIDOS_CON = { proyectos: ["stock", "compras", "flota", "maquinaria", "logistica", "minutas", "finanzas"] };
 
 // Lo que la empresa no puede apagar. Fichaje sí se apaga (2026-10): hay
 // empresas con su propio control de acceso que no quieren que el personal

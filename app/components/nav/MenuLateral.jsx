@@ -11,7 +11,7 @@ import { GRUPOS_FINANZAS } from '../../lib/finanzasInicio';
 
 const ICONO = ICONO_GESTION;
 // Finanzas (171) solo aparece para el Dueño
-const BOTONES = ['proyectos', 'inventario', 'mantenimiento', 'finanzas'];
+const BOTONES = ['proyectos', 'inventario', 'mantenimiento', 'logistica', 'finanzas'];
 
 /** La opción que está abierta en un botón: la elegida o la primera que la empresa tiene. */
 export function opcionAbierta(boton, empresa, usuario, seccion) {

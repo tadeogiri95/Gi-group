@@ -18,6 +18,9 @@ export default function LeafletMap({ lat, lng, zoom = 14, radio = 150, onMapClic
   const mapRef = useRef(null);
   const markerRef = useRef(null);
   const circleRef = useRef(null);
+  // El último onMapClick (no el del primer render): así no pisa lo que cambió después
+  const clickRef = useRef(onMapClick);
+  clickRef.current = onMapClick;
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -28,9 +31,10 @@ export default function LeafletMap({ lat, lng, zoom = 14, radio = 150, onMapClic
     }).addTo(map);
 
     const marker = L.marker([lat, lng], { icon: ICON }).addTo(map);
-    const circle = L.circle([lat, lng], { radius: radio, color: "#00D1B2", fillColor: "#00D1B2", fillOpacity: 0.15, weight: 2 }).addTo(map);
+    // radio 0: solo el pin, sin el círculo de la zona (Logística, 203)
+    const circle = radio > 0 ? L.circle([lat, lng], { radius: radio, color: "#00D1B2", fillColor: "#00D1B2", fillOpacity: 0.15, weight: 2 }).addTo(map) : null;
 
-    map.on("click", (e) => { onMapClick?.(e.latlng.lat, e.latlng.lng); });
+    map.on("click", (e) => { clickRef.current?.(e.latlng.lat, e.latlng.lng); });
 
     mapRef.current = map;
     markerRef.current = marker;
@@ -48,6 +52,11 @@ export default function LeafletMap({ lat, lng, zoom = 14, radio = 150, onMapClic
     circleRef.current?.setRadius(radio);
     mapRef.current.setView([lat, lng], mapRef.current.getZoom());
   }, [lat, lng, radio]);
+
+  // Al poner el primer pin, acercar (Logística, 203)
+  useEffect(() => {
+    if (mapRef.current && mapRef.current.getZoom() !== zoom) mapRef.current.setZoom(zoom);
+  }, [zoom]);
 
   return <div ref={containerRef} style={{ width: "100%", height: "100%" }} />;
 }

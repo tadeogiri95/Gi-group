@@ -86,6 +86,7 @@ export const POLICY = {
   maquina_tareas:               { GET: "all" },   // plan de cada máquina; se escribe por /api/maquinaria (parte 33)
   maquina_registros:            { GET: "all" },   // tareas hechas; se escribe por /api/maquinaria (parte 33)
   maquina_fallas:               { GET: "all" },   // el responsable ve las de sus máquinas; se escribe por /api/maquinaria (parte 35)
+  logistica_lugares:            { GET: "all" },   // Logística parte 1 (203): se escribe por /api/logistica
   necesidades_stock:            { GET: "all" },   // la copia la sincronización de la planilla MRP (Stock parte 16)
   bultos_ot:                    { GET: "all" },   // se escribe por /api/carga (OP parte 10)
   cargas_ot:                    { GET: "all" },   // se escribe por /api/carga (OP parte 10)

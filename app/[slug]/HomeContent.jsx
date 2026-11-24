@@ -71,12 +71,13 @@ const EscanearPiezas = dynamic(() => import("../components/EscanearPiezas"), { s
 const VALID_SCREENS = new Set([
   "home", "chat", "solicitudes", "mis-sols", "actividad",
   "historial-fichajes", "equipo", "config", "ger-actividad", "reglas",
-  "proyectos", "inventario", "mantenimiento", "finanzas",
+  "proyectos", "inventario", "mantenimiento", "logistica", "finanzas",
   "documentos", "instalaciones", "cuenta",
 ]);
 // Botones de la barra de gestión con pestañas (menú nuevo, parte 32)
 // Finanzas (171, solo el Dueño) no tiene botón en la barra de abajo: se abre desde Más
-const BOTONES = new Set(["proyectos", "inventario", "mantenimiento", "finanzas"]);
+// Logística (203) es un botón más, entre Mantenimiento y Finanzas
+const BOTONES = new Set(["proyectos", "inventario", "mantenimiento", "logistica", "finanzas"]);
 // Permisos, Equipo y Finanzas se abren desde "Más": ahí la barra marca "Más"
 const DESDE_MAS = new Set(["solicitudes", "equipo"]);
 

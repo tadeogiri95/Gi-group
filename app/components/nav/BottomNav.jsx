@@ -13,6 +13,7 @@ const Icons = {
   clipboard: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>,
   box: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>,
   wrench: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>,
+  truck: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>,
   wallet: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 7H5a2 2 0 0 1 0-4h13v4"/><path d="M3 5v14a2 2 0 0 0 2 2h15V7"/><circle cx="16" cy="14" r="1.5"/></svg>,
   history: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
 };
@@ -23,7 +24,7 @@ const tiene = (modulos, ...ids) => !Array.isArray(modulos) || ids.some((m) => mo
 
 export function getItems(role, pend, modulos, { instalador = false, mantenimiento = false } = {}) {
   // Gestión (menú nuevo, parte 32; nombres de la auditoría 01/11): Inicio · Producción · Materiales ·
-  // Mantenimiento · Finanzas (solo el Dueño) · Más. Cada botón del medio aparece si la empresa tiene
+  // Mantenimiento · Logística · Finanzas (solo el Dueño) · Más. Cada botón del medio aparece si la empresa tiene
   // alguno de sus módulos. Permisos y Equipo pasaron a "Más", que lleva el
   // número de permisos pendientes.
   if (role === 'gerencial' || role === 'administrativo') {
@@ -33,6 +34,8 @@ export function getItems(role, pend, modulos, { instalador = false, mantenimient
       conBoton('proyectos', empresa) && { id: 'proyectos', label: 'Producción', icon: Icons.clipboard },
       conBoton('inventario', empresa) && { id: 'inventario', label: 'Materiales', icon: Icons.box },
       conBoton('mantenimiento', empresa) && { id: 'mantenimiento', label: 'Mantenimiento', corto: 'Manten.', icon: Icons.wrench },
+      // Logística (203): viajes, remitos y lugares
+      conBoton('logistica', empresa) && { id: 'logistica', label: 'Logística', corto: 'Logíst.', icon: Icons.truck },
       // Finanzas como un módulo más (pedido 10/11): solo el Dueño (rol gerencial)
       conBoton('finanzas', empresa, { rol: role }) && { id: 'finanzas', label: 'Finanzas', icon: Icons.wallet },
       { id: 'config',        label: 'Más',           icon: Icons.menu, badge: pend },
