@@ -149,10 +149,9 @@ export function reporteFinanciero({
   // Las OT terminadas sin precio en el Plan suman con su valor estimado por
   // materiales, igual que en la pantalla del Estado de Resultados (18/11, pedido de Tadeo)
   const estimadas = entregasEstimadas.filter((x) => String(x.fecha || "") >= desde && String(x.fecha || "") <= hasta);
-  // Y las terminadas con precio sin entrega anotada, por su PRECIO (24/11)
+  // Y las terminadas con PRECIO que Gypi no anotó, por su PRECIO (24/11)
   const delPlan = entregasPlan.filter((x) => String(x.fecha || "") >= desde && String(x.fecha || "") <= hasta);
   const er = estadoResultados({ ops: enPeriodo, cuentas, proyectos, centros, hasta: hasta.slice(0, 7), materialesPct, entregasEstimadas: estimadas, entregasPlan: delPlan });
-  const planTotal = centavos(er.filas.filter((f) => f.tipo === "linea" && f.entrega_plan).reduce((s, f) => s + (Number(f.total) || 0), 0));
   const estimadoTotal = centavos(er.filas.filter((f) => f.tipo === "linea" && f.entrega_estimada).reduce((s, f) => s + (Number(f.total) || 0), 0));
   const resultados = er.filas
     .filter((f) => ["seccion", "grupo", "resultado"].includes(f.tipo))
@@ -162,7 +161,7 @@ export function reporteFinanciero({
   // Renglón celeste aparte, debajo de las entregas: cuánto de eso es estimado
   if (Math.abs(estimadoTotal) >= 0.01) {
     const i = resultados.findIndex((f) => f.tipo === "grupo" && f.id === "ING_ENT");
-    const fila = { tipo: "estimada", id: "ING_ENT_EST", nombre: "Entregas con valor estimado (OT sin precio en el Plan)", total: estimadoTotal, aparte: false, pct: null };
+    const fila = { tipo: "estimada", id: "ING_ENT_EST", nombre: "Entregas estimadas por materiales (OT sin PRECIO en el Plan)", total: estimadoTotal, aparte: false, pct: null };
     resultados.splice(i >= 0 ? i + 1 : resultados.findIndex((f) => f.id === "ING") + 1, 0, fila);
   }
   const total = (id) => er.filas.find((f) => f.id === id)?.total || 0;
@@ -251,7 +250,6 @@ export function reporteFinanciero({
     },
     resultados, materiales_estimados: er.materiales_estimados, hay_entregas: er.hay_entregas,
     entregas_estimadas: { ot: er.entregas_estimadas || 0, total: estimadoTotal },
-    entregas_plan: { ot: er.entregas_plan || 0, total: planTotal },
     materiales_pct: materialesPct ?? null,
     flujo, fondos, total_fondos: totalFondos, valores,
     cuentas_a_cobrar: cuentasACobrar, cuentas_a_pagar: cuentasAPagar,
@@ -439,7 +437,6 @@ ${r.hay_entregas ? "" : '<p class="aviso">⚠ No hay entregas en el período.</p
 ${resultados.length > 1 ? svgBarras(resultados) : ""}
 ${tablaResultados(r)}
 ${r.materiales_estimados ? `<p class="nota">El costo de materiales es estimado (${r.materiales_pct != null ? textoPctEstimado(r.materiales_pct) : "un %"} de las entregas).</p>` : ""}
-${r.entregas_plan?.ot ? `<p class="nota">Las entregas incluyen ${$(r.entregas_plan.total)} de ${r.entregas_plan.ot} OT terminada${r.entregas_plan.ot === 1 ? "" : "s"} con precio en el Plan que no tenía${r.entregas_plan.ot === 1 ? "" : "n"} la entrega anotada: van por su PRECIO en el mes de su ENTREGA del Plan.</p>` : ""}
 ${r.entregas_estimadas?.ot ? `<p class="nota">Las entregas incluyen ${$(r.entregas_estimadas.total)} con valor estimado (renglón celeste): ${r.entregas_estimadas.ot} OT terminada${r.entregas_estimadas.ot === 1 ? "" : "s"} sin precio en el Plan, valorizada${r.entregas_estimadas.ot === 1 ? "" : "s"} por sus materiales (costo ÷ ${textoPctEstimado(r.materiales_pct)}, igual que la cuenta corriente de clientes).</p>` : ""}
 </section>
 

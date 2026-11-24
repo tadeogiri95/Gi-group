@@ -19,11 +19,11 @@
 // antes del "desde"), su fecha de entrega del Plan o, si ENTREGA no es una
 // fecha, el último día de su SEMANA. Van en un renglón aparte de Entregas.
 //
-// Entregas del Plan (24/11): las OT terminadas CON precio que no tienen
-// entrega anotada (entraron a Gypi antes de la fecha de inicio de Ventas)
-// suman su PRECIO en el mes de su ENTREGA del Plan, en un renglón aparte;
-// las que ya figuran en una entrega del libro se saltean y se listan
-// (plan_ot y plan_en_libro_ot). Ver app/lib/finanzasEntregasPlan.js.
+// Entregas a precio del Plan (24/11): las OT terminadas CON precio que Gypi
+// no anotó (entraron a Gypi antes de la fecha de inicio de Ventas) suman su
+// PRECIO en el mes de su ENTREGA del Plan, en el mismo renglón que las que
+// Gypi anotó; las que ya figuran en una entrega del libro se saltean. Ver
+// app/lib/finanzasEntregasPlan.js.
 //
 // Detalle de entregas (24/11): entregas_detalle trae cada entrega de la
 // ventana (libro, Gypi, Plan, estimadas) con su origen y la marca de posible
@@ -131,8 +131,7 @@ export async function GET(request) {
     const plazos_sin_interes = await plazosSinInteres(sesion).catch(() => null);
     // Cada entrega de la ventana, con su origen (24/11)
     const entregas_detalle = await entregasDelMes(sesion, e, cuentas || [], meses, hasta, proyectos || [], plan.entregas, estimadas);
-    const plan_ot = plan.entregas.map(({ ot, cliente, fecha, valor }) => ({ ot, cliente, fecha, valor }));
-    return NextResponse.json({ hasta, config, division, divisiones, por_division, estimadas_ot, no_estimadas_ot, plan_ot, plan_en_libro_ot: plan.enLibro, entregas_detalle, plazos_sin_interes, ...estado });
+    return NextResponse.json({ hasta, config, division, divisiones, por_division, estimadas_ot, no_estimadas_ot, entregas_detalle, plazos_sin_interes, ...estado });
   } catch (err) {
     if (falta179(err)) return NextResponse.json({ error: FALTA_179, falta_migracion: 179 }, { status: 409 });
     return errorFinanzas(err, "resultados GET");

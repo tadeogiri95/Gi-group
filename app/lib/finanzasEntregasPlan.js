@@ -93,11 +93,12 @@ export function planEntregasPlan({ proyectos = [], precios = new Map(), entregas
 
 /** Días que puede haber entre dos entregas del mismo cliente para avisar que podrían ser la misma. */
 export const DIAS_REPETIDA = 62;
+// Los mismos nombres que los renglones del estado (24/11, pedido de Tadeo)
 const ORIGEN_TEXTO = {
-  entrega_ot: "Gypi (OT terminada)",
-  libro: "Libro",
-  plan: "Plan (precio, sin entrega anotada)",
-  estimada: "Estimada (por materiales)",
+  entrega_ot: "Precio del Plan",
+  plan: "Precio del Plan",
+  estimada: "Estimada por materiales",
+  libro: "Cargada en el libro",
 };
 const dias = (a, b) => Math.abs(Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86400000;
 
