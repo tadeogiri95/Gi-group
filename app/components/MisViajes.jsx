@@ -9,6 +9,9 @@
 // fue, con el motivo. Con todas las paradas cumplidas termina el viaje.
 // El Dueño y los supervisores abren la misma pantalla desde la ficha del
 // viaje, para cumplirlo si manejan ellos o cargarlo por el chofer.
+// Parte 5 (207): si la parada lleva una orden de compra, el chofer ve lo que
+// falta llegar, anota lo que le dieron y el N° de remito del proveedor; al
+// guardar, la OC queda recibida en Compras.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sb } from "../lib/supabase";
 import { faltaTabla } from "../lib/compras";
@@ -17,6 +20,7 @@ import { fotoBase64, subirImagen } from "../lib/foto";
 import {
   AVISO_MIGRACION_VIAJES, ESTADOS_VIAJE, MAX_FOTOS, accionParada, avanceViaje, estadoParada, faltaParaCumplir,
   linkComoLlegar, misViajes, renglonesDeOts, resultadoDeRenglones, textoUbicacion, tipoViaje, viajeEnCurso, tieneRemito,
+  renglonesDeOc,
 } from "../lib/logistica";
 import RemitoParada from "./RemitoParada";
 import { Chip } from "./ui";
@@ -73,8 +77,15 @@ const numero = (t) => {
 function CumplirParada({ parada, lugar, onVolver, onGuardada }) {
   const accion = parada.accion || "entregar";
   const retiro = accion === "retirar";
+  // Con OC (parte 5): se recibe en Compras una sola vez
+  const conOc = !!parada.orden_compra_id;
+  const ocRecibida = conOc && !!parada.recepcion_id;
+  const [oc, setOc] = useState(null);
+  const [remitoProv, setRemitoProv] = useState(parada.remito_proveedor || "");
   const [renglones, setRenglones] = useState(() => {
     if (parada.renglones?.length) return parada.renglones.map((r) => ({ ...r }));
+    // Con OC por recibir, arranca con lo que falta llegar (se busca abajo)
+    if (conOc && !ocRecibida) return null;
     // Un retiro, o una parada sin OT, arranca sin renglones (se anotan a mano)
     return parada.ots?.length && !retiro ? null : [];
   });
@@ -97,7 +108,7 @@ function CumplirParada({ parada, lugar, onVolver, onGuardada }) {
 
   // Lo que va a esta obra: los bultos y sueltos de sus OT (si no se cargó antes)
   useEffect(() => {
-    if (renglones !== null) return;
+    if (renglones !== null || conOc) return;
     let vivo = true;
     const ots = parada.ots.map((o) => `"${String(o).replace(/"/g, "")}"`).join(",");
     Promise.all([
@@ -107,7 +118,25 @@ function CumplirParada({ parada, lugar, onVolver, onGuardada }) {
       if (vivo) setRenglones(renglonesDeOts({ ots: parada.ots, bultos: bultos || [], sueltos: sueltos || [] }));
     });
     return () => { vivo = false; };
-  }, [parada.ots, renglones]);
+  }, [parada.ots, renglones, conOc]);
+
+  // La OC de la parada: el número y lo que falta llegar (lo da el servidor)
+  const [sinRenglones] = useState(() => conOc && !ocRecibida && !parada.renglones?.length);
+  useEffect(() => {
+    if (!conOc) return;
+    let vivo = true;
+    postLogistica({ accion: "parada_oc", id: parada.id })
+      .then((r) => {
+        if (!vivo) return;
+        setOc(r.oc || null);
+        if (!sinRenglones) return;
+        const rs = renglonesDeOc(r.items || []);
+        setRenglones(rs);
+        setEstado((x) => x || resultadoDeRenglones(rs));
+      })
+      .catch((e) => { if (vivo) { setError(e.message); if (sinRenglones) setRenglones([]); } });
+    return () => { vivo = false; };
+  }, [conOc, parada.id, sinRenglones]);
 
   const cambiarRenglones = (nuevos) => {
     setRenglones(nuevos);
@@ -151,6 +180,7 @@ function CumplirParada({ parada, lugar, onVolver, onGuardada }) {
     const datos = {
       estado, accion, fotos, motivo, renglones: renglones || [],
       firma_url: quedaFirma ? firmaUrl || "pendiente" : null, sin_firma: pideFirma && sinFirma,
+      conOc: conOc && !ocRecibida, remito_proveedor: remitoProv,
     };
     const falta = faltaParaCumplir(datos);
     if (falta) { setError(falta); return; }
@@ -165,6 +195,7 @@ function CumplirParada({ parada, lugar, onVolver, onGuardada }) {
         fotos: estado === "no_visitado" ? [] : fotos,
         firma_url: url, firma_nombre: url ? firmaNombre.trim() || null : null, firma_dni: url ? firmaDni.trim() || null : null,
         sin_firma: pideFirma && sinFirma, motivo: estado === "entregado" ? null : motivo.trim() || null, lat, lng,
+        ...(conOc && !ocRecibida && pideFirma ? { remito_proveedor: remitoProv.trim() || null } : {}),
       });
       await onGuardada(r.parada);
     } catch (e) {
@@ -188,6 +219,7 @@ function CumplirParada({ parada, lugar, onVolver, onGuardada }) {
         <div className="text-[14px]">{accionParada(accion).label}{parada.ots?.length ? ` · OT ${parada.ots.join(", ")}` : ""}{parada.cliente ? ` · ${parada.cliente}` : ""}</div>
         <div className="text-[13px] text-gypi-dim">{textoUbicacion(parada)}</div>
         {parada.notas && <div className="text-[13px] mt-1">📝 {parada.notas}</div>}
+        {conOc && <div className="text-[14px] font-semibold mt-1">🛒 Retirás la OC N° {oc?.numero ?? "…"}{oc?.proveedor_nombre ? ` · ${oc.proveedor_nombre}` : ""}</div>}
         {(lugar?.contacto || lugar?.horario) && <div className="text-[13px] mt-1">{[lugar.contacto && `👤 ${lugar.contacto}`, lugar.horario && `🕒 ${lugar.horario}`].filter(Boolean).join(" · ")}</div>}
         <div className="flex flex-wrap gap-2 mt-2">
           {comoLlegar && <a href={comoLlegar} target="_blank" rel="noopener noreferrer" className="g-btn g-btn-secondary no-underline">🗺️ Cómo llegar</a>}
@@ -197,10 +229,10 @@ function CumplirParada({ parada, lugar, onVolver, onGuardada }) {
 
       <h3 className="text-[15px] font-bold mt-0 mb-1">{retiro ? "Lo que retirás" : "Lo que llevás"}</h3>
       {renglones === null ? (
-        <div className="text-[13px] text-gypi-dim mb-2" role="status">Buscando los bultos y sueltos de la OT…</div>
+        <div className="text-[13px] text-gypi-dim mb-2" role="status">{conOc ? "Buscando lo que falta llegar de la orden de compra…" : "Buscando los bultos y sueltos de la OT…"}</div>
       ) : (
         <>
-          {!renglones.length && <div className="text-[13px] text-gypi-dim mb-2">{parada.ots?.length && !retiro ? "La OT no tiene bultos ni sueltos cargados." : "Sin renglones."} Podés anotar a mano lo que va.</div>}
+          {!renglones.length && <div className="text-[13px] text-gypi-dim mb-2">{conOc ? "La orden de compra no tiene nada pendiente." : parada.ots?.length && !retiro ? "La OT no tiene bultos ni sueltos cargados." : "Sin renglones."} Podés anotar a mano lo que va.</div>}
           <ul aria-label="Renglones" className="list-none m-0 p-0 flex flex-col gap-1 mb-2">
             {renglones.map((r, i) => {
               const completo = r.hecha >= r.cantidad;
@@ -241,6 +273,17 @@ function CumplirParada({ parada, lugar, onVolver, onGuardada }) {
           <label className="g-label" htmlFor="par-motivo">{estado === "no_visitado" ? "¿Por qué no fuiste?" : "¿Qué pasó?"}</label>
           <input id="par-motivo" className="g-input w-full" maxLength={300} value={motivo} onChange={(e) => setMotivo(e.target.value)}
             placeholder={estado === "no_visitado" ? "No llegué, cerrado, se pasó para mañana…" : "Faltó un mueble, llegó golpeado, no había lugar…"} />
+        </div>
+      )}
+
+      {conOc && ocRecibida && (
+        <div className="p-2.5 mb-3 rounded-[10px] bg-gypi-green/10 text-[13px]">✅ La OC ya quedó recibida en Compras{parada.remito_proveedor ? ` con el remito ${parada.remito_proveedor}` : ""}. Si corregís algo acá, en Compras no cambia: avisale a la oficina.</div>
+      )}
+      {conOc && !ocRecibida && pideFirma && (
+        <div className="mb-3">
+          <label className="g-label" htmlFor="par-remito-prov">N° de remito del proveedor</label>
+          <input id="par-remito-prov" className="g-input w-full" maxLength={60} value={remitoProv} onChange={(e) => setRemitoProv(e.target.value)} placeholder="El que figura en el papel que te dieron" />
+          <div className="text-[12px] text-gypi-dim mt-1">Al guardar, la orden de compra queda recibida en Compras con lo que anotaste arriba.</div>
         </div>
       )}
 

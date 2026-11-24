@@ -275,10 +275,15 @@ export function resultadoDeRenglones(renglones = []) {
  * Lo que falta para cumplir una parada (la misma regla en la app y en el
  * servidor). Devuelve el texto del problema, o null si está todo.
  */
-export function faltaParaCumplir({ estado, accion = "entregar", fotos = [], firma_url = null, sin_firma = false, motivo = "", renglones = [] } = {}) {
+export function faltaParaCumplir({ estado, accion = "entregar", fotos = [], firma_url = null, sin_firma = false, motivo = "", renglones = [], conOc = false, remito_proveedor = "" } = {}) {
   if (!ESTADOS_PARADA[estado] || estado === "pendiente") return "Elegí cómo terminó la parada";
   if (estado !== "entregado" && !limpio(motivo)) return estado === "no_visitado" ? "Poné por qué no se fue" : "Poné el motivo";
   if (estado === "no_visitado") return null;
+  // Con orden de compra (parte 5): lo que dio el proveedor y su remito, para recibirla en Compras
+  if (conOc && estado !== "rechazado") {
+    if (!renglones.some((r) => r.origen === "oc" && cant(r.hecha) > 0)) return "Anotá cuánto te dieron de la orden de compra";
+    if (!limpio(remito_proveedor)) return "Poné el N° de remito del proveedor";
+  }
   if (fotos.length < MIN_FOTOS) return "Sacá al menos una foto";
   if (fotos.length > MAX_FOTOS) return `Hasta ${MAX_FOTOS} fotos por parada`;
   if (estado === "parcial" && renglones.length && resultadoDeRenglones(renglones) === "entregado") return "Si es parcial, bajá la cantidad de lo que no se entregó";
@@ -352,3 +357,44 @@ export function textoRemito({ empresa = "", numero, nombre = "", url, firmar = f
 
 export const linkWhatsapp = (texto) => `https://wa.me/?text=${encodeURIComponent(texto)}`;
 export const linkMail = ({ asunto, cuerpo }) => `mailto:?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
+
+// ─── Parte 5 (207): abastecimiento con Compras ──────────────────────────────
+
+export const AVISO_MIGRACION_COMPRAS = "Para retirar órdenes de compra en los viajes falta correr la migración 207 en Supabase.";
+
+/** Estados de una OC que se puede retirar en un viaje (los mismos que se reciben en Compras). */
+export const ESTADOS_OC_RETIRABLE = ["borrador", "enviada", "recibida_parcial"];
+
+/** La parada puede llevar una OC si es en un lugar y se retira algo. */
+export const paradaConOc = (p) => !!p && !!p.lugar_id && (p.accion === "retirar" || p.accion === "entregar_retirar");
+
+/**
+ * Las OC que se pueden elegir para una parada: abiertas y, si el lugar es de
+ * un proveedor, solo las de ese proveedor. Las más nuevas primero.
+ */
+export function ocsParaLugar(ordenes = [], lugar = null) {
+  const prov = lugar?.proveedor_id ?? null;
+  return ordenes
+    .filter((o) => o && ESTADOS_OC_RETIRABLE.includes(o.estado))
+    .filter((o) => !prov || o.proveedor_id === prov)
+    .sort((a, b) => (Number(b.numero) || 0) - (Number(a.numero) || 0));
+}
+
+/**
+ * Los renglones de la OC que faltan llegar, para que el chofer anote lo que
+ * le dieron (por defecto, todo lo que falta).
+ */
+export function renglonesDeOc(items = []) {
+  const r = [];
+  for (const it of items) {
+    const falta = Math.round((Number(it.cantidad || 0) - Number(it.cantidad_recibida || 0)) * 1000) / 1000;
+    if (!(falta > 0)) continue;
+    const texto = [limpio(it.sku), limpio(it.descripcion) || "Sin descripción", limpio(it.unidad)].filter(Boolean).join(" · ");
+    r.push({ origen: "oc", ref: it.id, ot: null, texto: texto.slice(0, 200), cantidad: falta, hecha: falta });
+  }
+  return r.slice(0, MAX_RENGLONES);
+}
+
+/** Lo que se recibe en Compras: los renglones de la OC con algo retirado. */
+export const itemsRecibidos = (renglones = []) =>
+  renglones.filter((r) => r.origen === "oc" && r.ref && Number(r.hecha) > 0).map((r) => ({ item_id: r.ref, cantidad: Math.round(Number(r.hecha) * 1000) / 1000 }));

@@ -1017,3 +1017,192 @@ test("pantallas del remito — en la app numera y arma WhatsApp/mail; la página
   fireEvent.click(screen.getByRole("button", { name: "✍️ Firmar el remito" }));
   assert.match(screen.getByRole("alert").textContent, /Firmá con el dedo/);
 });
+
+// ─── Parte 5 (207): abastecimiento con Compras ───
+
+const L5 = await import("../app/lib/logistica.js");
+
+test("abastecimiento — OC para la parada del proveedor, lo que falta llegar y lo que pide para recibirla", () => {
+  const ocs = [
+    { id: 1, numero: 10, proveedor_id: 5, estado: "enviada" },
+    { id: 2, numero: 12, proveedor_id: 5, estado: "recibida_parcial" },
+    { id: 3, numero: 11, proveedor_id: 6, estado: "enviada" },
+    { id: 4, numero: 13, proveedor_id: 5, estado: "recibida" },
+  ];
+  assert.deepEqual(L5.ocsParaLugar(ocs, { proveedor_id: 5 }).map((o) => o.numero), [12, 10], "abiertas del proveedor, la más nueva primero");
+  assert.deepEqual(L5.ocsParaLugar(ocs, { proveedor_id: null }).map((o) => o.numero), [12, 11, 10], "sin proveedor, todas las abiertas");
+  assert.equal(L5.paradaConOc({ lugar_id: 3, accion: "retirar" }), true);
+  assert.equal(L5.paradaConOc({ lugar_id: 3, accion: "entregar" }), false);
+  assert.equal(L5.paradaConOc({ lugar_id: null, accion: "retirar" }), false);
+  const rs = L5.renglonesDeOc([
+    { id: 7, sku: "MDF18", descripcion: "MDF 18 mm", unidad: "UN", cantidad: 10, cantidad_recibida: 4 },
+    { id: 8, sku: null, descripcion: "Flete", cantidad: 1, cantidad_recibida: 1 },
+  ]);
+  assert.deepEqual(rs, [{ origen: "oc", ref: 7, ot: null, texto: "MDF18 · MDF 18 mm · UN", cantidad: 6, hecha: 6 }], "solo lo que falta llegar");
+  assert.deepEqual(L5.itemsRecibidos([...rs, { origen: "mano", ref: null, cantidad: 1, hecha: 1 }, { origen: "oc", ref: 9, cantidad: 2, hecha: 0 }]), [{ item_id: 7, cantidad: 6 }]);
+  const base = { estado: "entregado", accion: "retirar", fotos: ["f"], conOc: true };
+  assert.match(L5.faltaParaCumplir({ ...base, renglones: [] }), /cuánto te dieron/);
+  assert.match(L5.faltaParaCumplir({ ...base, renglones: rs }), /remito del proveedor/);
+  assert.equal(L5.faltaParaCumplir({ ...base, renglones: rs, remito_proveedor: "0001-123" }), null);
+  assert.equal(L5.faltaParaCumplir({ ...base, estado: "rechazado", motivo: "No estaba listo", renglones: [] }), null, "si no dieron nada, no pide remito");
+  // Validación: la OC va en un lugar donde se retira
+  const viaje = (p) => logisticaBody.safeParse({ accion: "viaje_guardar", tipo: "abastecimiento", fecha: "2026-11-25", paradas: [p] });
+  assert.equal(viaje({ lugar_id: 3, accion: "retirar", orden_compra_id: 1 }).success, true);
+  assert.equal(viaje({ lugar_id: 3, accion: "entregar", orden_compra_id: 1 }).success, false);
+  assert.equal(viaje({ ot_ids: [1], accion: "retirar", orden_compra_id: 1 }).success, false);
+  assert.equal(logisticaBody.safeParse({ accion: "parada_oc", id: 1 }).success, true);
+  // La migración
+  const sql = readFileSync(new URL("../supabase/migrations/207_logistica_compras.sql", import.meta.url), "utf8");
+  assert.match(sql, /do \$mig\$/);
+  assert.match(sql, /orden_compra_id bigint references public.ordenes_compra/);
+  assert.ok(MIGRACIONES.some((m) => m.n === 207 && m.tablas.logistica_paradas.includes("recepcion_id")));
+});
+
+function mockCompras({ parada, oc = { id: 9, numero: 31, estado: "enviada", proveedor_nombre: "Maderera López", proveedor_id: 5, moneda: "ARS" }, rpc = null } = {}) {
+  const escrito = mockMisViajes({ parada });
+  const previo = global.fetch;
+  const items = [{ id: 7, orden_id: 9, sku: "MDF18", descripcion: "MDF 18 mm", unidad: "UN", cantidad: 10, cantidad_recibida: 4, precio_unitario: 100 }];
+  global.fetch = async (url, o = {}) => {
+    const u = String(url);
+    const anotar = (tabla) => escrito.push({ tabla, metodo: o.method || "GET", url: u, body: o.body ? JSON.parse(o.body) : null });
+    if (u.includes("/rest/v1/ordenes_compra_items")) return new Response(JSON.stringify(items), { status: 200 });
+    if (u.includes("/rest/v1/ordenes_compra")) return new Response(JSON.stringify(oc ? [oc] : []), { status: 200 });
+    if (u.includes("/rest/v1/rpc/compras_recibir")) {
+      anotar("rpc");
+      return new Response(JSON.stringify(rpc || { ok: true, recepcion: { id: 55 }, estado: "recibida_parcial", ingresos: 1 }), { status: 200 });
+    }
+    if (/\/rest\/v1\/(movimientos_stock|recepciones_compra|articulos_stock|empleados)/.test(u)) return new Response("[]", { status: 200 });
+    return previo(url, o);
+  };
+  return escrito;
+}
+
+test("/api/logistica con OC — el chofer ve lo pendiente, al retirar queda recibida en Compras una sola vez", async () => {
+  const foto = `${SB}/${E}/foto1.jpg`;
+  const conOc = { id: 1, viaje_id: 40, accion: "retirar", lugar_id: 3, orden_compra_id: 9, recepcion_id: null };
+  // Lo que falta llegar: el chofer lo pide al servidor
+  mockCompras({ parada: conOc });
+  let res = await api.POST(req(await token("operativo"), { accion: "parada_oc", id: 1 }));
+  assert.equal(res.status, 200);
+  let r = await res.json();
+  assert.deepEqual([r.oc.numero, r.items.length, r.recibida], [31, 1, false]);
+
+  // Sin remito del proveedor no
+  mockCompras({ parada: conOc });
+  const renglones = [{ origen: "oc", ref: 7, texto: "MDF18 · MDF 18 mm", cantidad: 6, hecha: 4 }];
+  res = await api.POST(req(await token("operativo"), { accion: "parada_cumplir", id: 1, estado: "parcial", motivo: "Faltaban 2", renglones, fotos: [foto] }));
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /remito del proveedor/);
+
+  // Con remito: recepción en Compras con lo retirado, y la parada guarda la recepción
+  let escrito = mockCompras({ parada: conOc });
+  res = await api.POST(req(await token("operativo"), { accion: "parada_cumplir", id: 1, estado: "parcial", motivo: "Faltaban 2", renglones, fotos: [foto], remito_proveedor: "0001-555" }));
+  assert.equal(res.status, 200);
+  const rpc = escrito.find((x) => x.tabla === "rpc").body;
+  assert.equal(rpc.p_orden, 9);
+  assert.equal(rpc.p_recepcion.remito, "0001-555");
+  assert.equal(rpc.p_recepcion.foto_url, foto);
+  assert.match(rpc.p_recepcion.notas, /viaje N° 7/);
+  assert.deepEqual(rpc.p_lineas.map((l) => [l.item_id, l.cantidad, !!l.ingreso]), [[7, 4, true]]);
+  const fila = escrito.find((x) => x.tabla === "logistica_paradas" && x.metodo === "PATCH").body;
+  assert.deepEqual([fila.recepcion_id, fila.remito_proveedor, fila.estado], [55, "0001-555", "parcial"]);
+
+  // Ya recibida: se corrige la parada sin recibir de nuevo
+  escrito = mockCompras({ parada: { ...conOc, recepcion_id: 55, remito_proveedor: "0001-555" } });
+  res = await api.POST(req(await token("operativo"), { accion: "parada_cumplir", id: 1, estado: "entregado", renglones: [{ ...renglones[0], hecha: 6 }], fotos: [foto] }));
+  assert.equal(res.status, 200);
+  assert.ok(!escrito.some((x) => x.tabla === "rpc"), "no recibe dos veces");
+  assert.equal(escrito.find((x) => x.tabla === "logistica_paradas" && x.metodo === "PATCH").body.recepcion_id, 55);
+
+  // Si Compras no la puede recibir, la parada no se guarda
+  escrito = mockCompras({ parada: conOc, oc: { id: 9, numero: 31, estado: "recibida", proveedor_nombre: "Maderera López" } });
+  res = await api.POST(req(await token("operativo"), { accion: "parada_cumplir", id: 1, estado: "entregado", renglones, fotos: [foto], remito_proveedor: "0001-555" }));
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /Compras: .*recibió completa/);
+  assert.ok(!escrito.some((x) => x.tabla === "logistica_paradas" && x.metodo === "PATCH"));
+
+  // Rechazado (no le dieron nada): no recibe ni pide remito
+  escrito = mockCompras({ parada: conOc });
+  res = await api.POST(req(await token("operativo"), { accion: "parada_cumplir", id: 1, estado: "rechazado", motivo: "No estaba listo", fotos: [foto] }));
+  assert.equal(res.status, 200);
+  assert.ok(!escrito.some((x) => x.tabla === "rpc"));
+
+  // Otro operario no ve la OC de un viaje ajeno
+  mockMisViajes({ viaje: { id: 40, numero: 7, estado: "en_camino", chofer_id: "33333333-3333-3333-3333-333333333333" }, parada: conOc });
+  assert.equal((await api.POST(req(await token("operativo"), { accion: "parada_oc", id: 1 }))).status, 403);
+});
+
+test("/api/logistica viaje_guardar con OC — solo de la empresa y por recibir; sin OC no manda la columna", async () => {
+  const escribir = (oc) => {
+    const escrito = [];
+    global.fetch = createFetchMock([
+      ...authPassHandlers(),
+      { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
+      { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
+      { match: (u) => u.includes("/rest/v1/logistica_lugares"), respond: () => ({ status: 200, body: [{ id: 3, nombre: "Maderera López", direccion: "Calle 2" }] }) },
+      { match: (u) => u.includes("/rest/v1/ordenes_compra"), respond: () => ({ status: 200, body: oc ? [oc] : [] }) },
+      {
+        match: (u) => u.includes("/rest/v1/logistica_viajes"),
+        respond: (u, o) => (!o.method || o.method === "GET" ? { status: 200, body: [] } : { status: 201, body: [{ id: 40, numero: 1, ...JSON.parse(o.body) }] }),
+      },
+      {
+        match: (u) => u.includes("/rest/v1/logistica_paradas"),
+        respond: (u, o) => { const b = o.body ? JSON.parse(o.body) : null; escrito.push(b); return { status: 201, body: b || [] }; },
+      },
+    ]);
+    return escrito;
+  };
+  const cuerpo = (extra) => ({ accion: "viaje_guardar", tipo: "abastecimiento", fecha: "2026-11-25", paradas: [{ lugar_id: 3, accion: "retirar", ...extra }] });
+  let escrito = escribir({ id: 9, numero: 31, estado: "enviada" });
+  let res = await api.POST(req(await token(), cuerpo({ orden_compra_id: 9 })));
+  assert.equal(res.status, 200);
+  assert.equal(escrito.flat()[0].orden_compra_id, 9);
+  escribir({ id: 9, numero: 31, estado: "recibida" });
+  res = await api.POST(req(await token(), cuerpo({ orden_compra_id: 9 })));
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /OC N° 31/);
+  escribir(null);
+  assert.equal((await api.POST(req(await token(), cuerpo({ orden_compra_id: 9 })))).status, 404);
+  escrito = escribir(null);
+  assert.equal((await api.POST(req(await token(), cuerpo({})))).status, 200);
+  assert.ok(!("orden_compra_id" in escrito.flat()[0]), "sin OC, anda aunque falte la 207");
+});
+
+test("pantalla Mis viajes con OC — muestra lo pendiente, pide el remito del proveedor y lo manda", async () => {
+  const enviados = mockPantallaChofer({
+    estadoViaje: "en_camino",
+    paradas: [{ id: 2, viaje_id: 40, orden: 1, nombre: "Maderera López", ots: [], lugar_id: 3, direccion: "Calle 2", accion: "retirar", estado: "pendiente", renglones: [], fotos: [], orden_compra_id: 9 }],
+  });
+  const previo = global.fetch;
+  global.fetch = async (url, o = {}) => {
+    const body = o.body ? JSON.parse(o.body) : null;
+    if (String(url).includes("/api/logistica") && body?.accion === "parada_oc") {
+      return new Response(JSON.stringify({ ok: true, oc: { id: 9, numero: 31, proveedor_nombre: "Maderera López" }, items: [{ id: 7, sku: "MDF18", descripcion: "MDF 18 mm", unidad: "UN", cantidad: 10, cantidad_recibida: 4 }] }), { status: 200 });
+    }
+    return previo(url, o);
+  };
+  render(<MisViajes empleadoId={EMP} viajeId={40} onClose={() => {}} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Parada 1: Maderera López" }));
+  assert.ok(await screen.findByText(/Retirás la OC N° 31 · Maderera López/));
+  const rs = await screen.findByRole("list", { name: "Renglones" });
+  assert.match(rs.textContent, /MDF18 · MDF 18 mm · UN/);
+  assert.equal(screen.getByRole("button", { name: "✅ Retiré todo" }).getAttribute("aria-pressed"), "true");
+  // Foto (jsdom no carga imágenes)
+  const ImagenReal = global.Image;
+  const LectorReal = global.FileReader;
+  global.FileReader = window.FileReader;
+  global.Image = class { set src(_v) { setTimeout(() => this.onerror?.(new Error("sin imágenes"))); } };
+  fireEvent.change(screen.getByLabelText("Sacar foto"), { target: { files: [new window.File(["x"], "foto.jpg", { type: "image/jpeg" })] } });
+  await screen.findByRole("button", { name: "Ver foto 1" });
+  global.Image = ImagenReal;
+  global.FileReader = LectorReal;
+  fireEvent.click(screen.getByRole("checkbox", { name: /No hay nadie para firmar/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Guardar la parada" }));
+  assert.match(screen.getByRole("alert").textContent, /remito del proveedor/);
+  fireEvent.change(screen.getByLabelText("N° de remito del proveedor"), { target: { value: "0001-555" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar la parada" }));
+  await waitFor(() => assert.ok(enviados.some((b) => b.accion === "parada_cumplir")));
+  const b = enviados.find((x) => x.accion === "parada_cumplir");
+  assert.deepEqual([b.estado, b.remito_proveedor], ["entregado", "0001-555"]);
+  assert.deepEqual(b.renglones.map((r) => [r.origen, r.ref, r.cantidad, r.hecha]), [["oc", 7, 6, 6]]);
+});

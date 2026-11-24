@@ -8,6 +8,8 @@
 // abre en Google Maps (gratis; con más de 9 paradas intermedias, en tramos).
 // Se ven los viajes de un día; un viaje se cambia mientras está planificado
 // y se cancela con el motivo. En la parte 3 el chofer los cumple desde su Inicio.
+// Parte 5 (207): una parada de retiro en un proveedor puede llevar la orden de
+// compra que se retira; al cumplirla, la OC queda recibida en Compras.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sbGetAll } from "../lib/supabase";
 import { faltaTabla } from "../lib/compras";
@@ -17,6 +19,7 @@ import {
   ACCIONES_PARADA, AVISO_MIGRACION_VIAJES, ESTADOS_VIAJE, MAX_PARADAS, TIPOS_LUGAR, TIPOS_VIAJE, accionParada, accionPorTipo,
   choquesDelDia, kmEnLineaRecta, moverParada, obrasDeOts, ordenarPorCercania, puedeGestionarLogistica,
   textoUbicacion, tipoLugar, tipoViaje, viajeEditable, avanceViaje, estadoParada, viajeEnCurso, tieneRemito, numeroRemito,
+  paradaConOc, ocsParaLugar,
 } from "../lib/logistica";
 import { Chip, FilaDeslizable } from "./ui";
 import { postLogistica } from "./LogisticaScreen";
@@ -82,6 +85,26 @@ const nombreVehiculo = (v) => (v ? [v.patente, [v.marca, v.modelo].filter(Boolea
 let claveSiguiente = 1;
 const conClave = (p) => ({ ...p, clave: p.clave || `p${claveSiguiente++}` });
 
+/**
+ * La orden de compra que se retira en una parada de un proveedor (parte 5):
+ * las OC abiertas de ese proveedor (o todas, si el lugar no tiene proveedor).
+ */
+function ElegirOc({ p, ocs, lugar, onCambio }) {
+  if (!paradaConOc(p)) return null;
+  const opciones = ocsParaLugar(ocs, lugar);
+  const elegida = p.orden_compra_id ? ocs.find((o) => o.id === Number(p.orden_compra_id)) : null;
+  if (!opciones.length && !p.orden_compra_id) return null;
+  const lista = elegida && !opciones.includes(elegida) ? [elegida, ...opciones] : opciones;
+  return (
+    <select aria-label={`Orden de compra que se retira en ${p.nombre}`} className="g-input w-full mt-1.5" value={p.orden_compra_id ? String(p.orden_compra_id) : ""}
+      onChange={(e) => onCambio(e.target.value ? Number(e.target.value) : null)}>
+      <option value="">🛒 Sin orden de compra</option>
+      {p.orden_compra_id && !elegida && <option value={String(p.orden_compra_id)}>🛒 OC elegida</option>}
+      {lista.map((o) => <option key={o.id} value={String(o.id)}>🛒 Retira la OC N° {o.numero}{o.proveedor_nombre ? ` · ${o.proveedor_nombre}` : ""}</option>)}
+    </select>
+  );
+}
+
 /** Buscador para sumar una parada: obras de las OT abiertas y lugares de la libreta. */
 function ElegirParada({ obras, lugares, yaElegidas, onElegir, onCerrar }) {
   const [texto, setTexto] = useState("");
@@ -129,7 +152,7 @@ function ElegirParada({ obras, lugares, yaElegidas, onElegir, onCerrar }) {
   );
 }
 
-function FormViaje({ viaje = null, paradasViaje = [], fechaInicial, lugares, proyectos, vehiculos, empleados, viajes, onCancelar, onGuardado }) {
+function FormViaje({ viaje = null, paradasViaje = [], fechaInicial, lugares, proyectos, vehiculos, empleados, viajes, ocs = [], onCancelar, onGuardado }) {
   const plantas = lugares.filter((l) => l.activo && l.tipo === "planta");
   const [form, setForm] = useState(() => ({
     tipo: viaje?.tipo || "distribucion",
@@ -194,7 +217,10 @@ function FormViaje({ viaje = null, paradasViaje = [], fechaInicial, lugares, pro
         chofer_id: form.chofer_id || null,
         origen_id: form.origen_id ? Number(form.origen_id) : null,
         vuelve: !!form.vuelve, notas: form.notas.trim() || null,
-        paradas: paradas.map((p) => ({ lugar_id: p.lugar_id || null, ot_ids: p.lugar_id ? [] : p.ot_ids, accion: p.accion, notas: String(p.notas || "").trim() || null })),
+        paradas: paradas.map((p) => ({
+          lugar_id: p.lugar_id || null, ot_ids: p.lugar_id ? [] : p.ot_ids, accion: p.accion, notas: String(p.notas || "").trim() || null,
+          ...(paradaConOc(p) && p.orden_compra_id ? { orden_compra_id: Number(p.orden_compra_id) } : {}),
+        })),
       });
       await onGuardado(data.viaje);
     } catch (e) {
@@ -292,6 +318,8 @@ function FormViaje({ viaje = null, paradasViaje = [], fechaInicial, lugares, pro
                 <input aria-label={`Nota de ${p.nombre}`} className="g-input flex-[2] min-w-0" value={p.notas || ""} maxLength={500} placeholder="Nota (qué llevar, a quién…)"
                   onChange={(e) => setParadas((ps) => ps.map((x) => (x.clave === p.clave ? { ...x, notas: e.target.value } : x)))} />
               </div>
+              <ElegirOc p={p} ocs={ocs} lugar={lugares.find((l) => l.id === p.lugar_id)}
+                onCambio={(id) => setParadas((ps) => ps.map((x) => (x.clave === p.clave ? { ...x, orden_compra_id: id } : x)))} />
             </li>
           ))}
         </ol>
@@ -312,7 +340,18 @@ function FormViaje({ viaje = null, paradasViaje = [], fechaInicial, lugares, pro
   );
 }
 
-function FichaViaje({ viaje, paradas, lugares, vehiculos, empleados, editable, usuarioId, onEditar, onVolver, onCambio }) {
+/** La OC que se retira en la parada (parte 5) y si ya quedó recibida en Compras. */
+function LineaOc({ p, ocs = [] }) {
+  const oc = ocs.find((o) => o.id === p.orden_compra_id);
+  return (
+    <span className="block text-[12px]">
+      🛒 OC N° {oc?.numero ?? p.orden_compra_id}{oc?.proveedor_nombre ? ` · ${oc.proveedor_nombre}` : ""}
+      {p.recepcion_id ? ` · ✅ recibida en Compras${p.remito_proveedor ? ` (remito ${p.remito_proveedor})` : ""}` : " · por retirar"}
+    </span>
+  );
+}
+
+function FichaViaje({ viaje, paradas, lugares, vehiculos, empleados, ocs = [], editable, usuarioId, onEditar, onVolver, onCambio }) {
   const [cancelando, setCancelando] = useState(false);
   const [haciendo, setHaciendo] = useState(false);
   const avance = avanceViaje(paradas);
@@ -367,6 +406,7 @@ function FichaViaje({ viaje, paradas, lugares, vehiculos, empleados, editable, u
               <span className="block text-[12px] text-gypi-dim">{[p.ots?.length ? `OT ${p.ots.join(", ")}` : null, p.cliente].filter(Boolean).join(" · ")}</span>
               <span className="block text-[12px]">{textoUbicacion(p)}</span>
               {p.notas && <span className="block text-[12px]">📝 {p.notas}</span>}
+              {p.orden_compra_id && <LineaOc p={p} ocs={ocs} />}
               <ResultadoParada p={p} empleados={empleados} onCambio={onCambio} />
             </span>
           </li>
@@ -404,6 +444,7 @@ export default function LogisticaViajes({ empresaId, usuario = null }) {
   const [proyectos, setProyectos] = useState([]);
   const [vehiculos, setVehiculos] = useState([]);
   const [empleados, setEmpleados] = useState([]);
+  const [ocs, setOcs] = useState([]);
   const [error, setError] = useState(null);
   const [abierto, setAbierto] = useState(null); // id del viaje
   const [editando, setEditando] = useState(null); // "nuevo" o el id
@@ -425,16 +466,19 @@ export default function LogisticaViajes({ empresaId, usuario = null }) {
       setViajes([]);
       setError(["logistica_viajes", "logistica_paradas"].some((x) => faltaTabla(err, x)) ? AVISO_MIGRACION_VIAJES : "No se pudieron leer los viajes");
     }
-    const [l, pr, ve, em] = await Promise.all([
+    const [l, pr, ve, em, oc] = await Promise.all([
       sbGetAll("logistica_lugares?order=nombre.asc,id.asc", { maxFilas: 5000 }).catch(() => ({ data: [] })),
       sbGetAll("proyectos?select=id,ot,cliente,obra,estado,direccion,lat,lng&order=id.desc", { maxFilas: 20000 }).catch(() => ({ data: [] })),
       sbGetAll("vehiculos?activo=eq.true&select=id,patente,marca,modelo,tipo,responsable_id&order=patente.asc,id.asc", { maxFilas: 2000 }).catch(() => ({ data: [] })),
       sbGetAll("empleados?activo=eq.true&select=id,nombre&order=nombre.asc,id.asc", { maxFilas: 5000 }).catch(() => ({ data: [] })),
+      // Las OC para elegir qué se retira en un proveedor (parte 5); sin Compras, ninguna
+      sbGetAll("ordenes_compra?estado=neq.anulada&select=id,numero,proveedor_id,proveedor_nombre,estado&order=numero.desc,id.desc", { maxFilas: 5000 }).catch(() => ({ data: [] })),
     ]);
     setLugares(l.data || []);
     setProyectos(pr.data || []);
     setVehiculos(ve.data || []);
     setEmpleados(em.data || []);
+    setOcs(oc.data || []);
   }, [empresaId]);
   useEffect(() => { cargar(); }, [cargar]);
 
@@ -449,7 +493,7 @@ export default function LogisticaViajes({ empresaId, usuario = null }) {
     return (
       <div className="flex-1 overflow-y-auto px-[18px] pb-6">
         <FormViaje viaje={viaje} paradasViaje={viaje ? paradasDe(viaje.id) : []} fechaInicial={fecha} lugares={lugares} proyectos={proyectos}
-          vehiculos={vehiculos} empleados={empleados} viajes={viajes || []} onCancelar={() => setEditando(null)}
+          vehiculos={vehiculos} empleados={empleados} viajes={viajes || []} ocs={ocs} onCancelar={() => setEditando(null)}
           onGuardado={async (v) => { setEditando(null); if (v?.fecha) setFecha(v.fecha); await cargar(); if (v?.id) setAbierto(v.id); }} />
       </div>
     );
@@ -459,7 +503,7 @@ export default function LogisticaViajes({ empresaId, usuario = null }) {
   if (ficha) {
     return (
       <div className="flex-1 overflow-y-auto px-[18px] pb-6">
-        <FichaViaje viaje={ficha} paradas={paradasDe(ficha.id)} lugares={lugares} vehiculos={vehiculos} empleados={empleados} editable={editable} usuarioId={usuario?.id}
+        <FichaViaje viaje={ficha} paradas={paradasDe(ficha.id)} lugares={lugares} vehiculos={vehiculos} empleados={empleados} ocs={ocs} editable={editable} usuarioId={usuario?.id}
           onEditar={() => setEditando(ficha.id)} onVolver={() => setAbierto(null)} onCambio={async () => { await cargar(); }} />
       </div>
     );
