@@ -160,6 +160,9 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   const [confirmar, ConfirmDialog] = useConfirm();
   const [listaAbierta, setListaAbiertaEstado] = useState(() => leerLocal(clavePlan(empresaId, division?.id, "lista")) !== false);
   const setListaAbierta = (v) => { setListaAbiertaEstado(v); guardarLocal(clavePlan(empresaId, division?.id, "lista"), v); };
+  // ② La prioridad también se puede achicar (Tadeo, 24/11)
+  const [prioridadAbierta, setPrioridadAbiertaEstado] = useState(() => leerLocal(clavePlan(empresaId, division?.id, "prioridad")) !== false);
+  const setPrioridadAbierta = (v) => { setPrioridadAbiertaEstado(v); guardarLocal(clavePlan(empresaId, division?.id, "prioridad"), v); };
   const [avisoPrioridad, setAvisoPrioridad] = useState(null);
   const guardandoPrioridad = useRef(false);
   // Último plan sin límite de semanas guardado: undefined = leyendo, null = no hay
@@ -467,7 +470,8 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
       <PrioridadTildadas ots={otsPlan} sinColumna={sinColumnaPrioridad} aviso={avisoPrioridad}
         onAplicar={(nueva) => aplicarPrioridad(otsPlan, nueva)} onOrdenar={ordenarTildadas} onNumero={numerar} onEficiente={ordenarEficiente}
         onBorrar={borrarPrioridades} conNumeroDivision={conNumeroDivision}
-        modo={modoEmpresa} hoy={hoy} onSemana={(c) => setDatos((d) => ({ ...d, proyectos: d.proyectos.map((p) => (p.id === c.id ? { ...p, ...c } : p)) }))} />
+        modo={modoEmpresa} hoy={hoy} onSemana={(c) => setDatos((d) => ({ ...d, proyectos: d.proyectos.map((p) => (p.id === c.id ? { ...p, ...c } : p)) }))}
+        abierta={prioridadAbierta} onAbrir={setPrioridadAbierta} />
       {ConfirmDialog}
 
       <div className="g-label mb-1.5">③ Carga de la planta</div>
@@ -925,7 +929,7 @@ function NumeroPrioridad({ p, total, disabled, onNumero, onQuitar }) {
  * quien lo escribe (onNumero) o ⚡, que propone los del orden más eficiente.
  * Sin número ni orden a mano, van por fecha objetivo.
  */
-function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onOrdenar, onNumero, onEficiente, onBorrar, conNumeroDivision = 0, modo, hoy, onSemana }) {
+function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onOrdenar, onNumero, onEficiente, onBorrar, conNumeroDivision = 0, modo, hoy, onSemana, abierta = true, onAbrir = () => {} }) {
   const [arrastre, setArrastre] = useState(null);
   // Buscador (Tadeo, 29/10): filtra lo que se ve; los lugares siguen siendo los de toda la lista
   const [busca, setBusca] = useState("");
@@ -965,7 +969,15 @@ function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onOrdenar, onNum
   const conNumero = lista.filter((p) => p.prioridad > 0).length;
   return (
     <section aria-label="Prioridad de las OT" className="g-card mb-3">
-      <div className="g-label mb-1">② Prioridad de las tildadas</div>
+      {/* Se puede achicar (Tadeo, 24/11: "ocupa mucho espacio"); se recuerda en este navegador */}
+      <button type="button" onClick={() => onAbrir(!abierta)} aria-expanded={abierta}
+        className="w-full flex items-center gap-2 bg-transparent border-0 p-0 min-h-11 cursor-pointer text-left text-gypi-text">
+        <span className="g-label flex-1">② Prioridad de las tildadas · {lista.length === 1 ? "1 OT" : `${lista.length} OT`}</span>
+        <span className="text-xs font-bold text-gypi-amber-ink">{abierta ? "Cerrar ▲" : "Abrir ▼"}</span>
+      </button>
+      {aviso && !abierta && <div role="status" className="text-[13px] text-gypi-dim mt-1">{aviso}</div>}
+      {abierta && (
+      <div className="mt-1">
       <div className="text-[13px] text-gypi-dim mb-2 leading-normal">
         Arrastrá las OT desde ⠿ o usá ▲▼ para cambiar el orden: no les pone número. El número lo ponés vos escribiéndolo (la 1 es la más urgente) o ⚡; al escribir uno, la lista vuelve a ordenarse por número y, sin número, por semana de entrega (la SEMANA del Plan de trabajo, que podés cambiar acá y pasa a la planilla). Es el único orden que usa el plan. 🧹 Borrar prioridades saca los números de todas las OT de la división.
       </div>
@@ -1024,6 +1036,8 @@ function PrioridadTildadas({ ots, sinColumna, aviso, onAplicar, onOrdenar, onNum
           </ol>
           {conNumero > 0 && <div className="text-xs text-gypi-dim mt-2">{conNumero === 1 ? "1 OT ordenada a mano" : `${conNumero} OT ordenadas a mano`}.</div>}
         </>
+      )}
+      </div>
       )}
     </section>
   );

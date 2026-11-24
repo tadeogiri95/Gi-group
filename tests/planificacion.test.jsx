@@ -1182,6 +1182,24 @@ test("📊 Carga — ② cambiar la semana de una OT la guarda pendiente para la
   await screen.findByText("⏳ Cambiada en Gypi, falta pasar a la planilla");
 });
 
+test("📊 Carga — ② la prioridad se achica y se acuerda (Tadeo, 24/11)", async () => {
+  mockDosOt();
+  pantalla();
+  await waitFor(() => assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, true));
+  const prioridad = () => screen.getByLabelText("Prioridad de las OT");
+  const boton = () => within(prioridad()).getByRole("button", { name: /② Prioridad de las tildadas/ });
+  assert.equal(boton().getAttribute("aria-expanded"), "true");
+  fireEvent.click(boton());
+  assert.equal(within(prioridad()).queryByLabelText("Buscar en la prioridad"), null, "cerrada no muestra la lista");
+  assert.match(boton().textContent, /2 OTAbrir ▼/);
+  // Vuelve a abrirse (y deja la prioridad abierta para las otras pruebas)
+  cleanup();
+  pantalla();
+  await waitFor(() => assert.equal(within(prioridad()).getByRole("button", { name: /② Prioridad/ }).getAttribute("aria-expanded"), "false"));
+  fireEvent.click(within(prioridad()).getByRole("button", { name: /② Prioridad/ }));
+  assert.ok(within(prioridad()).getByLabelText("Buscar en la prioridad"));
+});
+
 test("📊 Carga — ② el buscador filtra las tildadas sin cambiar su lugar; mientras busca, arrastrar se apaga", async () => {
   mockDosOt();
   pantalla();
