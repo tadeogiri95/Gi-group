@@ -1293,4 +1293,26 @@ export const logisticaBody = z.discriminatedUnion("accion", [
     lat: latitud,
     lng: longitud,
   }).strict().refine(conPinCompleto, MENSAJE_PIN),
+  // Parte 2 (204): un viaje con sus paradas en orden. Cada parada es un lugar
+  // de la libreta o las OT de una obra; el servidor copia nombre, dirección y pin.
+  z.object({
+    accion: z.literal("viaje_guardar"),
+    id: idFlota.optional(),
+    tipo: z.enum(["distribucion", "abastecimiento", "interno", "devolucion"]),
+    fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida").refine((f) => !Number.isNaN(Date.parse(`${f}T00:00:00Z`)), "Fecha inválida"),
+    hora: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Hora inválida").nullable().optional().transform((v) => v || null),
+    vehiculo_id: idFlota.nullable().optional().transform((v) => v ?? null),
+    chofer_id: uuid.nullable().optional().transform((v) => v ?? null),
+    origen_id: idFlota.nullable().optional().transform((v) => v ?? null),
+    vuelve: z.boolean().default(true),
+    notas: textoSuelto(500),
+    paradas: z.array(z.object({
+      lugar_id: idFlota.nullable().optional().transform((v) => v ?? null),
+      ot_ids: z.array(idFlota).max(50).default([]),
+      accion: z.enum(["entregar", "retirar", "entregar_retirar"]).default("entregar"),
+      notas: textoSuelto(500),
+    }).strict().refine((p) => (p.lugar_id === null) !== (p.ot_ids.length === 0), { message: "Cada parada es un lugar o las OT de una obra" }))
+      .min(1, "Agregá al menos una parada").max(15, "Hasta 15 paradas por viaje"),
+  }).strict(),
+  z.object({ accion: z.literal("viaje_cancelar"), id: idFlota, motivo: z.string().trim().min(1, "Poné el motivo").max(300) }).strict(),
 ]);

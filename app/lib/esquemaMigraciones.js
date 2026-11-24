@@ -119,6 +119,7 @@ export const MIGRACIONES = [
   { n: 201, archivo: "201_ot_lleva_iva.sql", nombre: "OT con IVA", tablas: { proyectos: ["lleva_iva"] } },
   { n: 202, archivo: "202_ot_material_mrp.sql", nombre: "Material de OT desde el MRP", tablas: { proyectos: ["fondos_mrp", "metros_canto_mrp", "placas_mrp"] } },
   { n: 203, archivo: "203_logistica_lugares.sql", nombre: "Logística: lugares y dirección de la obra", tablas: { logistica_lugares: [], proyectos: ["direccion", "lat", "lng"] } },
+  { n: 204, archivo: "204_logistica_viajes.sql", nombre: "Logística: viajes y paradas", tablas: { logistica_viajes: [], logistica_paradas: [] } },
 ];
 
 /** Lo que pide una migración, como lista de { tabla, columnas } y funciones. */
