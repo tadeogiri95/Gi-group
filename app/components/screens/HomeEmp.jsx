@@ -22,6 +22,8 @@ import EscanearPiezas from "../EscanearPiezas";
 import ChecklistVehiculo from "../ChecklistVehiculo";
 import MiMantenimiento, { useMiMantenimiento } from "../MiMantenimiento";
 import MiCaja, { useMiCaja, detalleMiCaja } from "../MiCaja";
+import MisViajes, { useMisViajes } from "../MisViajes";
+import { detalleMisViajes } from "../../lib/logistica";
 import AvisarFalla from "../AvisarFalla";
 import PlanSemana from "../PlanSemana";
 import VerPdfOt from "../VerPdfOt";
@@ -70,6 +72,9 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
   // 📱 Mi caja (Finanzas F3b, 176): solo para el responsable de una caja
   const miCaja = useMiCaja(!demo && tieneModulo(empresa, "finanzas"));
   const [verCaja, setVerCaja] = useState(false);
+  // 🚚 Mis viajes (Logística, parte 3, 205): solo quien tiene viajes asignados
+  const viajes = useMisViajes(usuario?.id, !demo && tieneModulo(empresa, "logistica"));
+  const [verViajes, setVerViajes] = useState(false);
   // 📐 Mis planillas (parte 50): solo para las arquitectas de Diseño y Técnica
   const planillas = useMisPlanillas(conProyectos);
   const [verPlanillas, setVerPlanillas] = useState(false);
@@ -163,6 +168,9 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
 
       {/* El trabajo del día: botones grandes, lo más usado primero */}
       <section aria-label="Trabajo" className="flex flex-col gap-2.5 mb-[18px]">
+        {viajes.viajes.length > 0 && (
+          <BotonAccion icono="🚚" titulo="Mis viajes" detalle={detalleMisViajes(viajes.viajes, hoyArg())} destacado={viajes.viajes.some((v) => v.estado === "en_camino" || (v.estado === "planificado" && v.fecha <= hoyArg()))} onClick={() => setVerViajes(true)} />
+        )}
         {conTareas && !demo && <BotonAccion icono="🧩" titulo="Escanear piezas" detalle="Marcá por qué etapa pasó cada pieza" destacado onClick={() => setEscanearPiezas(true)} />}
         {conProyectos && pdfsOt && <BotonAccion icono="📄" titulo="Ver PDF de una OT" detalle="Escaneá el QR de la OT, una pieza o un módulo" onClick={() => setVerPdf(true)} />}
         {conStock && <BotonAccion icono="📦" titulo="Retirar material" detalle="Escaneá el QR del artículo y anotá cuánto sacás" onClick={() => setRetirar(true)} />}
@@ -191,6 +199,7 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
       {verPlanillas && <MisPlanillas datos={planillas} onClose={() => setVerPlanillas(false)} />}
       {verPdf && <VerPdfOt onClose={() => setVerPdf(false)} />}
       {avisarFalla && <AvisarFalla onClose={() => { setAvisarFalla(false); mant.cargar(); }} />}
+      {verViajes && <MisViajes empleadoId={usuario.id} onClose={() => { setVerViajes(false); viajes.cargar(); }} onCambio={viajes.cargar} />}
       {verCaja && <MiCaja datos={miCaja} onClose={() => setVerCaja(false)} onCambio={miCaja.cargar} />}
       {verMant && <MiMantenimiento items={mant.items} empresaNombre={empresa?.nombre || ""} onClose={() => setVerMant(false)} onCambio={mant.cargar} />}
       {checklist && <ChecklistVehiculo vehiculos={misVehiculos} empresaNombre={empresa?.nombre || ""} onClose={() => setChecklist(false)} />}

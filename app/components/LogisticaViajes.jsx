@@ -15,11 +15,52 @@ import { hoyArg } from "../lib/dates";
 import { coordsValidas } from "../lib/ubicacion";
 import {
   ACCIONES_PARADA, AVISO_MIGRACION_VIAJES, ESTADOS_VIAJE, MAX_PARADAS, TIPOS_LUGAR, TIPOS_VIAJE, accionParada, accionPorTipo,
-  choquesDelDia, kmEnLineaRecta, linksRecorrido, moverParada, obrasDeOts, ordenarPorCercania, puedeGestionarLogistica,
-  textoUbicacion, tipoLugar, tipoViaje, viajeEditable,
+  choquesDelDia, kmEnLineaRecta, moverParada, obrasDeOts, ordenarPorCercania, puedeGestionarLogistica,
+  textoUbicacion, tipoLugar, tipoViaje, viajeEditable, avanceViaje, estadoParada, viajeEnCurso,
 } from "../lib/logistica";
 import { Chip, FilaDeslizable } from "./ui";
 import { postLogistica } from "./LogisticaScreen";
+import BotonesRecorrido from "./LogisticaRecorrido";
+import MisViajes from "./MisViajes";
+import FotoViewer from "./FotoViewer";
+
+const horaDe = (ts) => (ts ? new Date(ts).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "America/Argentina/Buenos_Aires" }) : "");
+const cantTexto = (n) => String(Math.round(Number(n || 0) * 100) / 100).replace(".", ",");
+
+/** Cómo terminó una parada (parte 3): lo entregado, el motivo, las fotos y la firma. */
+function ResultadoParada({ p, empleados }) {
+  const [viendo, setViendo] = useState(null);
+  if (!p.estado || p.estado === "pendiente") return null;
+  const e = estadoParada(p.estado, p.accion);
+  const quien = empleados.find((x) => x.id === p.hecha_por)?.nombre;
+  const rs = p.renglones || [];
+  const incompletos = rs.filter((r) => Number(r.hecha) < Number(r.cantidad));
+  return (
+    <span className="block mt-1 pt-1 border-t border-gypi-border">
+      <span className="block text-[13px] font-semibold">{e.emoji} {e.label}{p.hecha_at ? ` · ${horaDe(p.hecha_at)}` : ""}{quien ? ` · ${quien}` : ""}</span>
+      {p.motivo && <span className="block text-[12px]">{p.motivo}</span>}
+      {rs.length > 0 && (
+        <span className="block text-[12px] text-gypi-dim">
+          {rs.length - incompletos.length} de {rs.length} renglones completos
+          {incompletos.length > 0 && `. Faltó: ${incompletos.slice(0, 4).map((r) => `${r.texto}${Number(r.cantidad) > 1 ? ` (${cantTexto(r.hecha)} de ${cantTexto(r.cantidad)})` : ""}`).join("; ")}${incompletos.length > 4 ? "…" : ""}`}
+        </span>
+      )}
+      {(p.fotos?.length > 0 || p.firma_url) && (
+        <span className="flex flex-wrap gap-1.5 mt-1">
+          {(p.fotos || []).map((u, i) => (
+            <button key={u} type="button" aria-label={`Ver foto ${i + 1} de ${p.nombre}`} onClick={() => setViendo(i)} className="p-0 border-none bg-transparent cursor-pointer">
+              <img src={u} alt={`Foto ${i + 1}`} className="w-[56px] h-[56px] object-cover rounded-md border border-gypi-border" />
+            </button>
+          ))}
+          {p.firma_url && <img src={p.firma_url} alt={`Firma de ${p.firma_nombre || "quien recibió"}`} className="h-[56px] bg-white rounded-md border border-gypi-border" />}
+        </span>
+      )}
+      {p.firma_url && (p.firma_nombre || p.firma_dni) && <span className="block text-[12px] text-gypi-dim">Firmó {[p.firma_nombre, p.firma_dni && `DNI ${p.firma_dni}`].filter(Boolean).join(", ")}</span>}
+      {p.sin_firma && <span className="block text-[12px]">✍️ Sin firma: no había nadie para firmar</span>}
+      {viendo !== null && <FotoViewer fotos={p.fotos} index={viendo} onClose={() => setViendo(null)} onNav={setViendo} />}
+    </span>
+  );
+}
 
 const sumarDias = (f, n) => {
   const d = new Date(`${f}T12:00:00Z`);
@@ -31,27 +72,6 @@ const hhmm = (h) => (h ? String(h).slice(0, 5) : "");
 const nombreVehiculo = (v) => (v ? [v.patente, [v.marca, v.modelo].filter(Boolean).join(" ")].filter(Boolean).join(" · ") : "");
 let claveSiguiente = 1;
 const conClave = (p) => ({ ...p, clave: p.clave || `p${claveSiguiente++}` });
-
-/** Botones con el recorrido en Google Maps (uno por tramo). */
-function BotonesRecorrido({ origen, paradas, vuelve }) {
-  const { tramos, sinUbicar } = linksRecorrido({ origen, paradas, vuelve });
-  if (!tramos.length) {
-    return <div className="text-[13px] text-gypi-dim mb-2">Para ver el recorrido, las paradas tienen que tener dirección o pin.</div>;
-  }
-  return (
-    <div className="mb-2">
-      <div className="flex flex-wrap gap-2">
-        {tramos.map((t, i) => (
-          <a key={t.url} href={t.url} target="_blank" rel="noopener noreferrer" className="g-btn g-btn-secondary no-underline">
-            🗺️ {tramos.length > 1 ? `Recorrido, tramo ${i + 1} (paradas ${t.desde} a ${t.hasta})` : "Ver recorrido en Google Maps"}
-          </a>
-        ))}
-      </div>
-      {tramos.length > 1 && <div className="text-[12px] text-gypi-dim mt-1">Google Maps acepta hasta 9 paradas por link: el recorrido va en {tramos.length} tramos.</div>}
-      {sinUbicar > 0 && <div className="text-[13px] mt-1">⚠️ {sinUbicar === 1 ? "Una parada no tiene" : `${sinUbicar} paradas no tienen`} dirección: no {sinUbicar === 1 ? "entra" : "entran"} en el recorrido.</div>}
-    </div>
-  );
-}
 
 /** Buscador para sumar una parada: obras de las OT abiertas y lugares de la libreta. */
 function ElegirParada({ obras, lugares, yaElegidas, onElegir, onCerrar }) {
@@ -283,8 +303,10 @@ function FormViaje({ viaje = null, paradasViaje = [], fechaInicial, lugares, pro
   );
 }
 
-function FichaViaje({ viaje, paradas, lugares, vehiculos, empleados, editable, onEditar, onVolver, onCambio }) {
+function FichaViaje({ viaje, paradas, lugares, vehiculos, empleados, editable, usuarioId, onEditar, onVolver, onCambio }) {
   const [cancelando, setCancelando] = useState(false);
+  const [haciendo, setHaciendo] = useState(false);
+  const avance = avanceViaje(paradas);
   const [motivo, setMotivo] = useState("");
   const [error, setError] = useState(null);
   const [enviando, setEnviando] = useState(false);
@@ -312,7 +334,11 @@ function FichaViaje({ viaje, paradas, lugares, vehiculos, empleados, editable, o
       <button type="button" className="g-btn g-btn-secondary mb-3" onClick={onVolver}>← Viajes</button>
       <div className="p-3 mb-3 rounded-[10px] border border-gypi-border bg-gypi-surface">
         <div className="text-[17px] font-bold">{t.emoji} Viaje {viaje.numero} · {t.label}</div>
-        <div className="text-[14px] mb-1">{est.emoji} {est.label}{viaje.estado === "cancelado" && viaje.motivo_cancelado ? `: ${viaje.motivo_cancelado}` : ""}</div>
+        <div className="text-[14px] mb-1">
+          {est.emoji} {est.label}{viaje.estado === "cancelado" && viaje.motivo_cancelado ? `: ${viaje.motivo_cancelado}` : ""}
+          {viaje.salida_at ? ` · salió ${horaDe(viaje.salida_at)}` : ""}{viaje.llegada_at ? ` · terminó ${horaDe(viaje.llegada_at)}` : ""}
+          {viaje.estado !== "planificado" && viaje.estado !== "cancelado" ? ` · ${avance.hechas} de ${avance.total} paradas` : ""}
+        </div>
         <div className="text-[13px] text-gypi-dim">
           {[fechaLarga(viaje.fecha), hhmm(viaje.hora) && `sale ${hhmm(viaje.hora)}`].filter(Boolean).join(" · ")}
         </div>
@@ -332,10 +358,17 @@ function FichaViaje({ viaje, paradas, lugares, vehiculos, empleados, editable, o
               <span className="block text-[12px] text-gypi-dim">{[p.ots?.length ? `OT ${p.ots.join(", ")}` : null, p.cliente].filter(Boolean).join(" · ")}</span>
               <span className="block text-[12px]">{textoUbicacion(p)}</span>
               {p.notas && <span className="block text-[12px]">📝 {p.notas}</span>}
+              <ResultadoParada p={p} empleados={empleados} />
             </span>
           </li>
         ))}
       </ol>
+      {(editable || viaje.chofer_id === usuarioId) && viajeEnCurso(viaje) && (
+        <button type="button" className="g-btn g-btn-primary w-full mb-2" onClick={() => setHaciendo(true)}>
+          {viaje.chofer_id === usuarioId ? "🚚 Hacer el viaje" : "🚚 Cargar las paradas por el chofer"}
+        </button>
+      )}
+      {haciendo && <MisViajes empleadoId={usuarioId} viajeId={viaje.id} onClose={() => { setHaciendo(false); onCambio(); }} onCambio={onCambio} />}
       {editable && viajeEditable(viaje) && <button type="button" className="g-btn g-btn-primary w-full mb-2" onClick={onEditar}>✏️ Cambiar el viaje</button>}
       {editable && ["planificado", "en_camino"].includes(viaje.estado) && (
         cancelando ? (
@@ -417,7 +450,7 @@ export default function LogisticaViajes({ empresaId, usuario = null }) {
   if (ficha) {
     return (
       <div className="flex-1 overflow-y-auto px-[18px] pb-6">
-        <FichaViaje viaje={ficha} paradas={paradasDe(ficha.id)} lugares={lugares} vehiculos={vehiculos} empleados={empleados} editable={editable}
+        <FichaViaje viaje={ficha} paradas={paradasDe(ficha.id)} lugares={lugares} vehiculos={vehiculos} empleados={empleados} editable={editable} usuarioId={usuario?.id}
           onEditar={() => setEditando(ficha.id)} onVolver={() => setAbierto(null)} onCambio={async () => { await cargar(); }} />
       </div>
     );
@@ -455,7 +488,7 @@ export default function LogisticaViajes({ empresaId, usuario = null }) {
                     <span className="block text-[15px] font-bold">Viaje {v.numero} · {t.label}{hhmm(v.hora) ? ` · ${hhmm(v.hora)}` : ""}</span>
                     <span className="block text-[13px] truncate">{ps.map((p) => p.nombre).join(" → ") || "Sin paradas"}</span>
                     <span className="block text-[12px] text-gypi-dim truncate">
-                      {[chofer(v.chofer_id)?.nombre || "Sin chofer", vehiculo(v.vehiculo_id)?.patente || "sin vehículo", `${ps.length} ${ps.length === 1 ? "parada" : "paradas"}`].join(" · ")}
+                      {[chofer(v.chofer_id)?.nombre || "Sin chofer", vehiculo(v.vehiculo_id)?.patente || "sin vehículo", v.estado === "en_camino" || v.estado === "terminado" ? `${avanceViaje(ps).hechas} de ${ps.length} paradas` : `${ps.length} ${ps.length === 1 ? "parada" : "paradas"}`].join(" · ")}
                     </span>
                   </span>
                   <span className="text-[12px] whitespace-nowrap">{est.emoji} {est.label}</span>
