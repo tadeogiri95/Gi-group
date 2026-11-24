@@ -1311,7 +1311,10 @@ export const logisticaBody = z.discriminatedUnion("accion", [
       ot_ids: z.array(idFlota).max(50).default([]),
       accion: z.enum(["entregar", "retirar", "entregar_retirar"]).default("entregar"),
       notas: textoSuelto(500),
-    }).strict().refine((p) => (p.lugar_id === null) !== (p.ot_ids.length === 0), { message: "Cada parada es un lugar o las OT de una obra" }))
+      // Parte 5 (207): la orden de compra que se retira (solo en un lugar, retirando)
+      orden_compra_id: idFlota.nullable().optional().transform((v) => v ?? null),
+    }).strict().refine((p) => (p.lugar_id === null) !== (p.ot_ids.length === 0), { message: "Cada parada es un lugar o las OT de una obra" })
+      .refine((p) => p.orden_compra_id === null || (p.lugar_id !== null && p.accion !== "entregar"), { message: "La orden de compra va en una parada donde se retira, en un lugar" }))
       .min(1, "Agregá al menos una parada").max(15, "Hasta 15 paradas por viaje"),
   }).strict(),
   z.object({ accion: z.literal("viaje_cancelar"), id: idFlota, motivo: z.string().trim().min(1, "Poné el motivo").max(300) }).strict(),
@@ -1323,7 +1326,7 @@ export const logisticaBody = z.discriminatedUnion("accion", [
     id: idFlota,
     estado: z.enum(["entregado", "parcial", "rechazado", "no_visitado"]),
     renglones: z.array(z.object({
-      origen: z.enum(["bulto", "suelto", "mano"]),
+      origen: z.enum(["bulto", "suelto", "mano", "oc"]),
       ref: idFlota.nullable().optional().transform((v) => v ?? null),
       ot: z.string().trim().max(40).nullable().optional().transform((v) => v || null),
       texto: z.string().trim().min(1, "Cada renglón necesita qué es").max(200),
@@ -1336,10 +1339,14 @@ export const logisticaBody = z.discriminatedUnion("accion", [
     firma_dni: textoSuelto(20),
     sin_firma: z.boolean().default(false),
     motivo: textoSuelto(300),
+    // Parte 5 (207): el N° de remito que dio el proveedor (si se retiró una OC)
+    remito_proveedor: textoSuelto(60),
     lat: latitud,
     lng: longitud,
   }).strict().refine(conPinCompleto, MENSAJE_PIN),
   // Parte 4 (206): el remito de una parada cumplida
   z.object({ accion: z.literal("remito_preparar"), id: idFlota }).strict(),
   z.object({ accion: z.literal("remito_datos"), id: idFlota, remito_oficial: textoSuelto(40), cot: textoSuelto(40) }).strict(),
+  // Parte 5 (207): lo que falta llegar de la OC de una parada (para el chofer)
+  z.object({ accion: z.literal("parada_oc"), id: idFlota }).strict(),
 ]);

@@ -24,6 +24,14 @@
 //   remito_preparar → número correlativo y link del remito de una parada
 //                     cumplida (si ya los tenía, los mismos)
 //   remito_datos    → número del remito oficial (ARCA) y COT
+// Parte 5 (207). Abastecimiento con Compras:
+//   viaje_guardar  → una parada de retiro en un lugar puede llevar la orden
+//                    de compra (OC) que se retira
+//   parada_oc      → (chofer) lo que falta llegar de la OC de la parada; el
+//                    chofer no lee Compras por /api/data
+//   parada_cumplir → con OC, lo retirado y el N° de remito del proveedor: la
+//                    OC queda recibida (o recibida en parte) en Compras, con
+//                    su ingreso de stock, una sola vez por parada
 // La lectura va por /api/data (logistica_lugares, logistica_viajes y
 // logistica_paradas, solo lectura; proyectos).
 // Con RLS_RUTAS=on todo va con el pase del usuario ({ sesion }).
@@ -38,12 +46,19 @@ import { requireModuloSesion } from "../../lib/accesosServidor";
 import {
   puedeGestionarLogistica, puedeHacerViaje, faltaParaCumplir, avanceViaje, viajeEditable, obrasDeOts,
   AVISO_MIGRACION_LOGISTICA, AVISO_MIGRACION_VIAJES, AVISO_MIGRACION_MIS_VIAJES, AVISO_MIGRACION_REMITO, tieneRemito,
+  AVISO_MIGRACION_COMPRAS, ESTADOS_OC_RETIRABLE, itemsRecibidos,
 } from "../../lib/logistica";
+import { recibirOrdenCompra } from "../../lib/comprasRecepcion";
 import { tokenRemito } from "../../lib/logisticaRemitoServidor";
 import { logger } from "../../lib/logger";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const ACCIONES_CHOFER = new Set(["viaje_salir", "parada_cumplir", "viaje_terminar", "remito_preparar", "remito_datos"]);
+const ACCIONES_CHOFER = new Set(["viaje_salir", "parada_cumplir", "viaje_terminar", "remito_preparar", "remito_datos", "parada_oc"]);
+
+function faltaMigracionCompras(err) {
+  const m = String(err?.message);
+  return /orden_compra_id|recepcion_id|remito_proveedor/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m);
+}
 
 function faltaMigracionRemito(err) {
   const m = String(err?.message);
@@ -116,6 +131,9 @@ async function armarParadas(sesion, paradas) {
   const idsLugar = paradas.map((p) => p.lugar_id).filter(Boolean);
   const idsOt = paradas.flatMap((p) => p.ot_ids);
   const lugares = idsLugar.length ? (await sbGet(`logistica_lugares?id=in.(${lista(idsLugar)})&empresa_id=eq.${e}&select=id,nombre,direccion,lat,lng,contacto`, opts)) || [] : [];
+  // Las OC que se retiran (207): de la empresa y todavía por recibir
+  const idsOc = paradas.map((p) => p.orden_compra_id).filter(Boolean);
+  const ocs = idsOc.length ? (await sbGet(`ordenes_compra?id=in.(${lista(idsOc)})&empresa_id=eq.${e}&select=id,numero,estado`, opts)) || [] : [];
   const ots = idsOt.length ? (await sbGet(`proyectos?id=in.(${lista(idsOt)})&empresa_id=eq.${e}&select=id,ot,obra,cliente,estado,direccion,lat,lng`, opts)) || [] : [];
   const filas = [];
   for (const [i, p] of paradas.entries()) {
@@ -123,7 +141,15 @@ async function armarParadas(sesion, paradas) {
     if (p.lugar_id) {
       const l = lugares.find((x) => x.id === p.lugar_id);
       if (!l) return { error: noEncontrado(`el lugar de la parada ${i + 1}`) };
-      filas.push({ ...base, lugar_id: l.id, ots: [], nombre: l.nombre, cliente: null, direccion: l.direccion ?? null, lat: l.lat ?? null, lng: l.lng ?? null });
+      const fila = { ...base, lugar_id: l.id, ots: [], nombre: l.nombre, cliente: null, direccion: l.direccion ?? null, lat: l.lat ?? null, lng: l.lng ?? null };
+      if (p.orden_compra_id) {
+        const oc = ocs.find((x) => x.id === p.orden_compra_id);
+        if (!oc) return { error: noEncontrado(`la orden de compra de la parada ${i + 1}`) };
+        if (!ESTADOS_OC_RETIRABLE.includes(oc.estado)) return { error: NextResponse.json({ error: `La OC N° ${oc.numero} de la parada ${i + 1} ya se recibió completa o está anulada` }, { status: 409 }) };
+        // Solo si hay OC: sin la 207, los viajes sin OC se siguen guardando
+        fila.orden_compra_id = oc.id;
+      }
+      filas.push(fila);
       continue;
     }
     const delaParada = ots.filter((x) => p.ot_ids.includes(x.id));
@@ -216,7 +242,8 @@ async function salirViaje(sesion, { id }) {
 async function cumplirParada(sesion, d) {
   const e = sesion.empresa_id;
   const opts = { sesion };
-  const [p] = (await sbGet(`logistica_paradas?id=eq.${d.id}&empresa_id=eq.${e}&select=id,viaje_id,accion`, opts)) || [];
+  // select=* para que sin la 207 siga andando (sin OC)
+  const [p] = (await sbGet(`logistica_paradas?id=eq.${d.id}&empresa_id=eq.${e}&select=*`, opts)) || [];
   if (!p) return noEncontrado("esa parada");
   const { viaje, error } = await viajeDelChofer(sesion, p.viaje_id);
   if (error) return error;
@@ -224,8 +251,27 @@ async function cumplirParada(sesion, d) {
   // Fotos y firma: solo imágenes subidas por /api/upload para esta empresa
   const deLaApp = (url) => !url || url.startsWith(`${SB_URL}/storage/v1/object/public/reportes-obra/${e}/`);
   if (!d.fotos.every(deLaApp) || !deLaApp(d.firma_url)) return NextResponse.json({ error: "Las fotos y la firma tienen que hacerse desde la app" }, { status: 400 });
-  const falta = faltaParaCumplir({ ...d, accion: p.accion });
+  // Con OC ya recibida, no se vuelve a recibir (lo que se cambie queda solo en el viaje)
+  const conOc = !!p.orden_compra_id;
+  const recibir = conOc && !p.recepcion_id && (d.estado === "entregado" || d.estado === "parcial");
+  const falta = faltaParaCumplir({ ...d, accion: p.accion, conOc: recibir });
   if (falta) return NextResponse.json({ error: falta }, { status: 400 });
+
+  // Primero Compras: si la OC no se puede recibir, la parada no se guarda
+  let recepcionId = p.recepcion_id ?? null;
+  if (recibir) {
+    const res = await recibirOrdenCompra(sesion, {
+      orden_id: p.orden_compra_id,
+      remito: d.remito_proveedor,
+      foto_url: d.fotos[0] || null,
+      notas: `Retirada en el viaje N° ${viaje.numero} (Logística)`,
+      items: itemsRecibidos(d.renglones),
+      forzar: false,
+    });
+    const r = await res.json().catch(() => ({}));
+    if (!res.ok) return NextResponse.json({ error: `Compras: ${r.error || "no se pudo recibir la orden de compra"}` }, { status: res.status });
+    recepcionId = r.recepcion?.id ?? null;
+  }
 
   const ahora = new Date().toISOString();
   if (viaje.estado === "planificado") {
@@ -246,6 +292,11 @@ async function cumplirParada(sesion, d) {
     hecha_lat: d.lat,
     hecha_lng: d.lng,
   };
+  if (conOc) {
+    fila.recepcion_id = recepcionId;
+    // El remito del proveedor queda el de la recepción, aunque después se corrija la parada
+    fila.remito_proveedor = p.recepcion_id ? p.remito_proveedor : recibir ? d.remito_proveedor : null;
+  }
   const [parada] = (await sbPatch(`logistica_paradas?id=eq.${p.id}&empresa_id=eq.${e}`, fila, opts)) || [];
   broadcastRefresh(e, "logistica_viajes");
   return NextResponse.json({ ok: true, parada: parada || { ...p, ...fila } });
@@ -306,6 +357,21 @@ async function datosRemitoOficial(sesion, d) {
   return NextResponse.json({ ok: true, parada: p || { ...parada, remito_oficial: d.remito_oficial, cot: d.cot } });
 }
 
+/** Lo que falta llegar de la OC de la parada (el chofer no lee Compras por /api/data). */
+async function ocDeParada(sesion, { id }) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const [p] = (await sbGet(`logistica_paradas?id=eq.${id}&empresa_id=eq.${e}&select=id,viaje_id,orden_compra_id,recepcion_id`, opts)) || [];
+  if (!p) return noEncontrado("esa parada");
+  const { error } = await viajeDelChofer(sesion, p.viaje_id);
+  if (error) return error;
+  if (!p.orden_compra_id) return NextResponse.json({ ok: true, oc: null, items: [] });
+  const [oc] = (await sbGet(`ordenes_compra?id=eq.${p.orden_compra_id}&empresa_id=eq.${e}&select=id,numero,proveedor_nombre,estado&limit=1`, opts)) || [];
+  if (!oc) return NextResponse.json({ ok: true, oc: null, items: [] });
+  const items = (await sbGet(`ordenes_compra_items?orden_id=eq.${oc.id}&empresa_id=eq.${e}&select=id,sku,descripcion,unidad,cantidad,cantidad_recibida&order=id.asc`, opts)) || [];
+  return NextResponse.json({ ok: true, oc, items, recibida: !!p.recepcion_id });
+}
+
 export async function POST(request) {
   try {
     const sesion = await validarToken(request);
@@ -334,8 +400,10 @@ export async function POST(request) {
       if (d.accion === "viaje_terminar") return await terminarViaje(sesion, d);
       if (d.accion === "remito_preparar") return await prepararRemito(sesion, d);
       if (d.accion === "remito_datos") return await datosRemitoOficial(sesion, d);
+      if (d.accion === "parada_oc") return await ocDeParada(sesion, d);
       return await direccionObra(sesion, d);
     } catch (err) {
+      if (faltaMigracionCompras(err)) return NextResponse.json({ error: AVISO_MIGRACION_COMPRAS }, { status: 409 });
       if (faltaMigracionRemito(err)) return NextResponse.json({ error: AVISO_MIGRACION_REMITO }, { status: 409 });
       if (faltaMigracionMisViajes(err)) return NextResponse.json({ error: AVISO_MIGRACION_MIS_VIAJES }, { status: 409 });
       if (faltaMigracionViajes(err)) return NextResponse.json({ error: AVISO_MIGRACION_VIAJES }, { status: 409 });
