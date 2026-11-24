@@ -149,6 +149,11 @@ test("precioPlanilla y planilla — PRECIO en pesos, sumado entre los renglones 
   assert.equal(precioPlanilla("$ 1.200"), 1200);
   assert.equal(precioPlanilla(""), null);
   assert.equal(precioPlanilla("A CONFIRMAR"), null);
+  // 24/11: escrito como texto con punto decimal (hoja REINA FABIOLA)
+  assert.equal(precioPlanilla("$  1,000,658.5"), 1000658.5);
+  assert.equal(precioPlanilla(" $  164,008.30 "), 164008.3);
+  assert.equal(precioPlanilla("$ 1,000,000"), 1000000);
+  assert.equal(precioPlanilla("1,5"), 1.5);
   const { filas } = parseCsvProyectos([
     TITULOS_PRECIO,
     conPrecio(renglon("M-7473", "COCINA", 1, 5, 1, 80, ""), '"$1.000.000,50"'),

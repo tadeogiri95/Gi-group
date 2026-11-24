@@ -96,9 +96,13 @@ export function numeroPlanilla(texto) {
   return t !== "" && Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-/** PRECIO del Plan de trabajo (142, columna AE): "$38.352.296,68" → 38352296.68; vacío o texto → null. */
+/** PRECIO del Plan de trabajo (142, columna AE): "$38.352.296,68" → 38352296.68; también "$  1,000,658.5" (texto con punto decimal); vacío o texto → null. */
 export function precioPlanilla(texto) {
-  return numeroPlanilla(limpio(texto).replace(/^(ars|\$)\s*/i, "").replace(/\$/g, ""));
+  const t = limpio(texto).replace(/^(ars|\$)\s*/i, "").replace(/\$/g, "").replace(/\s/g, "");
+  // Escrito como texto con punto decimal (24/11, hoja REINA FABIOLA):
+  // "1,000,658.5" o "164,008.30" → sin las comas de los miles
+  if (/^\d{1,3}(,\d{3})+\.\d+$/.test(t) || /^\d{1,3}(,\d{3}){2,}$/.test(t)) return numeroPlanilla(t.replace(/,/g, ""));
+  return numeroPlanilla(t);
 }
 
 /** Material de producción del Plan de trabajo (136): columnas X a AA. */

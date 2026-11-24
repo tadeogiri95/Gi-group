@@ -8,6 +8,7 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import { estadoResultados, mesesHasta, nombreMes, finDeMes, importeResultado, seccionDe, configResultados, validarPonderador, resumenDivisiones, divisionDeOp, claveDivision } from "../app/lib/finanzasResultados.js";
 import { cuentasDeHoja, limpiarFila } from "../app/lib/finanzas.js";
+import { planEntregasPlan, otMencionada } from "../app/lib/finanzasEntregasPlan.js";
 
 before(() => {
   if (!process.env.JWT_SECRET) process.env.JWT_SECRET = "test_secret_de_al_menos_32_caracteres_ok";
@@ -397,4 +398,79 @@ test("Resultados — lista de las OT sin precio que no se pudieron estimar, por 
   assert.ok(screen.getByText("No tiene materiales en Gypi (no pasó por el MRP) (1)"));
   assert.ok(screen.getByText("OT 7100 · Gómez"));
   assert.ok(screen.getByText("sin fecha"));
+});
+
+// ─── Entregas del Plan (24/11): OT terminadas CON precio sin entrega anotada ───
+
+test("otMencionada — reconoce la OT en el texto del libro sin confundir sub-OT", () => {
+  assert.equal(otMencionada("Entrega M-7795 Menegozzi", "M-7795"), true);
+  assert.equal(otMencionada("OT N° 7795", "M-7795"), true);
+  assert.equal(otMencionada("entrega 7795 cocina", "M-7795"), true);
+  assert.equal(otMencionada("M-77951", "M-7795"), false);
+  assert.equal(otMencionada("M-7751-29", "M-7751"), false);
+  assert.equal(otMencionada("Entrega M-7751-29", "M-7751-29"), true);
+  assert.equal(otMencionada("H 788", "H-788"), true);
+  // Número corto solo: no alcanza (puede ser cualquier cosa)
+  assert.equal(otMencionada("pago 788", "H-788"), false);
+});
+
+test("planEntregasPlan — suma las OT con precio sin entrega, saltea las anotadas y las del libro", () => {
+  const proyectos = [
+    { id: 10, ot: "A-4371", cliente: "Pérez", estado: "cerrado", fecha_entrega: "2026-08-01" },
+    { id: 11, ot: "A-4377", estado: "cerrado", fecha_entrega: null, fecha_objetivo: "2026-09-06" },
+    { id: 12, ot: "M-7000", estado: "cerrado", fecha_entrega: "2026-08-01" }, // con entrega de Gypi
+    { id: 13, ot: "M-7001", estado: "cerrado", fecha_entrega: "2026-07-01" }, // en el libro
+    { id: 14, ot: "M-7002", estado: "cerrado", fecha_entrega: "2026-07-01" }, // sin precio
+    { id: 15, ot: "M-7003", estado: "cerrado", fecha_entrega: "2024-07-01" }, // fuera de la ventana
+    { id: 16, ot: "M-7004", estado: "activo", fecha_entrega: "2026-07-01" }, // abierta
+    { id: 17, ot: "M-7005", estado: "cerrado", fecha_entrega: "2026-07-01" }, // entrega de Gypi anulada por Gypi: sí
+    { id: 18, ot: "H-790", estado: "cerrado", fecha_entrega: "2026-07-01" }, // ligada en el libro por id
+  ];
+  const precios = new Map([["A-4371", 27830000], ["A-4377", 12052306], ["M-7000", 1], ["M-7001", 2], ["M-7003", 3], ["M-7004", 4], ["M-7005", 500], ["H-790", 6]]);
+  const entregas = [
+    { id: 1, origen: "entrega_ot", origen_id: "p12", fecha: "2026-11-10" },
+    { id: 2, origen: "libro", descripcion: "ENTREGA OT 7001 COCINA", fecha: "2026-07-15" },
+    { id: 3, origen: "libro", descripcion: "ENTREGA A-4371", fecha: "2026-08-15", anulada_at: "x" }, // anulada: no cuenta
+    { id: 4, origen: "entrega_ot", origen_id: "p17", anulada_at: "x", anulada_por_nombre: "Gypi (la OT se volvió a abrir)" },
+    { id: 5, origen: "libro", descripcion: "Entrega", proyecto_id: 18, fecha: "2026-07-03" },
+  ];
+  const r = planEntregasPlan({ proyectos, precios, entregas, desde: "2025-12-01", hasta: "2026-11-30" });
+  assert.deepEqual(r.entregas.map((x) => [x.ot, x.fecha, x.valor]), [["M-7005", "2026-07-01", 500], ["A-4371", "2026-08-01", 27830000], ["A-4377", "2026-09-06", 12052306]]);
+  assert.equal(r.entregas[1].cliente, "Pérez");
+  assert.deepEqual(r.enLibro.map((x) => [x.ot, x.libro_fecha, x.libro]), [["H-790", "2026-07-03", "Entrega"], ["M-7001", "2026-07-15", "ENTREGA OT 7001 COCINA"]]);
+});
+
+test("entregas del Plan: renglón aparte por división, con su PRECIO, y cuentan para materiales", () => {
+  const proyectos = [...PROYECTOS, { id: 4, division: "ALUMINIO" }];
+  const r = estadoResultados({
+    ops: OPS, cuentas: CUENTAS, proyectos, hasta: "2026-10", materialesPct: 40,
+    entregasPlan: [{ proyecto_id: 4, fecha: "2026-10-01", valor: 2000000 }, { proyecto_id: 1, fecha: "2026-10-01", valor: 9 }],
+    entregasEstimadas: [{ proyecto_id: 4, fecha: "2026-10-01", valor: 5 }],
+  });
+  const plan = r.filas.filter((f) => f.entrega_plan);
+  assert.equal(plan.length, 1);
+  assert.equal(plan[0].nombre, "Entregas con precio del Plan (OT sin entrega anotada) · ALUMINIO");
+  assert.equal(plan[0].valores[11], 2000000);
+  assert.equal(plan[0].estimado, false);
+  assert.equal(r.entregas_plan, 1);
+  // La OT 1 ya tenía su entrega y la estimada de la 4 no se suma encima
+  assert.equal(r.filas.find((f) => f.id === "ING").valores[11], 3000000);
+  assert.equal(r.entregas_estimadas, 0);
+  assert.equal(r.filas.find((f) => f.nombre.startsWith("Costo de materiales")).valores[11], 1200000);
+});
+
+test("Resultados — lista de las entregas del Plan y de las salteadas por estar en el libro", async () => {
+  const proyectos = [...PROYECTOS, { id: 4, division: "ALUMINIO" }];
+  const datos = {
+    hasta: "2026-10", config: { materiales_pct: 40 },
+    plan_ot: [{ ot: "A-4371", cliente: "Pérez", fecha: "2026-10-01", valor: 2000000 }],
+    plan_en_libro_ot: [{ ot: "M-7001", cliente: "", fecha: "2026-07-01", valor: 2, libro_fecha: "2026-07-15", libro: "ENTREGA OT 7001" }],
+    ...estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos, hasta: "2026-10", materialesPct: 40, entregasPlan: [{ proyecto_id: 4, fecha: "2026-10-01", valor: 2000000 }] }),
+  };
+  global.fetch = async () => new Response(JSON.stringify(datos), { status: 200 });
+  render(<FinanzasResultados />);
+  assert.ok(await screen.findByText(/Entregas con precio del Plan \(OT sin entrega anotada\) · ALUMINIO/));
+  assert.ok(screen.getByText(/1 OT terminada que no tenía la entrega anotada/));
+  assert.ok(screen.getByText("OT A-4371 · Pérez"));
+  assert.ok(screen.getByText("OT M-7001 · en el libro: ENTREGA OT 7001"));
 });
