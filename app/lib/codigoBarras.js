@@ -97,3 +97,18 @@ export function leerBarrasPieza(texto) {
   lecturas.push({ ot, nombre: resto });
   return lecturas;
 }
+
+/**
+ * Código de barras de una pieza que se llama solo con un número, sin módulo
+ * (24/11, OT M-7541): "M7541-32" → { ot: "M-7541", nombre: "32" }. Es el
+ * mismo formato que el código de una sub-OT ("M-7498-36"), por eso
+ * leerBarrasPieza no lo toma: quien lo use tiene que fijarse primero que la
+ * OT tenga una pieza con ese nombre. Null si no tiene esa forma.
+ */
+export function leerBarrasPiezaNumero(texto) {
+  const s = String(texto ?? "").trim();
+  if (s.length > MAX_TEXTO_BARRAS + 10) return null;
+  const m = s.match(/^(?:([A-Za-z]{1,3})-?)?(\d{2,6})-(\d{1,6})$/);
+  if (!m) return null;
+  return { ot: m[1] ? `${m[1].toUpperCase()}-${m[2]}` : m[2], nombre: m[3] };
+}

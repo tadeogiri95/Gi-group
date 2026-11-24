@@ -28,6 +28,7 @@ import { broadcastRefresh } from "../../../lib/broadcast";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { requireModuloSesion } from "../../../lib/accesosServidor";
 import { leerQrPieza, leerQrModulo, etapasSalteadas } from "../../../lib/piezas";
+import { leerBarrasPiezaNumero } from "../../../lib/codigoBarras";
 import { normalizarOt } from "../../../lib/escaneoCarga";
 import { logger } from "../../../lib/logger";
 
@@ -157,7 +158,18 @@ async function escanear(sesion, datos) {
   if (deModulo) return escanearModulo(sesion, datos, deModulo);
   // El QR de la etiqueta, o el número de pieza escrito a mano ("N° 1234")
   const lectura = leerQrPieza(datos.codigo) || (/^\d{1,15}$/.test(datos.codigo) ? { ot: null, id: Number(datos.codigo) } : null);
-  if (!lectura) return NextResponse.json({ error: "Ese código no es de una pieza ni de un módulo. Escaneá la etiqueta de la pieza o del módulo." }, { status: 400 });
+  if (!lectura) {
+    // Pieza que se llama solo con un número, sin módulo (24/11): "M7541-32"
+    // es la pieza "32" de la OT M-7541 si la OT la tiene (si no, puede ser el
+    // código de una sub-OT, que se escribe igual)
+    const numero = leerBarrasPiezaNumero(datos.codigo);
+    if (numero) {
+      const renglon = await unidadesDelRenglon(sesion, numero.ot, numero.nombre, opts);
+      if (renglon.piezas.length) return escanearRenglon(sesion, datos, numero, renglon);
+      return NextResponse.json({ error: `Ese código no es de una pieza ni de un módulo. Si es la pieza ${numero.nombre} de la OT ${numero.ot}, revisá que la planilla esté pegada en 🧩 Piezas.` }, { status: 404 });
+    }
+    return NextResponse.json({ error: "Ese código no es de una pieza ni de un módulo. Escaneá la etiqueta de la pieza o del módulo." }, { status: 400 });
+  }
   if (lectura.nombre && !lectura.unidad) return escanearRenglon(sesion, datos, lectura);
   if (lectura.nombre) return escanearPiezaPlanilla(sesion, datos, lectura);
   const [pieza] = (await sbGet(`piezas_ot?id=eq.${lectura.id}&empresa_id=eq.${e}&select=id,ot,nombre,unidad,de,etapas&limit=1`, opts)) || [];

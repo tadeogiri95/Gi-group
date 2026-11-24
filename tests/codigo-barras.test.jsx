@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const { modulosCode128, svgBarras, entraEnBarras, textoBarrasPieza, leerBarrasPieza, otParaBarras } = await import("../app/lib/codigoBarras.js");
+const { modulosCode128, svgBarras, entraEnBarras, textoBarrasPieza, leerBarrasPieza, leerBarrasPiezaNumero, otParaBarras } = await import("../app/lib/codigoBarras.js");
 const { leerQrPieza, htmlEtiquetasPiezas } = await import("../app/lib/piezas.js");
 const { leerQr, cotejarQr, otDelQr } = await import("../app/lib/escaneoCarga.js");
 const { otDeQr } = await import("../app/lib/pdfOt.js");
@@ -79,6 +79,31 @@ test("Carga y Ver PDF — el código de barras trae la OT y la pieza", () => {
   const sub = cotejarQr("M7498-36-GB2P-11", { ot: "M-7498-36", bultos: [], sueltos });
   assert.equal(sub.tipo, "suelto", "vale la lectura de la OT abierta");
   assert.match(cotejarQr("M7820-GB2P-11", { ot: "M-7819", bultos: [], sueltos }).error, /OT M-7820/);
+});
+
+test("pieza que se llama solo con un número (M7541-32) — Escanear piezas y Carga la encuentran", () => {
+  assert.deepEqual(leerBarrasPiezaNumero("M7541-32"), { ot: "M-7541", nombre: "32" });
+  assert.deepEqual(leerBarrasPiezaNumero(" m-7541-32 "), { ot: "M-7541", nombre: "32" });
+  assert.deepEqual(leerBarrasPiezaNumero("7541-32"), { ot: "7541", nombre: "32" });
+  for (const t of ["M7819-GB2P-11", "M-7495", "M7495", "7790001234567", ""]) {
+    assert.equal(leerBarrasPiezaNumero(t), null, t);
+  }
+  // leerBarrasPieza sigue sin tomarlo (puede ser una sub-OT)
+  assert.equal(leerBarrasPieza("M7541-32"), null);
+  // Escanear piezas: si la OT tiene la pieza "32", se anota esa
+  const ruta = leer("app/api/piezas/paso/route.js");
+  assert.match(ruta, /leerBarrasPiezaNumero\(datos\.codigo\)/);
+  assert.match(ruta, /unidadesDelRenglon\(sesion, numero\.ot, numero\.nombre, opts\)/);
+  // Carga: vale la lectura de la OT abierta
+  assert.deepEqual(leerQr("M7541-32"), { ot: "M7541-32", otras: [{ ot: "M-7541", piezaNombre: "32" }] });
+  const sueltos = [{ id: 7, codigo: "32", descripcion: "Lateral", carga: null }];
+  const r = cotejarQr("M7541-32", { ot: "M-7541", bultos: [], sueltos });
+  assert.equal(r.tipo, "suelto");
+  assert.equal(r.item.id, 7);
+  assert.equal(cotejarQr("M-7498-36", { ot: "M-7498-36", bultos: [], sueltos }).tipo, "ot", "el código de la sub-OT sigue siendo la OT");
+  assert.equal(otDelQr("M-7498-36", [{ ot: "M-7498" }, { ot: "M-7498-36" }]), "M-7498-36");
+  assert.equal(otDelQr("M7541-32", [{ ot: "M-7541" }]), "M-7541");
+  assert.equal(otDeQr("M-7498-36"), "M-7498-36", "Ver PDF no cambia");
 });
 
 test("cámara — por defecto lee QR y código de barras", () => {
