@@ -199,6 +199,11 @@ const esDeResultado = (c) => /resultado/i.test(String(c.rubro || "")) || /^0[45]
  *   entregasPlan: OT terminadas CON precio que no tienen entrega anotada (24/11), en su mes de ENTREGA del Plan
  * @returns {{ meses: string[], filas: object[], sin_linea: object[], para_revisar: number, clasificado: boolean, materiales_estimados: boolean }}
  */
+/** Los nombres de los renglones de entregas (24/11, pedido de Tadeo). */
+export const ENTREGAS_PLAN = "Entregas a precio del Plan";
+export const ENTREGAS_ESTIMADAS = "Entregas estimadas por materiales";
+export const ENTREGAS_LIBRO = "Entregas cargadas en el libro";
+
 export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centros = [], hasta, materialesPct = MATERIALES_PCT, ponderador = {}, division = "", materialesOt = null, entregasEstimadas = [], entregasPlan = [] }) {
   const meses = mesesHasta(hasta);
   const idx = new Map(meses.map((m, i) => [m, i]));
@@ -216,6 +221,12 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
   const cero = () => meses.map(() => 0);
   // renglón (cuenta + división) → valores por mes
   const lineas = new Map();
+  // El renglón de las entregas a PRECIO del Plan de una división
+  const lineaPlan = (div) => {
+    const l = { cuenta: null, linea: "ING_ENT_PLAN", division: div, nombre: div ? `${ENTREGAS_PLAN} · ${div}` : ENTREGAS_PLAN, seccion: "ING", origen: "ING", grupo: "ENT", entregaPlan: true, valores: cero() };
+    lineas.set(`entregas|plan|${div}`, l);
+    return l;
+  };
   const sinLinea = new Map();
   // Entregas de cada OT por mes (para el costo real de materiales)
   const entregaOt = new Map();
@@ -238,10 +249,17 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
     const niif = niifDe(ubic.seccion.id, ubic.grupo);
     const secNiif = SECCIONES_NIIF.find((x) => x.id === niif);
     const div = ubic.seccion.ingreso && op.proyecto_id ? divisionOt.get(Number(op.proyecto_id)) || "" : "";
-    const k = `${codigo}|${div}`;
+    // Entregas (24/11, pedido de Tadeo: nombres claros): la entrega que Gypi
+    // anota al terminar la OT va con las del PRECIO del Plan; lo demás en una
+    // cuenta de Entregas es lo cargado en el libro
+    const esEntrega = ubic.seccion.id === "ING" && ubic.grupo === "ENT";
+    const dePlan = esEntrega && op.origen === "entrega_ot";
+    const k = dePlan ? `entregas|plan|${div}` : `${codigo}|${div}`;
     let l = lineas.get(k);
+    if (!l && dePlan) l = lineaPlan(div);
     if (!l) {
-      l = { cuenta: codigo, linea: c.linea_eerr || `${ubic.seccion.id}_${ubic.grupo}`, division: div, nombre: div ? `${c.nombre} · ${div}` : c.nombre, seccion: niif, origen: ubic.seccion.id, grupo: ubic.grupo, valores: cero() };
+      const nombre = esEntrega ? (/^entregas generales$/i.test(String(c.nombre || "").trim()) ? ENTREGAS_LIBRO : `${ENTREGAS_LIBRO} (${c.nombre})`) : c.nombre;
+      l = { cuenta: codigo, linea: c.linea_eerr || `${ubic.seccion.id}_${ubic.grupo}`, division: div, nombre: div ? `${nombre} · ${div}` : nombre, seccion: niif, origen: ubic.seccion.id, grupo: ubic.grupo, valores: cero() };
       lineas.set(k, l);
     }
     // Ingresos: haber − debe; el resto: debe − haber
@@ -285,12 +303,7 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
     if (!f) continue;
     const div = divisionOt.get(pid) || "";
     const k = `entregas|plan|${div}`;
-    let l = lineas.get(k);
-    if (!l) {
-      const nombre = "Entregas con precio del Plan (OT sin entrega anotada)";
-      l = { cuenta: null, linea: "ING_ENT_PLAN", division: div, nombre: div ? `${nombre} · ${div}` : nombre, seccion: "ING", origen: "ING", grupo: "ENT", entregaPlan: true, valores: cero() };
-      lineas.set(k, l);
-    }
+    const l = lineas.get(k) || lineaPlan(div);
     l.valores[i] += valor * f;
     entregaOt.set(pid, cero());
     entregaOt.get(pid)[i] += valor * f;
@@ -312,7 +325,7 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
     const k = `entregas|estimadas|${div}`;
     let l = lineas.get(k);
     if (!l) {
-      const nombre = "Entregas con valor estimado (OT sin precio en el Plan)";
+      const nombre = ENTREGAS_ESTIMADAS;
       l = { cuenta: null, linea: "ING_ENT_EST", division: div, nombre: div ? `${nombre} · ${div}` : nombre, seccion: "ING", origen: "ING", grupo: "ENT", estimado: true, entregaEstimada: true, valores: cero() };
       lineas.set(k, l);
     }
@@ -372,6 +385,8 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
     }
   }
 
+  // Entregas: primero a precio del Plan, después estimadas, después las del libro
+  const rangoEntrega = (l) => (l.entregaPlan ? 0 : l.entregaEstimada ? 1 : 2);
   const redondear = (vals) => vals.map(centavos);
   const total = (vals) => centavos(vals.reduce((s, v) => s + v, 0));
   const sumaDe = (lista) => { const t = cero(); for (const l of lista) l.valores.forEach((v, i) => { t[i] += v; }); return t; };
@@ -390,7 +405,7 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
     });
     for (const g of grupos) {
-      const deG = deSec.filter((l) => claveG(l) === g).sort((a, b) => Number(!!a.entregaEstimada) - Number(!!b.entregaEstimada) || a.linea.localeCompare(b.linea) || String(a.cuenta).localeCompare(String(b.cuenta)) || a.division.localeCompare(b.division));
+      const deG = deSec.filter((l) => claveG(l) === g).sort((a, b) => rangoEntrega(a) - rangoEntrega(b) || a.linea.localeCompare(b.linea) || String(a.cuenta).localeCompare(String(b.cuenta)) || a.division.localeCompare(b.division));
       const conNombre = nombreGrupo(deG[0].origen, deG[0].grupo);
       if (conNombre || deG.length > 1) {
         const tG = sumaDe(deG);

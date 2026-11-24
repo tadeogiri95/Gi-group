@@ -120,7 +120,7 @@ function EntregasEstimadas({ ots, pctMateriales }) {
     <details className="mt-1 text-[12px] text-gypi-cyan-ink">
       <summary className="cursor-pointer">
         <span className="inline-block w-3 h-3 align-middle rounded-sm border border-gypi-border bg-gypi-estimado mr-1" aria-hidden="true" />
-        ** Entregas con valor estimado: {ots.length === 1 ? "1 OT terminada" : `${ots.length} OT terminadas`} sin precio en el Plan de trabajo. Valen lo mismo que en la cuenta corriente de clientes (materiales de sus necesidades ÷ {textoPctEstimado(pctMateriales)}). Cuando le cargues el precio, pasa a la entrega de verdad.
+        ** Entregas estimadas por materiales: {ots.length === 1 ? "1 OT terminada" : `${ots.length} OT terminadas`} sin PRECIO en el Nuevo Plan de Trabajo. Cada una vale sus materiales ÷ {textoPctEstimado(pctMateriales)}. Cuando le cargues el PRECIO, pasa a "Entregas a precio del Plan".
       </summary>
       <ul className="list-none m-0 mt-1 p-0 flex flex-col gap-0.5 text-gypi-text">
         {ots.map((o) => (
@@ -128,43 +128,6 @@ function EntregasEstimadas({ ots, pctMateriales }) {
         ))}
         {ots.length > 1 && <li className="flex gap-2 font-semibold border-t border-gypi-border pt-0.5"><span className="flex-1">Total</span><span className="font-mono">{miles(total)}</span></li>}
       </ul>
-    </details>
-  );
-}
-
-/**
- * Las OT terminadas con precio que no tenían la entrega anotada (24/11): van
- * por su PRECIO en el mes de su ENTREGA del Plan. Debajo, las que se
- * saltearon porque ya figuran en una entrega del libro (para revisar).
- */
-function EntregasDelPlan({ ots, enLibro }) {
-  const total = ots.reduce((s, o) => s + (Number(o.valor) || 0), 0);
-  return (
-    <details className="mt-1 text-[12px] text-gypi-text">
-      <summary className="cursor-pointer">
-        {ots.length > 0
-          ? `Entregas con precio del Plan: ${ots.length === 1 ? "1 OT terminada" : `${ots.length} OT terminadas`} que no tenía${ots.length === 1 ? "" : "n"} la entrega anotada (entraron a Gypi antes de la fecha de inicio de Ventas). Van por su PRECIO, en el mes de su ENTREGA del Plan.`
-          : "Ninguna OT con precio quedó sin entrega."}
-        {enLibro.length > 0 && ` ${enLibro.length === 1 ? "1 OT se salteó" : `${enLibro.length} OT se saltearon`} porque ya está${enLibro.length === 1 ? "" : "n"} en una entrega del libro.`}
-      </summary>
-      {ots.length > 0 && (
-        <ul className="list-none m-0 mt-1 p-0 flex flex-col gap-0.5">
-          {ots.map((o) => (
-            <li key={o.ot} className="flex gap-2"><span className="font-mono text-gypi-dim">{dma(o.fecha)}</span><span className="flex-1">OT {o.ot}{o.cliente ? ` · ${o.cliente}` : ""}</span><span className="font-mono">{miles(o.valor)}</span></li>
-          ))}
-          {ots.length > 1 && <li className="flex gap-2 font-semibold border-t border-gypi-border pt-0.5"><span className="flex-1">Total</span><span className="font-mono">{miles(total)}</span></li>}
-        </ul>
-      )}
-      {enLibro.length > 0 && (
-        <div className="mt-1">
-          <p className="m-0 font-semibold">Salteadas: ya figuran en el libro (no se suman dos veces)</p>
-          <ul className="list-none m-0 p-0 flex flex-col gap-0.5">
-            {enLibro.map((o) => (
-              <li key={`libro-${o.ot}`} className="flex gap-2"><span className="font-mono text-gypi-dim">{dma(o.libro_fecha)}</span><span className="flex-1">OT {o.ot} · en el libro: {o.libro || "sin descripción"}</span><span className="font-mono">{miles(o.valor)}</span></li>
-            ))}
-          </ul>
-        </div>
-      )}
     </details>
   );
 }
@@ -211,7 +174,7 @@ export function DetalleEntregas({ filas, meses, mes, onMes, division }) {
         </select>
         <span className="text-[12px] text-gypi-dim">{delMes.length === 1 ? "1 entrega" : `${delMes.length} entregas`} · total {miles(total)}{division ? ` · solo ${division}` : ""}</span>
       </div>
-      {repetidas > 0 && <p className="m-0 mb-1 text-[12px] text-gypi-amber-ink">⚠ {repetidas === 1 ? "1 entrega podría estar repetida" : `${repetidas} entregas podrían estar repetidas`}: una del libro sin OT y otra de una OT, del mismo cliente y con menos de dos meses entre una y otra. Si son la misma, anulá la del libro o anotale la OT.</p>}
+      {repetidas > 0 && <p className="m-0 mb-1 text-[12px] text-gypi-amber-ink">⚠ {repetidas === 1 ? "1 entrega podría estar repetida" : `${repetidas} entregas podrían estar repetidas`}: una cargada en el libro sin OT y otra de una OT del Plan, del mismo cliente y con menos de dos meses entre una y otra. Si son la misma, anulá la del libro.</p>}
       {delMes.length === 0 ? <p className="m-0 text-[12px] text-gypi-dim">No hay entregas en este mes.</p> : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[12px]" aria-label="Entregas del mes">
@@ -326,7 +289,7 @@ export default function FinanzasResultados() {
           </thead>
           <tbody>
             {visibles.map((f) => {
-              // Entregas con valor estimado: otro color, para que no se confundan con las de precio del Plan
+              // Entregas estimadas por materiales: otro color, para que no se confundan con las de precio del Plan
               const fondo = f.entrega_estimada ? "bg-gypi-estimado" : f.tipo === "seccion" || f.tipo === "resultado" ? "bg-gypi-surface" : "bg-gypi-bg";
               const aparte = datos.filas.find((x) => x.tipo === "seccion" && x.id === (f.tipo === "seccion" ? f.id : f.seccion))?.aparte;
               const sangria = f.tipo === "linea" ? "pl-6" : f.tipo === "grupo" ? "pl-4" : "pl-2";
@@ -348,7 +311,6 @@ export default function FinanzasResultados() {
         </table>
       </div>
       {datos.materiales_estimados && <p className="m-0 mt-1 text-[12px] text-gypi-dim">* Estimado: no hay costo real de materiales cargado.</p>}
-      {((datos.plan_ot || []).length > 0 || (datos.plan_en_libro_ot || []).length > 0) && <EntregasDelPlan ots={datos.plan_ot || []} enLibro={datos.plan_en_libro_ot || []} />}
       {datos.entregas_estimadas > 0 && <EntregasEstimadas ots={datos.estimadas_ot || []} pctMateriales={datos.config?.materiales_pct} />}
       {(datos.no_estimadas_ot || []).length > 0 && <NoEstimadas ots={datos.no_estimadas_ot} />}
 

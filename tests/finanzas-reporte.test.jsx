@@ -251,7 +251,7 @@ test("reporte — suma las entregas estimadas (OT sin precio) en un renglón cel
   const i = r.resultados.indexOf(est);
   assert.ok(i > 0 && r.resultados.slice(0, i).some((f) => f.id === "ING"), "va dentro de Ingresos");
   const html = htmlReporte(r, { empresa: "Gi" });
-  assert.match(html, /class="est"><td>Entregas con valor estimado \(OT sin precio en el Plan\)/);
+  assert.match(html, /class="est"><td>Entregas estimadas por materiales \(OT sin PRECIO en el Plan\)/);
   assert.match(html, /1 OT terminada sin precio en el Plan/);
   // Sin estimadas, ni renglón ni nota
   const sin = reporteFinanciero({ ...base, tipo: "mes", fecha: "2026-10-15" });
