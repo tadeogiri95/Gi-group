@@ -548,13 +548,13 @@ test("personalGantt — armadores y ayudantes según el puesto de cada operario"
   assert.equal(personalGantt([], DIV_M, null), null, "sin operarios no cambia nada");
   // Nadie con puesto: las máquinas se llevan 1 + 2 + 2 y arman los que sobran
   const sinPuesto = personalGantt([1, 2, 3, 4, 5, 6, 7].map((i) => op(i, null)), DIV_M, null);
-  assert.deepEqual(sinPuesto, { armadores: 2, maxPorOt: 4, ayudantes: { corte: 1, canteado: 2, mecanizado: 2 } });
+  assert.deepEqual(sinPuesto, { armadores: 2, maxPorOt: 4, paralelo: 2, ayudantes: { corte: 1, canteado: 2, mecanizado: 2 } });
   // Con puesto: los de Otra línea (Puertas) e instaladores no cuentan
   const conPuesto = personalGantt([
     op(1, "corte"), op(2, "canteado"), op(3, "canteado"), op(4, "mecanizado"), op(5, "armado"), op(6, "armado"),
     op(7, "otra_linea"), op(8, "armado", { es_instalador: true }),
   ], DIV_M, { max_armadores_ot: 3 });
-  assert.deepEqual(conPuesto, { armadores: 2, maxPorOt: 3, ayudantes: { corte: 1, canteado: 2, mecanizado: 1 } });
+  assert.deepEqual(conPuesto, { armadores: 2, maxPorOt: 3, paralelo: 2, ayudantes: { corte: 1, canteado: 2, mecanizado: 1 } });
 });
 
 test("📅 Gantt — al lado de la barra de Armado van cuántos arman", () => {

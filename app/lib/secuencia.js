@@ -8,6 +8,7 @@
 //    (Corte → Canteado → Mecanizado → Armado);
 //  - por cada máquina pasa una sola OT a la vez, en el orden de prioridad;
 //  - Armado va de a una OT por vez, con los armadores libres hasta el máximo por OT (crearArmado, 05/11);
+//    desde el 24/11, hasta "OT a la vez en Armado" si sobran armadores;
 //  - cada día tiene las horas de la grilla de horarios del personal operativo
 //    (del primero que entra al último que sale); los días de horas extra
 //    rinden como el día más largo de la semana.
@@ -100,28 +101,37 @@ export function duracion(etapa, horas, params) {
 }
 
 /**
- * Armado de a una OT por vez (Tadeo, 05/11: "que armado vaya de a una OT").
- * Cada OT, en el orden del plan, arranca cuando está lista (terminó su
- * Mecanizado y llegó su día del plan) y terminó la OT anterior de Armado.
- * Toma a todos los armadores libres, hasta "máximo de armadores por OT"
- * (maxPorOt): con k armadores, G horas de gente tardan G / k. Los operarios
- * de una máquina que ya no tiene más trabajo pasan a Armado
- * (ayudantes[máquina], desde que se libera). Antes (27/10) los que sobraban
- * armaban otra OT en paralelo y en el Gantt se veían OT encimadas.
+ * Armado (Tadeo, 05/11: "que armado vaya de a una OT"; 24/11: "2 OT a la vez
+ * si sobran armadores"). Cada OT, en el orden del plan, arranca cuando está
+ * lista (terminó su Mecanizado y llegó su día del plan), no antes que la OT
+ * anterior de Armado, y toma los armadores libres hasta "máximo de armadores
+ * por OT" (maxPorOt): con k armadores, G horas de gente tardan G / k. Se
+ * arman hasta `paralelo` OT a la vez, y una OT más solo arranca si quedó al
+ * menos un armador libre (con paralelo = 1, de a una OT como el 05/11). Los
+ * operarios de una máquina que ya no tiene más trabajo pasan a Armado
+ * (ayudantes[máquina], desde que se libera).
  */
-function crearArmado({ armadores, maxPorOt, ayudantes }) {
-  let libre = 0; // hasta cuándo está ocupado Armado
+function crearArmado({ armadores, maxPorOt, ayudantes, paralelo = 1 }) {
+  const activas = []; // { t1, k } de las OT que se están armando
+  let ultimoInicio = 0;
   const pool = (t) => armadores + ayudantes.reduce((s, a) => s + (a.desde <= t + 1e-9 ? a.n : 0), 0);
+  const ocupadas = (t) => activas.filter((a) => a.t1 > t + 1e-9);
+  const libres = (t) => pool(t) - ocupadas(t).reduce((s, a) => s + a.k, 0);
   return (listo, G) => {
-    let t0 = Math.max(listo, libre);
-    // Sin nadie todavía: espera a que se libere alguna máquina
-    if (pool(t0) < 1) {
-      const proximo = ayudantes.map((a) => a.desde).filter((t) => t > t0).sort((x, y) => x - y)[0];
-      if (proximo != null) t0 = proximo;
+    let t0 = Math.max(listo, ultimoInicio);
+    // Espera a que haya lugar (menos de `paralelo` OT) y alguien libre: lo
+    // próximo que cambia es que termine una OT o se libere una máquina
+    for (let vuelta = 0; vuelta < 1000; vuelta++) {
+      if (ocupadas(t0).length < paralelo && libres(t0) >= 1) break;
+      const proximo = [...ocupadas(t0).map((a) => a.t1), ...ayudantes.map((a) => a.desde)].filter((t) => t > t0 + 1e-9).sort((x, y) => x - y)[0];
+      if (proximo == null) break;
+      t0 = proximo;
     }
-    const k = Math.max(1, Math.min(maxPorOt, pool(t0)));
-    libre = t0 + G / k;
-    return { t0, t1: libre, k };
+    const k = Math.max(1, Math.min(maxPorOt, libres(t0)));
+    const t1 = t0 + G / k;
+    activas.push({ t1, k });
+    ultimoInicio = t0;
+    return { t0, t1, k };
   };
 }
 
@@ -169,6 +179,8 @@ export function secuenciar(ots, { params = null, personal = null, inicio = () =>
     armadores: armadores || (ayudantes.length ? 0 : 1),
     maxPorOt: personal ? Math.max(1, Number(personal.maxPorOt) || 1) : 1,
     ayudantes,
+    // OT a la vez en Armado (24/11): sin `personal`, una sola persona arma de a una
+    paralelo: personal ? Math.max(1, Number(personal.paralelo) || 1) : 1,
   });
   for (const o of enOrden("armado")) {
     const G = o.horas.armado || 0;

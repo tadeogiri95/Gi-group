@@ -456,6 +456,8 @@ export function personalGantt(empleados, divisiones, cfgValor) {
   return {
     armadores: p.armadores,
     maxPorOt: params.max_armadores_ot || 1,
+    // OT a la vez en Armado si sobran armadores (Tadeo, 24/11)
+    paralelo: params.ots_armado_paralelo || 1,
     ayudantes: Object.fromEntries(MAQUINAS_PLAN.map((m) => [m, deMaquina(m)])),
   };
 }

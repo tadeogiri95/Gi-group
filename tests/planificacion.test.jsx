@@ -1312,6 +1312,23 @@ test("📅 Gantt — ↩ Deshacer vuelve al plan confirmado; sin permiso no hay 
 // ─── Reordenar cada proceso por separado en "OT por proceso" (Tadeo, 29/10) ───
 const { secuenciar } = await import("../app/lib/secuencia.js");
 
+test("secuenciar — Armado con 2 OT a la vez si sobran armadores (Tadeo, 24/11)", () => {
+  const ots = [{ clave: "A", horas: { armado: 12 } }, { clave: "B", horas: { armado: 12 } }, { clave: "C", horas: { armado: 4 } }];
+  const armado = (r, ot) => r.get(ot).find((x) => x.etapa === "armado");
+  // 6 armadores, máximo 4 por OT: A con 4 y B con los 2 que sobran, al mismo tiempo
+  const dos = secuenciar(ots, { personal: { armadores: 6, maxPorOt: 4, paralelo: 2, ayudantes: {} } });
+  assert.deepEqual([armado(dos, "A").t0, armado(dos, "A").t1, armado(dos, "A").personas], [0, 3, 4]);
+  assert.deepEqual([armado(dos, "B").t0, armado(dos, "B").t1, armado(dos, "B").personas], [0, 6, 2]);
+  // C espera a que termine una (A a las 3 h) y toma los 4 que se liberan
+  assert.deepEqual([armado(dos, "C").t0, armado(dos, "C").personas], [3, 4]);
+  // De a una OT (como el 05/11): B espera a A
+  const una = secuenciar(ots, { personal: { armadores: 6, maxPorOt: 4, paralelo: 1, ayudantes: {} } });
+  assert.deepEqual([armado(una, "B").t0, armado(una, "B").personas], [3, 4]);
+  // Si no sobra nadie, no arranca otra OT aunque se permitan 2
+  const justos = secuenciar(ots, { personal: { armadores: 4, maxPorOt: 4, paralelo: 2, ayudantes: {} } });
+  assert.equal(armado(justos, "B").t0, 3);
+});
+
 test("secuenciar — un proceso con orden propio: cantear primero la segunda OT", () => {
   const ots = [{ clave: "A", horas: { corte: 2, canteado: 2 } }, { clave: "B", horas: { corte: 2, canteado: 2 } }];
   const tramo = (r, ot, etapa) => r.get(ot).find((x) => x.etapa === etapa);
