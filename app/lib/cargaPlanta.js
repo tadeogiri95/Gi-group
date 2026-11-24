@@ -302,13 +302,14 @@ export function cargaPeriodo({ ots, params, capacidad }) {
     return { id: m.id, nombre: m.nombre, cantidad, paradas, necesarias: nec, disponibles: disp, extra: Math.max(0, nec - disp), uso: disp > 0 ? nec / disp : (nec > 0 ? Infinity : 0) };
   });
 
-  // Armado (Tadeo, 24/11): va de a una OT por vez con hasta "máximo de
-  // armadores por OT", así que a la vez arman como mucho esos (o los
-  // operarios que haya, si son menos), aunque sobre gente
-  const personasArmado = Math.max(1, Math.min(params.max_armadores_ot || 1, capacidad.personas || 1));
+  // Armado (Tadeo, 24/11): va de a "OT a la vez en Armado" OT con hasta
+  // "máximo de armadores por OT" cada una, así que a la vez arman como mucho
+  // esos (o los operarios que haya, si son menos), aunque sobre gente
+  const otsArmado = params.ots_armado_paralelo || 1;
+  const personasArmado = Math.max(1, Math.min((params.max_armadores_ot || 1) * otsArmado, capacidad.personas || 1));
   const dispArmado = capacidad.maquina * personasArmado;
   const necArmado = porEtapa.armado.gente;
-  const armado = { id: "armado", nombre: "Armado", personas: personasArmado, necesarias: necArmado, disponibles: dispArmado,
+  const armado = { id: "armado", nombre: "Armado", personas: personasArmado, ots: otsArmado, necesarias: necArmado, disponibles: dispArmado,
     extra: Math.max(0, necArmado - dispArmado), uso: dispArmado > 0 ? necArmado / dispArmado : (necArmado > 0 ? Infinity : 0) };
 
   // Cuello de botella: lo más cargado entre la gente, cada máquina y Armado

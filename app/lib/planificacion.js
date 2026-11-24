@@ -33,7 +33,8 @@ export const PARAMETROS = [
   { id: "maquinas_cnc", grupo: "maquinas", label: "CNC", unidad: "máquinas", min: 1, max: 20, entero: true, defecto: 2 },
   { id: "personas_canteadora", grupo: "maquinas", label: "Personas en la canteadora", unidad: "personas", min: 1, max: 2, entero: true, defecto: 2 },
   { id: "pct_tiempo_canteadora_2", grupo: "maquinas", label: "Tiempo con 2 personas en la canteadora", unidad: "% del tiempo con 1", ayuda: "50 = tarda la mitad.", min: 10, max: 100, defecto: 50 },
-  { id: "max_armadores_ot", grupo: "personal", label: "Máximo de armadores por OT", unidad: "personas", ayuda: "Más que esto en una misma OT se estorban. Armado va de a una OT por vez: los que sobran no arman otra OT al mismo tiempo.", min: 1, max: 20, entero: true, defecto: 4 },
+  { id: "max_armadores_ot", grupo: "personal", label: "Máximo de armadores por OT", unidad: "personas", ayuda: "Más que esto en una misma OT se estorban. Los que sobran pueden armar otra OT al mismo tiempo (ver OT a la vez en Armado).", min: 1, max: 20, entero: true, defecto: 4 },
+  { id: "ots_armado_paralelo", grupo: "personal", label: "OT a la vez en Armado", unidad: "OT", ayuda: "Si sobran armadores después de llenar una OT, arrancan otra al mismo tiempo. 1 = de a una OT.", min: 1, max: 4, entero: true, defecto: 2 },
 ];
 
 /** Cómo se cuentan los mecanizados de una OT cuando la planilla no trae MECANIZADOS. */

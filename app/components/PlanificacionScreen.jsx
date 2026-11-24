@@ -725,7 +725,7 @@ function FrenoDelPlan({ carga, params }) {
   const c = carga.cuello;
   const pct = (u) => (Number.isFinite(u) ? `${Math.round(u * 100)} %` : "sin horas disponibles");
   const porque = c.id === "armado"
-    ? `va de a una OT por vez con hasta ${carga.armado.personas === 1 ? "1 armador" : `${carga.armado.personas} armadores`}`
+    ? `${carga.armado.ots > 1 ? `hasta ${carga.armado.ots} OT a la vez` : "va de a una OT por vez"}, con hasta ${carga.armado.personas === 1 ? "1 armador" : `${carga.armado.personas} armadores`} en total`
     : c.id === "gente" ? "no alcanzan las horas de los operarios"
       : `cada máquina hace una OT a la vez${carga.maquinas.find((m) => m.id === c.id)?.cantidad > 1 ? ` (hay ${carga.maquinas.find((m) => m.id === c.id).cantidad})` : ""}`;
   const libres = Math.max(0, carga.disponibles - carga.necesarias);
@@ -735,7 +735,7 @@ function FrenoDelPlan({ carga, params }) {
       <div>🔻 Lo que frena el plan: <b>{c.nombre}</b> ({pct(c.uso)} ocupado): {porque}.</div>
       {genteTraba && (
         <div className="text-gypi-dim mt-1">
-          La gente tiene {fmtH(libres)} libres, pero no se pueden usar para adelantar OT: el plan va en fila (Corte → Canteado → Mecanizado → Armado, una OT a la vez en cada paso). Para que lleguen más OT hay que destrabar {c.nombre}{c.id === "armado" ? ` (por ejemplo, subir el máximo de armadores por OT, hoy ${params.max_armadores_ot || 1})` : ""}, no sumar gente.
+          La gente tiene {fmtH(libres)} libres, pero no se pueden usar para adelantar OT: el plan va en fila (Corte → Canteado → Mecanizado → Armado, una OT a la vez en cada máquina). Para que lleguen más OT hay que destrabar {c.nombre}{c.id === "armado" ? ` (por ejemplo, en ⚙ Parámetros subir el máximo de armadores por OT, hoy ${params.max_armadores_ot || 1}, o las OT a la vez en Armado, hoy ${params.ots_armado_paralelo || 1})` : ""}, no sumar gente.
         </div>
       )}
     </div>
