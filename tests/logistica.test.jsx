@@ -832,3 +832,188 @@ test("ficha del viaje — el Dueño ve cómo terminó cada parada (fotos, firma,
   assert.ok(screen.getByRole("img", { name: "Firma de Ana Pérez" }));
   assert.ok(screen.getByRole("button", { name: "🚚 Cargar las paradas por el chofer" }));
 });
+
+// ─── Parte 4 (206): remito de cada parada ───
+
+const remitoLib = await import("../app/lib/logisticaRemito.js");
+const remitoSrv = await import("../app/lib/logisticaRemitoServidor.js");
+const apiFirmar = await import("../app/api/remito/firmar/route.js");
+const { default: RemitoParada } = await import("../app/components/RemitoParada.jsx");
+const { default: RemitoPublico } = await import("../app/components/RemitoPublico.jsx");
+const TOKEN = "abcdefghijklmnopqrstuvwxyz012345";
+// Un PNG chiquito de verdad (la firma tiene que ser una imagen)
+const PNG_1PX = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+test("remito — número con ceros, quién firma por link, mensaje para WhatsApp/mail y la hoja sin precios", () => {
+  assert.equal(L3.numeroRemito(12), "000012");
+  assert.equal(L3.numeroRemito(null), "");
+  assert.equal(L3.tieneRemito({ estado: "parcial" }), true);
+  assert.equal(L3.tieneRemito({ estado: "no_visitado" }), false);
+  assert.equal(L3.puedeFirmarPorLink({ estado: "entregado", firma_url: null }), true);
+  assert.equal(L3.puedeFirmarPorLink({ estado: "entregado", firma_url: "x" }), false, "ya firmado");
+  assert.equal(L3.puedeFirmarPorLink({ estado: "rechazado" }), false, "lo rechazado no se firma");
+  assert.equal(L3.linkRemito("https://gypi.app/", TOKEN), `https://gypi.app/remito/${TOKEN}`);
+  const t = L3.textoRemito({ empresa: "Muebles", numero: 12, nombre: "Torre Norte", url: "https://x/remito/t", firmar: true });
+  assert.match(t, /Remito N° 000012 de Muebles \(Torre Norte\)/);
+  assert.match(t, /firmalo desde este link: https:\/\/x\/remito\/t/);
+  assert.match(L3.linkWhatsapp("hola y chau"), /^https:\/\/wa\.me\/\?text=hola%20y%20chau$/);
+  assert.match(L3.linkMail({ asunto: "Remito", cuerpo: "a b" }), /^mailto:\?subject=Remito&body=a%20b$/);
+
+  const d = {
+    empresa: { nombre: "Muebles <Prueba>" },
+    viaje: { numero: 7, tipo: "distribucion", fecha: "2026-11-24" },
+    parada: {
+      nombre: "Torre Norte", direccion: "Libertador 100", cliente: "Pérez", ots: ["7450"], accion: "entregar", estado: "parcial", motivo: "Faltaron 2",
+      renglones: [{ texto: "Bulto 1", cantidad: 1, hecha: 1 }, { texto: "Bisagra", cantidad: 24, hecha: 22 }],
+      fotos: ["https://s/f1.jpg", "javascript:alert(1)"], firma_url: "https://s/firma.png", firma_nombre: "Ana", firma_dni: "30111222",
+      hecha_at: "2026-11-24T15:35:00Z", remito_numero: 12, remito_oficial: "0001-00001234", cot: "987654",
+    },
+    origen: { nombre: "Planta Pilar", direccion: "Ruta 8" }, chofer: "Carlos", vehiculo: "AB123CD",
+  };
+  const filas = Object.fromEntries(remitoLib.filasRemito(d));
+  assert.equal(filas.Fecha, "24/11/2026 12:35", "en hora argentina");
+  assert.equal(filas["Entrega en"], "Torre Norte · Libertador 100");
+  assert.equal(filas["Remito oficial"], "0001-00001234");
+  assert.equal(filas.COT, "987654");
+  assert.equal(filas.Viaje, "N° 7 · Entrega · Entregar");
+  const html = remitoLib.htmlRemito(d);
+  assert.match(html, /Remito N° 000012/);
+  assert.match(html, /Muebles &lt;Prueba&gt;/, "escapa los textos");
+  assert.match(html, /22 de 24/);
+  assert.match(html, /Ana · DNI 30111222/);
+  assert.ok(html.includes('src="https://s/f1.jpg"') && !html.includes("javascript:"), "solo fotos https");
+  assert.ok(!/\$|precio/i.test(html), "sin precios");
+});
+
+function mockRemito({ parada = {}, ultimo = 11, otroChofer = false, sin206 = false, modulos = null } = {}) {
+  const escrito = [];
+  const base = { id: 1, viaje_id: 40, empresa_id: E, estado: "entregado", accion: "entregar", nombre: "Torre Norte", ots: ["7450"], renglones: [], fotos: [], remito_numero: null, token: null, ...parada };
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq.") && u.includes("nombre"), respond: () => ({ status: 200, body: [{ nombre: "Muebles", logo_url: null }] }) },
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01", ...(modulos ? { modulos_apagados: modulos } : {}) }] }) },
+    { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
+    { match: (u) => u.includes("/rest/v1/logistica_viajes"), respond: () => ({ status: 200, body: [{ id: 40, numero: 7, tipo: "distribucion", fecha: "2026-11-24", estado: "terminado", chofer_id: otroChofer ? "33333333-3333-3333-3333-333333333333" : EMP, origen_id: 1, vehiculo_id: 7 }] }) },
+    { match: (u) => u.includes("/rest/v1/logistica_lugares"), respond: () => ({ status: 200, body: [{ nombre: "Planta Pilar", direccion: "Ruta 8" }] }) },
+    { match: (u) => u.includes("/rest/v1/empleados?id=eq."), respond: () => ({ status: 200, body: [{ nombre: "Carlos" }] }) },
+    { match: (u) => u.includes("/rest/v1/vehiculos"), respond: () => ({ status: 200, body: [{ patente: "AB123CD", marca: "Renault", modelo: "Master" }] }) },
+    { match: (u) => u.includes("/storage/v1/object/reportes-obra/"), respond: (u, o) => { escrito.push({ tabla: "storage", url: u, metodo: o.method }); return { status: 200, body: {} }; } },
+    {
+      match: (u) => u.includes("/rest/v1/logistica_paradas"),
+      respond: (u, o) => {
+        const body = o.body ? JSON.parse(o.body) : null;
+        escrito.push({ tabla: "logistica_paradas", metodo: o.method || "GET", url: u, body });
+        if (sin206) return { status: 400, body: { code: "42703", message: "column logistica_paradas.remito_numero does not exist" } };
+        if (!o.method || o.method === "GET") return { status: 200, body: u.includes("order=remito_numero.desc") ? [{ remito_numero: ultimo }] : [base] };
+        return { status: 200, body: [{ ...base, ...body }] };
+      },
+    },
+  ]);
+  return escrito;
+}
+
+test("/api/logistica remito_preparar y remito_datos — número correlativo y link una sola vez; solo paradas cumplidas", async () => {
+  let escrito = mockRemito();
+  let res = await api.POST(req(await token("operativo"), { accion: "remito_preparar", id: 1 }));
+  assert.equal(res.status, 200);
+  let p = (await res.json()).parada;
+  assert.equal(p.remito_numero, 12, "el siguiente al último de la empresa");
+  assert.match(p.token, /^[A-Za-z0-9_-]{32}$/);
+  // Ya numerado: devuelve lo mismo, sin escribir
+  escrito = mockRemito({ parada: { remito_numero: 5, token: TOKEN } });
+  res = await api.POST(req(await token("operativo"), { accion: "remito_preparar", id: 1 }));
+  p = (await res.json()).parada;
+  assert.deepEqual([p.remito_numero, p.token], [5, TOKEN]);
+  assert.ok(!escrito.some((x) => x.metodo === "PATCH"));
+  // Pendiente o no visitada: sin remito
+  mockRemito({ parada: { estado: "no_visitado" } });
+  assert.equal((await api.POST(req(await token("operativo"), { accion: "remito_preparar", id: 1 }))).status, 409);
+  // Otro chofer no; el Dueño sí
+  mockRemito({ otroChofer: true });
+  assert.equal((await api.POST(req(await token("operativo"), { accion: "remito_preparar", id: 1 }))).status, 403);
+  mockRemito({ otroChofer: true });
+  assert.equal((await api.POST(req(await token("gerencial"), { accion: "remito_preparar", id: 1 }))).status, 200);
+  // Número oficial y COT
+  escrito = mockRemito({ parada: { remito_numero: 5, token: TOKEN } });
+  res = await api.POST(req(await token("operativo"), { accion: "remito_datos", id: 1, remito_oficial: " 0001-00001234 ", cot: "" }));
+  assert.equal(res.status, 200);
+  assert.deepEqual(escrito.find((x) => x.metodo === "PATCH").body, { remito_oficial: "0001-00001234", cot: null });
+  // Sin la 206 avisa
+  mockRemito({ sin206: true });
+  res = await api.POST(req(await token("operativo"), { accion: "remito_preparar", id: 1 }));
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /migración 206/);
+});
+
+test("remito por link — datos sin ids internos; firma una sola vez con nombre; lo rechazado no se firma", async () => {
+  mockRemito({ parada: { remito_numero: 12, token: TOKEN, sin_firma: true, hecha_por: EMP, hecha_lat: -34.5, renglones: [{ origen: "bulto", ref: 9, texto: "Bulto 1", cantidad: 1, hecha: 1 }] } });
+  const d = await remitoSrv.datosRemito(TOKEN);
+  assert.equal(d.empresa.nombre, "Muebles");
+  assert.equal(d.parada.remito_numero, 12);
+  assert.deepEqual(d.parada.renglones, [{ texto: "Bulto 1", cantidad: 1, hecha: 1 }], "sin ids de bultos");
+  assert.equal(d.parada.hecha_por, undefined, "sin quién la cargó");
+  assert.equal(d.parada.hecha_lat, undefined, "sin la ubicación del celular");
+  assert.deepEqual([d.chofer, d.vehiculo, d.origen.nombre, d.viaje.numero], ["Carlos", "AB123CD · Renault Master", "Planta Pilar", 7]);
+  assert.equal(d.puedeFirmar, true);
+  assert.equal(await remitoSrv.datosRemito("corto"), null, "token con otra forma");
+  mockRemito({ parada: { remito_numero: null, token: TOKEN } });
+  assert.equal(await remitoSrv.datosRemito(TOKEN), null, "sin número todavía no hay remito");
+
+  // Firmar por la ruta pública
+  let escrito = mockRemito({ parada: { remito_numero: 12, token: TOKEN, sin_firma: true } });
+  const pedir = (body) => apiFirmar.POST(new Request("http://localhost/api/remito/firmar", { method: "POST", headers: { "Content-Type": "application/json", "x-forwarded-for": "10.0.0.9" }, body: JSON.stringify(body) }));
+  let res = await pedir({ token: TOKEN, png: PNG_1PX, nombre: "Ana Pérez", dni: "30111222" });
+  assert.equal(res.status, 200);
+  assert.ok(escrito.some((x) => x.tabla === "storage" && x.url.includes(`/reportes-obra/${E}/`)), "la firma va al storage de la empresa");
+  const patch = escrito.find((x) => x.metodo === "PATCH");
+  assert.match(patch.url, /firma_url=is.null/, "solo si sigue sin firma");
+  assert.deepEqual([patch.body.firma_nombre, patch.body.firma_dni, patch.body.sin_firma, !!patch.body.firmada_link_at], ["Ana Pérez", "30111222", false, true]);
+  // Sin nombre, sin firma, ya firmado o rechazado: no
+  mockRemito({ parada: { remito_numero: 12, token: TOKEN } });
+  assert.equal((await pedir({ token: TOKEN, png: PNG_1PX, nombre: " " })).status, 400);
+  mockRemito({ parada: { remito_numero: 12, token: TOKEN } });
+  assert.equal((await pedir({ token: TOKEN, png: Buffer.from("no es png").toString("base64"), nombre: "Ana" })).status, 400);
+  mockRemito({ parada: { remito_numero: 12, token: TOKEN, firma_url: "https://s/f.png" } });
+  assert.equal((await pedir({ token: TOKEN, png: PNG_1PX, nombre: "Ana" })).status, 409);
+  mockRemito({ parada: { remito_numero: 12, token: TOKEN, estado: "rechazado" } });
+  assert.equal((await pedir({ token: TOKEN, png: PNG_1PX, nombre: "Ana" })).status, 409);
+  mockRemito();
+  assert.equal((await pedir({ token: "x", png: PNG_1PX, nombre: "Ana" })).status, 404);
+});
+
+test("pantallas del remito — en la app numera y arma WhatsApp/mail; la página pública muestra todo y deja firmar", async () => {
+  const enviados = [];
+  global.fetch = async (url, opts = {}) => {
+    const body = opts.body ? JSON.parse(opts.body) : null;
+    enviados.push({ url: String(url), body });
+    if (String(url).includes("/api/logistica")) return new Response(JSON.stringify({ ok: true, parada: { id: 1, remito_numero: 12, token: TOKEN, ...(body.accion === "remito_datos" ? { remito_oficial: body.remito_oficial } : {}) } }), { status: 200 });
+    if (String(url).includes("/api/remito/firmar")) return new Response(JSON.stringify({ ok: true, firma_url: "https://s/firma.png" }), { status: 200 });
+    return new Response(JSON.stringify({ data: [] }), { status: 200 });
+  };
+  render(<RemitoParada parada={{ id: 1, orden: 1, nombre: "Torre Norte", ots: ["7450"], estado: "entregado", sin_firma: true }} empresaNombre="Muebles" onCerrar={() => {}} />);
+  await screen.findByRole("heading", { name: "📄 Remito N° 000012" });
+  assert.deepEqual(enviados[0].body, { accion: "remito_preparar", id: 1 });
+  assert.equal(screen.getByRole("link", { name: /Ver el remito/ }).getAttribute("href"), `http://localhost/remito/${TOKEN}`);
+  const wa = decodeURIComponent(screen.getByRole("link", { name: "💬 Mandar por WhatsApp" }).getAttribute("href"));
+  assert.match(wa, /Remito N° 000012 de Muebles \(Torre Norte\)\. Por favor, firmalo/);
+  assert.match(screen.getByRole("link", { name: "✉️ Mandar por mail" }).getAttribute("href"), /^mailto:\?subject=Remito%20N%C2%B0%20000012/);
+  assert.match(document.body.textContent, /Falta la firma de quien recibió/);
+  fireEvent.change(screen.getByLabelText("N° de remito oficial"), { target: { value: "0001-00001234" } });
+  fireEvent.click(screen.getByRole("button", { name: "Guardar números" }));
+  await waitFor(() => assert.ok(enviados.some((x) => x.body?.accion === "remito_datos" && x.body.remito_oficial === "0001-00001234" && x.body.cot === null)));
+  cleanup();
+
+  const datos = {
+    empresa: { nombre: "Muebles", logo: null }, viaje: { numero: 7, tipo: "distribucion", fecha: "2026-11-24" },
+    parada: { nombre: "Torre Norte", direccion: "Libertador 100", ots: ["7450"], accion: "entregar", estado: "entregado", renglones: [{ texto: "Bulto 1", cantidad: 1, hecha: 1 }], fotos: ["https://s/f1.jpg"], firma_url: null, sin_firma: true, remito_numero: 12, hecha_at: "2026-11-24T15:35:00Z" },
+    origen: null, chofer: "Carlos", vehiculo: "AB123CD", puedeFirmar: true,
+  };
+  render(<RemitoPublico token={TOKEN} datos={datos} />);
+  assert.ok(screen.getByRole("heading", { name: "Remito N° 000012" }));
+  assert.match(screen.getByRole("region", { name: "Lo entregado" }).textContent, /Bulto 1/);
+  assert.ok(screen.getByRole("img", { name: "Foto 1 de la entrega" }));
+  assert.ok(screen.getByRole("button", { name: "📄 Bajar en PDF" }));
+  // Sin trazo no firma
+  fireEvent.click(screen.getByRole("button", { name: "✍️ Firmar el remito" }));
+  assert.match(screen.getByRole("alert").textContent, /Firmá con el dedo/);
+});

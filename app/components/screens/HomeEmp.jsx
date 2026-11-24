@@ -199,7 +199,7 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
       {verPlanillas && <MisPlanillas datos={planillas} onClose={() => setVerPlanillas(false)} />}
       {verPdf && <VerPdfOt onClose={() => setVerPdf(false)} />}
       {avisarFalla && <AvisarFalla onClose={() => { setAvisarFalla(false); mant.cargar(); }} />}
-      {verViajes && <MisViajes empleadoId={usuario.id} onClose={() => { setVerViajes(false); viajes.cargar(); }} onCambio={viajes.cargar} />}
+      {verViajes && <MisViajes empleadoId={usuario.id} empresaNombre={empresa?.nombre || ""} onClose={() => { setVerViajes(false); viajes.cargar(); }} onCambio={viajes.cargar} />}
       {verCaja && <MiCaja datos={miCaja} onClose={() => setVerCaja(false)} onCambio={miCaja.cargar} />}
       {verMant && <MiMantenimiento items={mant.items} empresaNombre={empresa?.nombre || ""} onClose={() => setVerMant(false)} onCambio={mant.cargar} />}
       {checklist && <ChecklistVehiculo vehiculos={misVehiculos} empresaNombre={empresa?.nombre || ""} onClose={() => setChecklist(false)} />}

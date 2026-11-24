@@ -33,10 +33,12 @@ export function cortesDePagina(bloques, alto, pagina = ALTO_PAGINA_PX) {
 /**
  * Arma el PDF a color de una hoja HTML (A4, cortes entre secciones) y lo descarga.
  * @param {string} html  la hoja completa
- * @param {{ archivo: string, bloques?: string, apaisado?: boolean }} opciones  nombre del .pdf, qué no partir entre
- *   páginas y si va con la hoja acostada (el extracto de cajas y bancos, 13/11: tablas anchas)
+ * @param {{ archivo: string, bloques?: string, apaisado?: boolean, comoArchivo?: boolean }} opciones  nombre del .pdf, qué no partir entre
+ *   páginas y si va con la hoja acostada (el extracto de cajas y bancos, 13/11: tablas anchas). Con
+ *   comoArchivo no se descarga: devuelve el File (para compartirlo desde el celular; remito, 24/11)
+ * @returns {Promise<File|undefined>}
  */
-export async function descargarPdfDeHtml(html, { archivo, bloques: selector = "section, .cabecera", apaisado = false }) {
+export async function descargarPdfDeHtml(html, { archivo, bloques: selector = "section, .cabecera", apaisado = false, comoArchivo = false }) {
   const hoja = apaisado ? { ancho: MM.alto, alto: MM.ancho, margen: MM.margen } : MM;
   const anchoPx = apaisado ? Math.round(ANCHO_PX * (hoja.ancho - 2 * hoja.margen) / (MM.ancho - 2 * MM.margen)) : ANCHO_PX;
   const altoPaginaPx = Math.floor(anchoPx * (hoja.alto - 2 * hoja.margen) / (hoja.ancho - 2 * hoja.margen));
@@ -82,6 +84,7 @@ export async function descargarPdfDeHtml(html, { archivo, bloques: selector = "s
       pdf.setTextColor(120);
       pdf.text(`Página ${i + 1} de ${cortes.length}`, hoja.ancho - hoja.margen, hoja.alto - 4, { align: "right" });
     });
+    if (comoArchivo) return new File([pdf.output("blob")], archivo, { type: "application/pdf" });
     pdf.save(archivo);
   } finally {
     marco.remove();

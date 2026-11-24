@@ -1339,4 +1339,7 @@ export const logisticaBody = z.discriminatedUnion("accion", [
     lat: latitud,
     lng: longitud,
   }).strict().refine(conPinCompleto, MENSAJE_PIN),
+  // Parte 4 (206): el remito de una parada cumplida
+  z.object({ accion: z.literal("remito_preparar"), id: idFlota }).strict(),
+  z.object({ accion: z.literal("remito_datos"), id: idFlota, remito_oficial: textoSuelto(40), cot: textoSuelto(40) }).strict(),
 ]);
