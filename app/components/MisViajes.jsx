@@ -12,6 +12,9 @@
 // Parte 5 (207): si la parada lleva una orden de compra, el chofer ve lo que
 // falta llegar, anota lo que le dieron y el N° de remito del proveedor; al
 // guardar, la OC queda recibida en Compras.
+// Parte 6 (208): al salir y al terminar se guarda dónde estaba el celular, y
+// con un viaje en camino y Gypi abierto el celular manda su ubicación cada 2
+// minutos (el dueño la ve en el tablero de Logística).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sb } from "../lib/supabase";
 import { faltaTabla } from "../lib/compras";
@@ -20,7 +23,7 @@ import { fotoBase64, subirImagen } from "../lib/foto";
 import {
   AVISO_MIGRACION_VIAJES, ESTADOS_VIAJE, MAX_FOTOS, accionParada, avanceViaje, estadoParada, faltaParaCumplir,
   linkComoLlegar, misViajes, renglonesDeOts, resultadoDeRenglones, textoUbicacion, tipoViaje, viajeEnCurso, tieneRemito,
-  renglonesDeOc,
+  renglonesDeOc, CADA_UBICACION_MS,
 } from "../lib/logistica";
 import RemitoParada from "./RemitoParada";
 import { Chip } from "./ui";
@@ -52,6 +55,37 @@ function ubicacionActual() {
   });
 }
 
+let ultimaEnviada = 0;
+/**
+ * Con un viaje en camino y Gypi abierto (y visible), el celular manda su
+ * ubicación cada 2 minutos. Si no dio permiso o no hay señal, no pasa nada.
+ */
+export function useUbicacionEnVivo(viajeId) {
+  useEffect(() => {
+    if (!viajeId || typeof navigator === "undefined" || !navigator.geolocation) return undefined;
+    let parar = false;
+    const mandar = () => {
+      if (parar || (typeof document !== "undefined" && document.visibilityState === "hidden")) return;
+      if (Date.now() - ultimaEnviada < CADA_UBICACION_MS - 10000) return;
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          ultimaEnviada = Date.now();
+          const r6 = (n) => Math.round(n * 1e6) / 1e6;
+          postLogistica({ accion: "viaje_ubicacion", id: viajeId, lat: r6(pos.coords.latitude), lng: r6(pos.coords.longitude) })
+            .catch((e) => { if (/migración 208/.test(e.message)) parar = true; });
+        },
+        () => { /* sin permiso o sin señal */ },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 },
+      );
+    };
+    mandar();
+    const t = setInterval(mandar, CADA_UBICACION_MS);
+    const alVolver = () => mandar();
+    document.addEventListener("visibilitychange", alVolver);
+    return () => { parar = true; clearInterval(t); document.removeEventListener("visibilitychange", alVolver); };
+  }, [viajeId]);
+}
+
 /** Los viajes del chofer para el botón del Inicio. Sin la migración o sin viajes, lista vacía. */
 export function useMisViajes(empleadoId, activo = true) {
   const [viajes, setViajes] = useState([]);
@@ -64,6 +98,8 @@ export function useMisViajes(empleadoId, activo = true) {
     } catch { /* sin la migración 204 o sin señal: sin botón */ }
   }, [activo, empleadoId]);
   useEffect(() => { cargar(); }, [cargar]);
+  // El viaje en camino manda la ubicación mientras Gypi está abierto (208)
+  useUbicacionEnVivo(viajes.find((v) => v.estado === "en_camino")?.id || null);
   return { viajes, cargar };
 }
 
@@ -360,7 +396,9 @@ function ViajeChofer({ viaje, paradas, lugares, onVolver, onAbrirParada, onAbrir
     setEnviando(true);
     setError(null);
     try {
-      await postLogistica({ accion, id: viaje.id });
+      // Dónde estaba el celular al salir y al terminar (si dio permiso; 208)
+      const { lat, lng } = await ubicacionActual();
+      await postLogistica({ accion, id: viaje.id, ...(lat != null && lng != null ? { lat, lng } : {}) });
       await onCambio();
     } catch (e) {
       setError(e.message);
@@ -415,6 +453,11 @@ function ViajeChofer({ viaje, paradas, lugares, onVolver, onAbrirParada, onAbrir
         </>
       )}
       {viaje.estado === "terminado" && <div className="text-[14px] font-semibold" role="status">✅ Viaje terminado. ¡Gracias!</div>}
+      {viajeEnCurso(viaje) && (
+        <div className="text-[12px] text-gypi-dim mt-3">
+          📍 Mientras tengas Gypi abierto, la oficina ve por dónde vas. Si te piden seguirte con el teléfono bloqueado, compartí tu ubicación en tiempo real desde Google Maps (tu foto → Compartir ubicación).
+        </div>
+      )}
     </div>
   );
 }

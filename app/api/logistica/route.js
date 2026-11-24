@@ -32,6 +32,10 @@
 //   parada_cumplir → con OC, lo retirado y el N° de remito del proveedor: la
 //                    OC queda recibida (o recibida en parte) en Compras, con
 //                    su ingreso de stock, una sola vez por parada
+// Parte 6 (208). El chofer del viaje (o quien gestiona Logística):
+//   viaje_salir / viaje_terminar → también guardan dónde estaba el celular
+//   viaje_ubicacion → la última ubicación del viaje en camino (la manda el
+//                     celular del chofer cada 2 minutos con Gypi abierto)
 // La lectura va por /api/data (logistica_lugares, logistica_viajes y
 // logistica_paradas, solo lectura; proyectos).
 // Con RLS_RUTAS=on todo va con el pase del usuario ({ sesion }).
@@ -46,14 +50,33 @@ import { requireModuloSesion } from "../../lib/accesosServidor";
 import {
   puedeGestionarLogistica, puedeHacerViaje, faltaParaCumplir, avanceViaje, viajeEditable, obrasDeOts,
   AVISO_MIGRACION_LOGISTICA, AVISO_MIGRACION_VIAJES, AVISO_MIGRACION_MIS_VIAJES, AVISO_MIGRACION_REMITO, tieneRemito,
-  AVISO_MIGRACION_COMPRAS, ESTADOS_OC_RETIRABLE, itemsRecibidos,
+  AVISO_MIGRACION_COMPRAS, ESTADOS_OC_RETIRABLE, itemsRecibidos, AVISO_MIGRACION_UBICACION,
 } from "../../lib/logistica";
 import { recibirOrdenCompra } from "../../lib/comprasRecepcion";
 import { tokenRemito } from "../../lib/logisticaRemitoServidor";
 import { logger } from "../../lib/logger";
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const ACCIONES_CHOFER = new Set(["viaje_salir", "parada_cumplir", "viaje_terminar", "remito_preparar", "remito_datos", "parada_oc"]);
+const ACCIONES_CHOFER = new Set(["viaje_salir", "parada_cumplir", "viaje_terminar", "remito_preparar", "remito_datos", "parada_oc", "viaje_ubicacion"]);
+
+function faltaMigracionUbicacion(err) {
+  const m = String(err?.message);
+  return /salida_l(at|ng)|llegada_l(at|ng)|ubic_(lat|lng|at)/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m);
+}
+
+/** Dónde estaba el celular, solo si lo dio. */
+const conUbicacion = (prefijo, { lat, lng } = {}) => (lat != null && lng != null ? { [`${prefijo}_lat`]: lat, [`${prefijo}_lng`]: lng } : {});
+
+/** Cambia el viaje con la ubicación; sin la 208, igual sale o termina (sin ubicación). */
+async function patchConUbicacion(ruta, fila, ubicacion, opts) {
+  if (!Object.keys(ubicacion).length) return sbPatch(ruta, fila, opts);
+  try {
+    return await sbPatch(ruta, { ...fila, ...ubicacion }, opts);
+  } catch (err) {
+    if (!faltaMigracionUbicacion(err)) throw err;
+    return sbPatch(ruta, fila, opts);
+  }
+}
 
 function faltaMigracionCompras(err) {
   const m = String(err?.message);
@@ -228,13 +251,13 @@ async function viajeDelChofer(sesion, id) {
   return { viaje: v };
 }
 
-async function salirViaje(sesion, { id }) {
+async function salirViaje(sesion, { id, lat, lng }) {
   const e = sesion.empresa_id;
   const { viaje, error } = await viajeDelChofer(sesion, id);
   if (error) return error;
   if (viaje.estado === "en_camino") return NextResponse.json({ ok: true, viaje });
   if (viaje.estado !== "planificado") return NextResponse.json({ error: "El viaje ya terminó o está cancelado" }, { status: 409 });
-  const [v] = (await sbPatch(`logistica_viajes?id=eq.${id}&empresa_id=eq.${e}&estado=eq.planificado`, { estado: "en_camino", salida_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { sesion })) || [];
+  const [v] = (await patchConUbicacion(`logistica_viajes?id=eq.${id}&empresa_id=eq.${e}&estado=eq.planificado`, { estado: "en_camino", salida_at: new Date().toISOString(), updated_at: new Date().toISOString() }, conUbicacion("salida", { lat, lng }), { sesion })) || [];
   broadcastRefresh(e, "logistica_viajes");
   return NextResponse.json({ ok: true, viaje: v || viaje });
 }
@@ -275,7 +298,7 @@ async function cumplirParada(sesion, d) {
 
   const ahora = new Date().toISOString();
   if (viaje.estado === "planificado") {
-    await sbPatch(`logistica_viajes?id=eq.${viaje.id}&empresa_id=eq.${e}&estado=eq.planificado`, { estado: "en_camino", salida_at: ahora, updated_at: ahora }, opts);
+    await patchConUbicacion(`logistica_viajes?id=eq.${viaje.id}&empresa_id=eq.${e}&estado=eq.planificado`, { estado: "en_camino", salida_at: ahora, updated_at: ahora }, conUbicacion("salida", d), opts);
   }
   const noFue = d.estado === "no_visitado";
   const fila = {
@@ -302,7 +325,7 @@ async function cumplirParada(sesion, d) {
   return NextResponse.json({ ok: true, parada: parada || { ...p, ...fila } });
 }
 
-async function terminarViaje(sesion, { id }) {
+async function terminarViaje(sesion, { id, lat, lng }) {
   const e = sesion.empresa_id;
   const { viaje, error } = await viajeDelChofer(sesion, id);
   if (error) return error;
@@ -311,7 +334,7 @@ async function terminarViaje(sesion, { id }) {
   const { faltan } = avanceViaje(paradas);
   if (faltan) return NextResponse.json({ error: `${faltan === 1 ? "Falta 1 parada" : `Faltan ${faltan} paradas`}: marcá cómo terminó cada una (si no se fue, "No se fue")` }, { status: 409 });
   const ahora = new Date().toISOString();
-  const [v] = (await sbPatch(`logistica_viajes?id=eq.${id}&empresa_id=eq.${e}&estado=eq.en_camino`, { estado: "terminado", llegada_at: ahora, updated_at: ahora }, { sesion })) || [];
+  const [v] = (await patchConUbicacion(`logistica_viajes?id=eq.${id}&empresa_id=eq.${e}&estado=eq.en_camino`, { estado: "terminado", llegada_at: ahora, updated_at: ahora }, conUbicacion("llegada", { lat, lng }), { sesion })) || [];
   if (!v) return NextResponse.json({ error: "El viaje ya terminó o está cancelado" }, { status: 409 });
   broadcastRefresh(e, "logistica_viajes");
   return NextResponse.json({ ok: true, viaje: v });
@@ -355,6 +378,19 @@ async function datosRemitoOficial(sesion, d) {
   const [p] = (await sbPatch(`logistica_paradas?id=eq.${parada.id}&empresa_id=eq.${e}`, { remito_oficial: d.remito_oficial, cot: d.cot }, { sesion })) || [];
   broadcastRefresh(e, "logistica_viajes");
   return NextResponse.json({ ok: true, parada: p || { ...parada, remito_oficial: d.remito_oficial, cot: d.cot } });
+}
+
+/** La última ubicación del viaje en camino (el celular del chofer con Gypi abierto). */
+async function ubicacionViaje(sesion, { id, lat, lng }) {
+  const e = sesion.empresa_id;
+  const { viaje, error } = await viajeDelChofer(sesion, id);
+  if (error) return error;
+  // Solo el celular del chofer (si el Dueño lo carga por él, su ubicación no es la del viaje)
+  if (viaje.chofer_id !== sesion.empleado_id) return NextResponse.json({ ok: true, guardada: false });
+  if (viaje.estado !== "en_camino") return NextResponse.json({ ok: true, guardada: false });
+  await sbPatch(`logistica_viajes?id=eq.${id}&empresa_id=eq.${e}&estado=eq.en_camino`, { ubic_lat: lat, ubic_lng: lng, ubic_at: new Date().toISOString() }, { sesion });
+  broadcastRefresh(e, "logistica_viajes");
+  return NextResponse.json({ ok: true, guardada: true });
 }
 
 /** Lo que falta llegar de la OC de la parada (el chofer no lee Compras por /api/data). */
@@ -401,8 +437,10 @@ export async function POST(request) {
       if (d.accion === "remito_preparar") return await prepararRemito(sesion, d);
       if (d.accion === "remito_datos") return await datosRemitoOficial(sesion, d);
       if (d.accion === "parada_oc") return await ocDeParada(sesion, d);
+      if (d.accion === "viaje_ubicacion") return await ubicacionViaje(sesion, d);
       return await direccionObra(sesion, d);
     } catch (err) {
+      if (faltaMigracionUbicacion(err)) return NextResponse.json({ error: AVISO_MIGRACION_UBICACION }, { status: 409 });
       if (faltaMigracionCompras(err)) return NextResponse.json({ error: AVISO_MIGRACION_COMPRAS }, { status: 409 });
       if (faltaMigracionRemito(err)) return NextResponse.json({ error: AVISO_MIGRACION_REMITO }, { status: 409 });
       if (faltaMigracionMisViajes(err)) return NextResponse.json({ error: AVISO_MIGRACION_MIS_VIAJES }, { status: 409 });

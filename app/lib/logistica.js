@@ -398,3 +398,89 @@ export function renglonesDeOc(items = []) {
 /** Lo que se recibe en Compras: los renglones de la OC con algo retirado. */
 export const itemsRecibidos = (renglones = []) =>
   renglones.filter((r) => r.origen === "oc" && r.ref && Number(r.hecha) > 0).map((r) => ({ item_id: r.ref, cantidad: Math.round(Number(r.hecha) * 1000) / 1000 }));
+
+// ─── Parte 6 (208): tablero del dueño y ubicación ───────────────────────────
+
+export const AVISO_MIGRACION_UBICACION = "Para guardar la ubicación de los viajes falta correr la migración 208 en Supabase.";
+
+/** Cada cuánto manda la ubicación el celular del chofer con Gypi abierto. */
+export const CADA_UBICACION_MS = 2 * 60 * 1000;
+
+/** El día (en Argentina) de una fecha y hora guardada. */
+export const diaArg = (ts) => (ts ? new Date(ts).toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }) : null);
+
+/** "hace 3 min", "hace 2 h", o null si no hay hora. */
+export function haceCuanto(ts, ahora = Date.now()) {
+  if (!ts) return null;
+  const min = Math.max(0, Math.round((ahora - new Date(ts).getTime()) / 60000));
+  if (min < 1) return "recién";
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.floor(min / 60);
+  return h < 24 ? `hace ${h} h` : `hace ${Math.floor(h / 24)} ${Math.floor(h / 24) === 1 ? "día" : "días"}`;
+}
+
+/** Dónde está (o estuvo por última vez) el viaje: la última ubicación, la última parada o la salida. */
+export function ultimaUbicacion(viaje, paradas = []) {
+  const puntos = [];
+  if (viaje?.ubic_at && viaje.ubic_lat != null && viaje.ubic_lng != null) puntos.push({ lat: Number(viaje.ubic_lat), lng: Number(viaje.ubic_lng), at: viaje.ubic_at, donde: "Gypi abierto" });
+  for (const p of paradas) {
+    if (p.hecha_at && p.hecha_lat != null && p.hecha_lng != null) puntos.push({ lat: Number(p.hecha_lat), lng: Number(p.hecha_lng), at: p.hecha_at, donde: `parada ${p.orden}` });
+  }
+  if (viaje?.llegada_at && viaje.llegada_lat != null && viaje.llegada_lng != null) puntos.push({ lat: Number(viaje.llegada_lat), lng: Number(viaje.llegada_lng), at: viaje.llegada_at, donde: "al terminar" });
+  if (viaje?.salida_at && viaje.salida_lat != null && viaje.salida_lng != null) puntos.push({ lat: Number(viaje.salida_lat), lng: Number(viaje.salida_lng), at: viaje.salida_at, donde: "al salir" });
+  return puntos.sort((a, b) => new Date(b.at) - new Date(a.at))[0] || null;
+}
+
+/**
+ * Los viajes de un día agrupados por chofer y por vehículo (sin los
+ * cancelados), con cuántas paradas tiene cada uno y cuántas se hicieron.
+ */
+export function viajesPor(viajes = [], paradas = [], fecha, campo) {
+  const grupos = new Map();
+  for (const v of viajes.filter((x) => x.fecha === fecha && x.estado !== "cancelado")) {
+    const clave = v[campo] ?? null;
+    if (!grupos.has(clave)) grupos.set(clave, { clave, viajes: [], total: 0, hechas: 0 });
+    const g = grupos.get(clave);
+    const a = avanceViaje(paradas.filter((p) => p.viaje_id === v.id));
+    g.viajes.push(v);
+    g.total += a.total;
+    g.hechas += a.hechas;
+  }
+  return [...grupos.values()].sort((a, b) => (a.clave === null) - (b.clave === null) || b.viajes.length - a.viajes.length);
+}
+
+/** Paradas entregadas sin firma (nadie para firmar) que todavía no firmaron por el link. */
+export const firmasPendientes = (paradas = []) =>
+  paradas.filter((p) => p.sin_firma && !p.firma_url && (p.estado === "entregado" || p.estado === "parcial"))
+    .sort((a, b) => String(b.hecha_at || "").localeCompare(String(a.hecha_at || "")));
+
+/**
+ * Si las paradas se hicieron el día planeado: de las cumplidas desde
+ * `desde`, cuántas el mismo día del viaje y cuántas otro día; y las
+ * atrasadas (de viajes de días anteriores a `hoy` que siguen pendientes).
+ */
+export function entregasATiempo(viajes = [], paradas = [], { desde, hoy } = {}) {
+  const porId = new Map(viajes.map((v) => [v.id, v]));
+  let aTiempo = 0;
+  let tarde = 0;
+  const atrasadas = [];
+  for (const p of paradas) {
+    const v = porId.get(p.viaje_id);
+    if (!v || v.estado === "cancelado" || (desde && v.fecha < desde)) continue;
+    if (!p.estado || p.estado === "pendiente") {
+      if (hoy && v.fecha < hoy) atrasadas.push(p);
+      continue;
+    }
+    if (p.estado === "no_visitado") { tarde++; continue; }
+    if (diaArg(p.hecha_at) === v.fecha) aTiempo++;
+    else tarde++;
+  }
+  const total = aTiempo + tarde;
+  return { aTiempo, tarde, total, porcentaje: total ? Math.round((aTiempo / total) * 100) : null, atrasadas };
+}
+
+/** Lo que salió mal: parciales, rechazos y paradas a las que no se fue, lo más nuevo primero. */
+export const incidencias = (paradas = [], max = 10) =>
+  paradas.filter((p) => ["parcial", "rechazado", "no_visitado"].includes(p.estado))
+    .sort((a, b) => String(b.hecha_at || "").localeCompare(String(a.hecha_at || "")))
+    .slice(0, max);
