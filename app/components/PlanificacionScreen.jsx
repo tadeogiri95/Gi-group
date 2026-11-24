@@ -296,11 +296,14 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   const desdeVisible = per.desde > hoy ? per.desde : hoy;
   const yaPaso = per.hasta < hoy;
   // Con "Según fechas objetivo" se suman los días de horas extra que el plan pone en el período
-  const diasExtraPeriodo = base === "objetivo" && plan && !yaPaso ? plan.diasExtra.filter((d) => d.fecha >= desdeVisible && d.fecha <= per.hasta).length : 0;
+  // (24/11: con las horas que el plan de verdad pone esos días, no todo el equipo el día entero)
+  const extraPeriodo = base === "objetivo" && plan && !yaPaso ? plan.diasExtra.filter((d) => d.fecha >= desdeVisible && d.fecha <= per.hasta) : [];
+  const diasExtraPeriodo = extraPeriodo.length;
+  const horasExtraPeriodo = extraPeriodo.reduce((t, d) => t + d.horas, 0);
   const capacidad = useMemo(() => ({
-    ...conHorasExtra(capacidadPlanta(operarios, yaPaso ? [] : diasDelPeriodo(desdeVisible, per.hasta), { ausencias, feriados }), diasExtraPeriodo, capacidadAnio.porDia),
+    ...conHorasExtra(capacidadPlanta(operarios, yaPaso ? [] : diasDelPeriodo(desdeVisible, per.hasta), { ausencias, feriados }), diasExtraPeriodo, capacidadAnio.porDia, horasExtraPeriodo),
     paradas,
-  }), [operarios, yaPaso, desdeVisible, per.hasta, diasExtraPeriodo, capacidadAnio, ausencias, feriados, paradas]);
+  }), [operarios, yaPaso, desdeVisible, per.hasta, diasExtraPeriodo, horasExtraPeriodo, capacidadAnio, ausencias, feriados, paradas]);
   const avisosCap = useMemo(() => (yaPaso ? [] : avisosCapacidad({
     operarios, ausencias, dias: diasDelPeriodo(desdeVisible, per.hasta), paradas, feriados,
     cantidades: { corte: params.maquinas_corte || 1, canteado: 1, mecanizado: params.maquinas_cnc || 1 },
@@ -475,17 +478,17 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
       </div>
 
       <div className="g-card mb-3" aria-label="Resultado">
-        <div className={`font-heading text-lg font-bold mb-1 ${carga.viable && !yaPaso ? "text-gypi-green" : "text-gypi-red"}`}>
-          {!carga.ots.length ? "Elegí las OT que querés planificar" : yaPaso ? "Ese período ya pasó" : carga.viable ? (capacidad.horasExtra > 0 ? "✅ Entra en el período con horas extra" : "✅ Entra en el período") : "❌ No entra con el horario normal"}
+        <div className="font-heading text-lg font-bold mb-1">
+          {!carga.ots.length ? "Elegí las OT que querés planificar" : yaPaso ? "Ese período ya pasó" : `El plan usa ${carga.uso == null ? "—" : `${Math.round(carga.uso * 100)} %`} de las horas de la gente`}
         </div>
         {!yaPaso && carga.ots.length > 0 && (
-          <div className="text-xs text-gypi-dim mb-1">Lo que el plan pone del {fechaCorta(desdeVisible)} al {fechaCorta(per.hasta)}. El plan sigue hasta que terminan todas las OT; la semana o el mes de arriba solo eligen qué parte se ve acá.</div>
+          <div className="text-xs text-gypi-dim mb-1">Lo que el plan pone del {fechaCorta(desdeVisible)} al {fechaCorta(per.hasta)}. El plan sigue hasta que terminan todas las OT; la semana o el mes de arriba solo eligen qué parte se ve acá. Si las OT llegan a su fecha lo dice el paso ④.</div>
         )}
         <div className="text-[13px] text-gypi-dim mb-2">
           {carga.ots.length === 1 ? "1 OT elegida" : `${carga.ots.length} OT elegidas`} · {capacidad.personas === 1 ? "1 operario" : `${capacidad.personas} operarios`} de {division?.label || "la planta"} · eficiencia {params.eficiencia ?? "—"} %
         </div>
         <div className="grid grid-cols-2 gap-2 mb-2">
-          <Dato label="Horas que hacen falta" valor={fmtH(carga.necesarias)} />
+          <Dato label="Horas que usa el plan" valor={fmtH(carga.necesarias)} />
           <Dato label="Horas de la planta" valor={fmtH(carga.disponibles)} />
         </div>
         {avisosCap.length > 0 && (
@@ -495,17 +498,9 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
           </div>
         )}
         {capacidad.horasExtra > 0 && (
-          <div className="text-[13px] text-gypi-amber-ink mb-1">Las horas de la planta incluyen {fmtH(capacidad.horasExtra)} de horas extra ({capacidad.diasExtra === 1 ? "1 día" : `${capacidad.diasExtra} días`}) que el plan suma para llegar a las semanas.</div>
+          <div className="text-[13px] text-gypi-amber-ink mb-1">Las horas de la planta incluyen {fmtH(capacidad.horasExtra)} de horas extra en este período ({capacidad.diasExtra === 1 ? "1 día" : `${capacidad.diasExtra} días`}) que el plan pone para llegar a las fechas.</div>
         )}
-        {carga.extra > 0 && <div className="text-[14px] font-bold text-gypi-red mb-1">⏱ Horas extra: {fmtH(carga.extra)}</div>}
-        {carga.cuello && carga.ots.length > 0 && (
-          <div className="text-[13px] mb-1">
-            🔻 Cuello de botella: <b>{carga.cuello.nombre}</b> ({Number.isFinite(carga.cuello.uso) ? `${Math.round(carga.cuello.uso * 100)} % ocupado` : "sin horas disponibles"})
-          </div>
-        )}
-        {carga.maquinas.filter((m) => m.extra > 0).map((m) => (
-          <div key={m.id} className="text-[13px] text-gypi-red">🏭 {m.nombre}: faltan {fmtH(m.extra)} de máquina. Desfasá turnos o hacé horas extra.</div>
-        ))}
+        {!yaPaso && carga.cuello && carga.ots.length > 0 && <FrenoDelPlan carga={carga} params={params} />}
       </div>
 
       <div className="g-card mb-3" aria-label="Horas de máquina">
@@ -523,10 +518,17 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
                   <td className="py-1.5">{m.nombre}{m.cantidad > 1 ? ` (${m.cantidad})` : ""}{m.paradas > 0 && <span className="block text-xs text-gypi-red">{m.paradas === 1 ? "1 parada" : `${m.paradas} paradas`}</span>}</td>
                   <td className="text-right">{fmtH(m.necesarias)}</td>
                   <td className="text-right">{fmtH(m.disponibles)}</td>
-                  <td className={`text-right font-bold ${dif < -0.05 ? "text-gypi-red" : "text-gypi-green"}`}>{dif < -0.05 ? `Faltan ${fmtH(-dif)}` : `Sobran ${fmtH(dif)}`}</td>
+                  <td className={`text-right font-bold ${dif < -0.05 ? "text-gypi-red" : "text-gypi-green"}`}>{dif < -0.05 ? `Faltan ${fmtH(-dif)}` : `Libres ${fmtH(dif)}`}</td>
                 </tr>
               );
             })}
+            {/* Armado también es una fila: una OT a la vez con hasta N armadores (24/11) */}
+            <tr className="border-t border-gypi-border">
+              <td className="py-1.5">Armado<span className="block text-xs text-gypi-dim">hasta {carga.armado.personas === 1 ? "1 persona" : `${carga.armado.personas} personas`} a la vez</span></td>
+              <td className="text-right">{fmtH(carga.armado.necesarias)}</td>
+              <td className="text-right">{fmtH(carga.armado.disponibles)}</td>
+              <td className={`text-right font-bold ${carga.armado.extra > 0.05 ? "text-gypi-red" : "text-gypi-green"}`}>{carga.armado.extra > 0.05 ? `Faltan ${fmtH(carga.armado.extra)}` : `Libres ${fmtH(carga.armado.disponibles - carga.armado.necesarias)}`}</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -554,7 +556,7 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
             </tr>
             <tr className={`font-bold ${carga.extra > 0 ? "text-gypi-red" : "text-gypi-green"}`}>
               <td className="py-1.5">Resultado</td>
-              <td className="text-right">{carga.extra > 0 ? `Faltan ${fmtH(carga.extra)}` : `Sobran ${fmtH(carga.disponibles - carga.necesarias)}`}</td>
+              <td className="text-right">{carga.extra > 0 ? `Faltan ${fmtH(carga.extra)}` : `Libres ${fmtH(carga.disponibles - carga.necesarias)}`}</td>
             </tr>
           </tbody>
         </table>
@@ -712,6 +714,34 @@ function textoTarde(t) {
   return `${hasta}; termina el ${fechaCorta(t.fin)}`;
 }
 
+const cuantas = (n) => (n === 1 ? "1 OT" : `${n} OT`);
+
+/**
+ * Qué frena el plan en el período (Tadeo, 24/11): lo más ocupado entre cada
+ * máquina, Armado y la gente. Si la gente tiene horas libres pero otra cosa
+ * está llena, lo dice: sumar gente no hace llegar más OT.
+ */
+function FrenoDelPlan({ carga, params }) {
+  const c = carga.cuello;
+  const pct = (u) => (Number.isFinite(u) ? `${Math.round(u * 100)} %` : "sin horas disponibles");
+  const porque = c.id === "armado"
+    ? `va de a una OT por vez con hasta ${carga.armado.personas === 1 ? "1 armador" : `${carga.armado.personas} armadores`}`
+    : c.id === "gente" ? "no alcanzan las horas de los operarios"
+      : `cada máquina hace una OT a la vez${carga.maquinas.find((m) => m.id === c.id)?.cantidad > 1 ? ` (hay ${carga.maquinas.find((m) => m.id === c.id).cantidad})` : ""}`;
+  const libres = Math.max(0, carga.disponibles - carga.necesarias);
+  const genteTraba = c.id !== "gente" && carga.uso != null && Number.isFinite(c.uso) && c.uso - carga.uso > 0.15 && libres > 0.5;
+  return (
+    <div className="rounded-lg border border-gypi-border p-2 mt-1 text-[13px]" aria-label="Lo que frena el plan">
+      <div>🔻 Lo que frena el plan: <b>{c.nombre}</b> ({pct(c.uso)} ocupado): {porque}.</div>
+      {genteTraba && (
+        <div className="text-gypi-dim mt-1">
+          La gente tiene {fmtH(libres)} libres, pero no se pueden usar para adelantar OT: el plan va en fila (Corte → Canteado → Mecanizado → Armado, una OT a la vez en cada paso). Para que lleguen más OT hay que destrabar {c.nombre}{c.id === "armado" ? ` (por ejemplo, subir el máximo de armadores por OT, hoy ${params.max_armadores_ot || 1})` : ""}, no sumar gente.
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Resumen de todo el plan: hasta cuándo va, horas extra por semana (según
 // fechas objetivo) y las OT que no llegan a su semana.
 function ResumenHorizonte({ plan, base, modo, ots = [] }) {
@@ -719,6 +749,8 @@ function ResumenHorizonte({ plan, base, modo, ots = [] }) {
   const horasExtra = plan.diasExtra.reduce((t, d) => t + d.horas, 0);
   const dias = (Date.parse(`${plan.hasta}T00:00:00Z`) - Date.parse(`${plan.desde}T00:00:00Z`)) / 86400000 + 1;
   const semanas = Math.ceil(dias / 7);
+  const vencidas = plan.tarde.filter((t) => t.motivo === "atrasada");
+  const noLlegan = plan.tarde.filter((t) => t.motivo !== "atrasada");
   return (
     <div className="mb-2 text-[13px]" aria-label="Resumen del plan">
       {plan.segmentos.length > 0 && (
@@ -726,7 +758,7 @@ function ResumenHorizonte({ plan, base, modo, ots = [] }) {
       )}
       {base === "objetivo" && plan.diasExtra.length > 0 && (
         <div className="mb-2" aria-label="Horas extra por semana">
-          <div className="font-bold text-gypi-red mb-1">⏱ Horas extra para llegar a las semanas: {fmtH(horasExtra)}</div>
+          <div className="font-bold text-gypi-red mb-1">⏱ Horas extra en todo el plan (todas las semanas): {fmtH(horasExtra)}</div>
           <ul className="list-none m-0 p-0">
             {plan.extraPorSemana.map((s) => (
               <li key={s.desde}>
@@ -742,11 +774,21 @@ function ResumenHorizonte({ plan, base, modo, ots = [] }) {
           {base === "capacidad" ? "✅ Con el horario normal todas las OT llegan a su fecha límite." : plan.diasExtra.length ? "✅ Con esas horas extra todas las OT llegan a su fecha límite." : "✅ Todas las OT llegan a su fecha límite sin horas extra."}
         </div>
       )}
-      {plan.tarde.length > 0 && (
+      {/* Las que ya estaban vencidas, aparte (Tadeo, 24/11): ninguna hora extra las salva */}
+      {noLlegan.length > 0 && (
         <div className="mb-2" aria-label="OT que no llegan a su fecha límite">
-          <div className="font-bold text-gypi-red mb-1">{base === "capacidad" ? "🔴 Terminan después de su fecha límite" : "🔴 No llegan a su fecha límite"}</div>
+          <div className="font-bold text-gypi-red mb-1">{base === "capacidad" ? `🔴 ${cuantas(noLlegan.length)} ${noLlegan.length === 1 ? "termina" : "terminan"} después de su fecha límite` : `🔴 ${cuantas(noLlegan.length)} no ${noLlegan.length === 1 ? "llega" : "llegan"} a su fecha límite`}</div>
           <ul className="list-none m-0 p-0">
-            {plan.tarde.map((t) => <li key={t.id} className="text-gypi-red-ink">{textoOt(porId.get(t.id) || t)}: {textoTarde(t)}</li>)}
+            {noLlegan.map((t) => <li key={t.id} className="text-gypi-red-ink">{textoOt(porId.get(t.id) || t)}: {textoTarde(t)}</li>)}
+          </ul>
+        </div>
+      )}
+      {vencidas.length > 0 && (
+        <div className="mb-2" aria-label="OT ya vencidas">
+          <div className="font-bold text-gypi-red mb-1">⚫ {cuantas(vencidas.length)} ya {vencidas.length === 1 ? "tenía" : "tenían"} la fecha límite vencida antes de hoy</div>
+          <div className="text-xs text-gypi-dim mb-1">No hay horas extra que las hagan llegar: conviene ponerles fecha nueva o terminarlas primero.</div>
+          <ul className="list-none m-0 p-0">
+            {vencidas.map((t) => <li key={t.id} className="text-gypi-red-ink">{textoOt(porId.get(t.id) || t)}: {textoTarde(t)}</li>)}
           </ul>
         </div>
       )}

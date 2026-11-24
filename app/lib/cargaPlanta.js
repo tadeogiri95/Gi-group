@@ -185,15 +185,20 @@ export function capacidadPlanta(operarios, dias, { ausencias = null, feriados = 
  * @param {{gente:number, maquina:number}} capacidad  la del período, con el horario normal
  * @param {number} diasExtra  días de horas extra que caen en el período
  * @param {{gente:number, maquina:number}[]} porDia  días de la grilla, para buscar el más largo
+ * @param {number|null} [horasUsadas]  horas de gente que el plan pone esos días
  */
-export function conHorasExtra(capacidad, diasExtra, porDia) {
+export function conHorasExtra(capacidad, diasExtra, porDia, horasUsadas = null) {
   if (!(diasExtra > 0)) return { ...capacidad, horasExtra: 0, diasExtra: 0 };
   const mejor = (porDia || []).reduce((a, d) => (d.gente > a.gente ? d : a), { gente: 0, maquina: 0 });
+  // horasUsadas (Tadeo, 24/11): las horas de gente que el plan de verdad pone
+  // esos días; sin eso, como si viniera todo el equipo el día entero (y el
+  // paso ③ mostraba horas que sobran)
+  const extraGente = Number.isFinite(horasUsadas) ? horasUsadas : diasExtra * mejor.gente;
   return {
     ...capacidad,
-    gente: capacidad.gente + diasExtra * mejor.gente,
+    gente: capacidad.gente + extraGente,
     maquina: capacidad.maquina + diasExtra * mejor.maquina,
-    horasExtra: diasExtra * mejor.gente,
+    horasExtra: extraGente,
     diasExtra,
   };
 }
@@ -297,14 +302,26 @@ export function cargaPeriodo({ ots, params, capacidad }) {
     return { id: m.id, nombre: m.nombre, cantidad, paradas, necesarias: nec, disponibles: disp, extra: Math.max(0, nec - disp), uso: disp > 0 ? nec / disp : (nec > 0 ? Infinity : 0) };
   });
 
-  // Cuello de botella: lo más cargado entre la gente y cada máquina
+  // Armado (Tadeo, 24/11): va de a una OT por vez con hasta "máximo de
+  // armadores por OT", así que a la vez arman como mucho esos (o los
+  // operarios que haya, si son menos), aunque sobre gente
+  const personasArmado = Math.max(1, Math.min(params.max_armadores_ot || 1, capacidad.personas || 1));
+  const dispArmado = capacidad.maquina * personasArmado;
+  const necArmado = porEtapa.armado.gente;
+  const armado = { id: "armado", nombre: "Armado", personas: personasArmado, necesarias: necArmado, disponibles: dispArmado,
+    extra: Math.max(0, necArmado - dispArmado), uso: dispArmado > 0 ? necArmado / dispArmado : (necArmado > 0 ? Infinity : 0) };
+
+  // Cuello de botella: lo más cargado entre la gente, cada máquina y Armado
   const candidatos = [
     { id: "gente", nombre: "Gente", uso: disponibles > 0 ? necesarias / disponibles : (necesarias > 0 ? Infinity : 0), extra },
     ...maquinas.map((m) => ({ id: m.id, nombre: m.nombre, uso: m.uso, extra: m.extra })),
+    { id: armado.id, nombre: armado.nombre, uso: armado.uso, extra: armado.extra },
   ];
   const cuello = candidatos.reduce((a, b) => (b.uso > a.uso ? b : a));
   const viable = candidatos.every((c) => c.extra <= 0.0001);
-  return { necesarias, disponibles, extra, viable, porEtapa, maquinas, cuello: cuello.uso > 0 ? cuello : null, ots };
+  // Qué parte de las horas de la gente usa el plan (0 a 1)
+  const uso = disponibles > 0 ? necesarias / disponibles : null;
+  return { necesarias, disponibles, extra, viable, uso, porEtapa, maquinas, armado, cuello: cuello.uso > 0 ? cuello : null, ots };
 }
 
 /** OT que vienen tildadas: las que tienen fecha objetivo hasta el fin del período (incluye las atrasadas); sin `hasta`, todas las que tienen. */
