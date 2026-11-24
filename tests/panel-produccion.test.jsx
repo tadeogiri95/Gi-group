@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { render, screen, cleanup } from "@testing-library/react";
 import {
   semanasPanel, semaforo, METAS, semaforoCarga, finProduccionDe, entregasDeSemana, produccionDeSemana, cargaDeSemana,
-  calidadDeSemana, maquinasDeSemana, enProceso, atrasadasPlan, pausadasAhora, armarPanel,
+  calidadDeSemana, maquinasDeSemana, enProceso, atrasadasPlan, pausadasAhora, armarPanel, itemsDelHistorial,
 } from "../app/lib/panelProduccion.js";
 import { opcionesBoton } from "../app/lib/menuGestion.js";
 
@@ -197,6 +197,46 @@ test("armarPanel — junta todo con el tablero de etapas y el informe de la sema
   assert.equal(panel.ahora.enProceso.valor, 3000);
   assert.equal(panel.conPrecios, true);
   assert.equal(panel.maquinasMes, null);
+});
+
+test("itemsDelHistorial — cada día sale del plan que valía ese día (Tadeo, 24/11)", () => {
+  const viejo = { division_id: "m", confirmado_at: "2026-11-10T12:00:00Z", desde: "2026-11-10", items: [
+    { ot: "1", etapa: "corte", fecha: "2026-11-16", horas: 8 }, { ot: "1", etapa: "corte", fecha: "2026-11-17", horas: 8 },
+  ] };
+  // Confirmado el miércoles: el lunes y el martes siguen siendo del plan viejo
+  const nuevo = { division_id: "m", confirmado_at: "2026-11-18T12:00:00Z", desde: "2026-11-18", items: [
+    { ot: "2", etapa: "armado", fecha: "2026-11-18", horas: 5 }, { ot: "2", etapa: "armado", fecha: "2026-11-17", horas: 99 },
+  ] };
+  const items = itemsDelHistorial([viejo, nuevo]);
+  assert.deepEqual(items.map((i) => `${i.ot}|${i.fecha}|${i.horas}`).sort(), ["1|2026-11-16|8", "2|2026-11-17|99", "2|2026-11-18|5"]);
+  assert.equal(cargaDeSemana(items, SEMANA, null).horas, 112);
+  // Otra división no pisa
+  assert.equal(itemsDelHistorial([viejo, { ...nuevo, division_id: "p" }]).length, 4);
+});
+
+test("armarPanel — la carga usa el plan de cada día, la gente de la división del plan y descuenta vacaciones (24/11)", () => {
+  const turno = { in: "08:00", out: "16:00" };
+  const diagrama = { lun: turno, mar: turno, mie: turno, jue: turno, vie: turno };
+  const divisiones = [{ id: "muebles", label: "Muebles" }, { id: "herreria", label: "Herrería" }];
+  const empleados = [
+    { id: "a", legajo: 1, rol: "operativo", division: "muebles", diagrama },
+    { id: "b", legajo: 2, rol: "operativo", division: "muebles", diagrama },
+    { id: "c", legajo: 3, rol: "operativo", division: "herreria", diagrama },
+  ];
+  const planes = [
+    { division_id: "muebles", confirmado_at: "2026-11-10T12:00:00Z", desde: "2026-11-10", items: [{ ot: "1", etapa: "corte", fecha: "2026-11-16", horas: 8 }] },
+    { division_id: "muebles", confirmado_at: "2026-11-18T12:00:00Z", desde: "2026-11-18", items: [{ ot: "2", etapa: "armado", fecha: "2026-11-18", horas: 12 }] },
+  ];
+  const panel = armarPanel({
+    base: { vivo: new Map(), vigentes: planes[1].items, planes, etapasCodigo: { corte: 1, canteado: 2, mecanizado: null, armado: null },
+      cfgValor: null, proyectos: [], divisiones, empleados, piezas: [], avance: [], retrabajos: [], pausas: [] },
+    solicitudes: [{ legajo: 2, tipo: "vacaciones", estado: "aprobado", fecha: "2026-11-19", fecha_hasta: "2026-11-20" }],
+    fecha: "2026-11-20", hoy: "2026-11-20", ahora: new Date(arg("11-20", "18:00")),
+  });
+  const c = panel.semanas[4].plan.carga;
+  assert.equal(c.horas, 20, "el lunes del plan viejo + el miércoles del nuevo");
+  // 2 operarios de Muebles × 8 h × 5 días = 80, menos 2 días de vacaciones = 64 (el de Herrería no cuenta)
+  assert.equal(c.disponibles, 64);
 });
 
 test("pantalla — bloques con semáforo y detalle, desde /api/reportes/panel", async () => {

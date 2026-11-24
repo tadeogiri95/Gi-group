@@ -30,7 +30,7 @@ export async function cargarPlanVivo(empresaId, { sesion, hoy = hoyArg() } = {})
   const e = empresaId;
   const opts = { sesion };
   const limite = hoyArg(new Date(Date.now() - 183 * DIA));
-  const operarios = (extra) => sbGetAll(`empleados?empresa_id=eq.${e}&activo=eq.true&rol=eq.operativo&select=id,rol,division,diagrama,activo${extra}`, { ...opts, maxFilas: 5000 });
+  const operarios = (extra) => sbGetAll(`empleados?empresa_id=eq.${e}&activo=eq.true&rol=eq.operativo&select=id,legajo,rol,division,diagrama,activo${extra}`, { ...opts, maxFilas: 5000 });
   const [proyectos, etapas, divisiones, cfg, planes, emp, piezas, avance, mods, ajustes, retrabajos, pausas, personal] = await Promise.all([
     // También las cerradas: una OT que se terminó en el período cuenta
     sbGetAll(`proyectos?empresa_id=eq.${e}&select=*&order=id.asc`, { ...opts, maxFilas: 20000 }),
@@ -77,7 +77,8 @@ export async function cargarPlanVivo(empresaId, { sesion, hoy = hoyArg() } = {})
     pausadas, noAntes: noAntesDeTecnica(planDT.espera),
   });
   for (const [ot] of vivo) if (!abiertas.has(ot)) vivo.delete(ot);
-  return { vivo, vigentes, etapasCodigo, abiertas, cfgValor, proyectos: proyectos.data, divisiones: divisiones.data,
+  // planes: todos los confirmados con sus días (el Panel toma de cada semana el plan que valía, 24/11)
+  return { vivo, vigentes, planes: conItems, etapasCodigo, abiertas, cfgValor, proyectos: proyectos.data, divisiones: divisiones.data,
     empleados: emp.data, piezas: piezas.data, avance: avance.data, retrabajos: retrabajos.data, pausas: pausas.data };
 }
 

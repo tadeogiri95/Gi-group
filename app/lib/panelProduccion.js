@@ -34,7 +34,8 @@ import { tableroEtapas, instalacionPorOt, pctPorProceso, otsDelPlan } from "./ta
 import { leadTimeProcesos, ventanasDeGrilla } from "./leadTimeHoras";
 import { ventanasSemana, capacidadPlanta, operariosDePlanta, diasDelPeriodo } from "./cargaPlanta";
 import { piezasConManual } from "./avanceManual";
-import { normalizarParametros } from "./planificacion";
+import { normalizarParametros, divisionPlan } from "./planificacion";
+import { ausenciasDe } from "./capacidadReal";
 import { feriadosDe } from "./secuencia";
 import { diasEntre } from "./semanaObjetivo";
 import { pausasAbiertas, textoMotivoPausa } from "./pausaOt";
@@ -131,6 +132,32 @@ export function produccionDeSemana(porOt, pasos, s, precios = null, estimadas = 
     otsLista: ots.map((t) => t.ot),
     leadTime: promedio(ots.map((t) => t.produccion).filter((h) => h != null)),
   };
+}
+
+/**
+ * Los días de todos los planes confirmados, cada día del plan que valía ese
+ * día (Tadeo, 24/11: el Panel tomaba solo el último plan y las semanas
+ * anteriores, o los días antes de confirmar, quedaban casi vacías). Al
+ * confirmar, los días siguientes del plan anterior se borran, así que no se
+ * pisan; si igual dos planes de la misma división tienen el mismo día, vale
+ * el confirmado último.
+ * @param {{ division_id?: string|null, confirmado_at?: string, desde?: string, items?: object[] }[]} planes
+ */
+export function itemsDelHistorial(planes = []) {
+  const clave = (p) => `${p.confirmado_at || ""}|${p.desde || ""}`;
+  const dueno = new Map(); // "división|día" → plan
+  for (const p of planes || []) {
+    for (const i of p.items || []) {
+      const k = `${p.division_id || ""}|${i.fecha}`;
+      const otro = dueno.get(k);
+      if (!otro || clave(p) > clave(otro)) dueno.set(k, p);
+    }
+  }
+  const out = [];
+  for (const p of planes || []) {
+    for (const i of p.items || []) if (dueno.get(`${p.division_id || ""}|${i.fecha}`) === p) out.push(i);
+  }
+  return out;
 }
 
 /** Horas del plan confirmado de la semana por proceso, contra las horas de la grilla de los operarios. */
@@ -255,13 +282,14 @@ export function pausadasAhora(pausas, proyectos = new Map()) {
  *   estimadas: Set de las OT cuyo valor es estimado
  *   noConformidades, defectos (lista de la empresa), pendientes (pendientes_obra)
  *   maquinas, tareasMaquinas, registrosMaquinas, fallas: los de Maquinaria
+ *   solicitudes: vacaciones y ausencias aprobadas (bajan la capacidad, como en Planificación)
  *   fecha: un día de la semana elegida; hoy; ahora (Date)
  */
 export function armarPanel(d) {
   const { base, pasos = [], manual = [], cargas = [], bultos = [], reportes = [], actas = [], precios = null, estimadas = new Set(),
     noConformidades = [], defectos = null, pendientes = [],
-    maquinas = [], tareasMaquinas = [], registrosMaquinas = [], fallas = [], fecha, hoy, ahora = new Date() } = d;
-  const { vivo, vigentes: items, etapasCodigo, cfgValor, proyectos = [], divisiones = [], empleados = [], piezas = [], avance = [], retrabajos = [], pausas = [] } = base;
+    maquinas = [], tareasMaquinas = [], registrosMaquinas = [], fallas = [], solicitudes = [], fecha, hoy, ahora = new Date() } = d;
+  const { vivo, vigentes, planes = null, etapasCodigo, cfgValor, proyectos = [], divisiones = [], empleados = [], piezas = [], avance = [], retrabajos = [], pausas = [] } = base;
   const semanas = semanasPanel(fecha);
   const params = normalizarParametros(cfgValor);
   const feriados = feriadosDe(params);
@@ -276,16 +304,21 @@ export function armarPanel(d) {
     proyectos, lead, pct: pctPorProceso(piezasConManual(piezas, proyectos)),
     instalacion: instalacionPorOt({ cargas, bultos, reportes, actas }), etapasCodigo, divisiones, ventanas,
     ventanasInstalacion: vInst.some(Boolean) ? vInst : ventanas, feriados, pausas,
-    planProduccion: otsDelPlan(items), planInstalacion: null, ahora, diasTerminadas: 3650,
+    planProduccion: otsDelPlan(vigentes || []), planInstalacion: null, ahora, diasTerminadas: 3650,
   });
 
-  const planta = operariosDePlanta(empleados, divisiones, null);
+  // Lo planificado de cada semana: el plan que valía en cada día (24/11)
+  const items = planes ? itemsDelHistorial(planes) : vigentes || [];
+  // La misma gente que usa Planificación (24/11): los operarios de la división
+  // que se planifica, sin los días de vacaciones o ausencias aprobadas
+  const planta = operariosDePlanta(empleados, divisiones, divisionPlan(divisiones, params.division_id));
+  const ausencias = ausenciasDe(solicitudes, planta);
   const ahoraMs = ahora.getTime();
 
   const filas = semanas.map((s) => {
     const informe = calcularInforme({ periodo: { tipo: "semana", ...s }, items, etapasCodigo, piezas, pasos, manual, avance, proyectos: porOtProyecto, vivo, retrabajos, pausas });
     const produccion = produccionDeSemana(tablero.porOt, pasos, s, precios, estimadas);
-    const capacidad = capacidadPlanta(planta, diasDelPeriodo(s.desde, s.hasta), { feriados }).gente;
+    const capacidad = capacidadPlanta(planta, diasDelPeriodo(s.desde, s.hasta), { feriados, ausencias }).gente;
     return {
       ...s,
       futura: s.desde > hoy,

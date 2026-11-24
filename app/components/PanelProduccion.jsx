@@ -172,7 +172,7 @@ export default function PanelProduccion() {
             <Indicador id="carga" titulo="Carga de la planta" valor={pctTxt(s.plan.carga.pct)} tono={semaforoCarga(s.plan.carga.pct)}
               detalle={s.plan.carga.disponibles != null ? `${horasTxt(s.plan.carga.horas)} planificadas de ${horasTxt(s.plan.carga.disponibles)} de la grilla` : `${horasTxt(s.plan.carga.horas)} planificadas`}
               meta="Bien entre 70 y 100 %" serie={serieDe(semanas, (x) => x.plan.carga.pct)}
-              ayuda="Horas de gente que el plan confirmado pone en la semana, contra las horas de la grilla de horarios de los operarios de planta (sin instaladores ni otra línea, sin feriados; no descuenta vacaciones). Menos de 70 % es planta ociosa; más de 100 % pide horas extra." />
+              ayuda="Horas de gente que el plan confirmado ponía en cada día de la semana (si se volvió a confirmar a mitad de semana, cada día sale del plan que valía ese día), contra las horas de la grilla de horarios de los operarios de la división que se planifica, la misma gente que usa Planificación (sin instaladores ni otra línea, sin feriados ni vacaciones o ausencias aprobadas). Menos de 70 % es planta ociosa; más de 100 % pide horas extra. Que sobren horas no quiere decir que las OT lleguen: el plan va de a una OT por máquina y en Armado." />
             {s.plan.carga.porEtapa.map((q) => (
               <Indicador key={q.etapa} id={`carga-${q.etapa}`} titulo={`Plan de ${q.nombre}`} valor={horasTxt(q.horas)}
                 detalle={s.plan.carga.horas > 0 ? `${num((q.horas / s.plan.carga.horas) * 100, 0)} % del plan de la semana` : null} />

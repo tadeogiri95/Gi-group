@@ -8,6 +8,7 @@ import { armarPanel, semanasPanel } from "./panelProduccion";
 import { normalizarDefectos, CLAVE_DEFECTOS } from "./calidad";
 import { hoyArg } from "./dates";
 import { valoresDeOts } from "./valorOtServidor";
+import { TIPOS_FUERA } from "./capacidadReal";
 
 const vacio = () => ({ data: [] });
 const DIA = 86400000;
@@ -27,7 +28,7 @@ export async function panelDeEmpresa(empresaId, fecha, { sesion, conPrecios = fa
   const desdeTs = encodeURIComponent(new Date(Date.parse(`${desde}T00:00:00-03:00`)).toISOString());
   // Las fallas de antes también: una máquina puede seguir parada desde antes
   const desdeFallas = encodeURIComponent(new Date(Date.parse(`${desde}T00:00:00-03:00`) - 120 * DIA).toISOString());
-  const [base, pasos, manual, cargas, bultos, reportes, actas, precios, nc, defectos, pendientes, maquinas, tareas, registros, fallas] = await Promise.all([
+  const [base, pasos, manual, cargas, bultos, reportes, actas, precios, nc, defectos, pendientes, maquinas, tareas, registros, fallas, solicitudes] = await Promise.all([
     cargarPlanVivo(e, { sesion, hoy }),
     sbGetAll(`pasos_pieza?empresa_id=eq.${e}&requerida=eq.true&created_at=gte.${desdeTs}&select=ot,etapa,created_at&order=id.asc`, { ...opts, maxFilas: 200000 }).catch(vacio),
     sbGetAll(`avance_manual_historial?empresa_id=eq.${e}&select=ot,etapa,pct,created_at&order=created_at.asc`, { ...opts, maxFilas: 50000 }).catch(vacio),
@@ -45,6 +46,8 @@ export async function panelDeEmpresa(empresaId, fecha, { sesion, conPrecios = fa
     sbGetAll(`maquina_tareas?empresa_id=eq.${e}&activa=eq.true&order=id.asc`, opts).catch(vacio),
     sbGetAll(`maquina_registros?empresa_id=eq.${e}&order=fecha.desc,id.desc`, { ...opts, maxFilas: 5000 }).catch(vacio),
     sbGetAll(`maquina_fallas?empresa_id=eq.${e}&created_at=gte.${desdeFallas}&order=created_at.desc,id.desc`, { ...opts, maxFilas: 5000 }).catch(vacio),
+    // Vacaciones y ausencias aprobadas de las semanas del panel: bajan la capacidad, como en Planificación (24/11)
+    sbGetAll(`solicitudes?empresa_id=eq.${e}&estado=eq.aprobado&tipo=in.(${TIPOS_FUERA.join(",")})&fecha=lte.${hasta}&or=(fecha_hasta.gte.${desde},fecha.gte.${desde})&select=empleado_id,legajo,tipo,estado,fecha,fecha_hasta&order=id.asc`, { ...opts, maxFilas: 5000 }).catch(vacio),
   ]);
   return armarPanel({
     base, pasos: pasos.data, manual: manual.data, cargas: cargas.data, bultos: bultos.data, reportes: reportes.data, actas: actas.data,
@@ -52,6 +55,6 @@ export async function panelDeEmpresa(empresaId, fecha, { sesion, conPrecios = fa
     estimadas: precios ? new Set([...precios].filter(([, v]) => v.estimado).map(([ot]) => ot)) : new Set(),
     noConformidades: nc.data, defectos: normalizarDefectos(defectos.data[0]?.valor?.lista), pendientes: pendientes.data,
     maquinas: maquinas.data, tareasMaquinas: tareas.data, registrosMaquinas: registros.data, fallas: fallas.data,
-    fecha, hoy, ahora,
+    solicitudes: solicitudes.data, fecha, hoy, ahora,
   });
 }
