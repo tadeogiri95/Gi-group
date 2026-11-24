@@ -377,13 +377,16 @@ test("📊 Carga — vienen tildadas las OT con semana; la semana elegida muestr
   assert.equal(screen.getByLabelText("Planificar OT M-9000").checked, false, "sin semana no viene tildada");
   // La semana muestra solo lo que el plan pone en ella: las 2 h del lunes
   assert.match(carga.textContent, /Lo que el plan pone del 26\/10\/2026 al 31\/10\/2026/);
-  assert.match(carga.textContent, /✅ Entra en el período/);
+  assert.match(carga.textContent, /El plan usa 100 % de las horas de la gente/);
+  assert.match(within(carga).getByLabelText("Lo que frena el plan").textContent, /🔻 Lo que frena el plan: .* ocupado/);
   assert.match(within(carga).getByLabelText("Horas de gente").textContent, /Necesita2 hDisponible2 h/);
   assert.ok(within(within(carga).getByLabelText("Horas de máquina")).getByText("Seccionadora"));
   // El plan sigue semanas hacia adelante y marca la OT atrasada
   const plan = within(carga).getByLabelText("Resumen del plan");
   assert.match(plan.textContent, /El plan va del 26\/10\/2026 al/);
-  assert.match(plan.textContent, /🔴 Terminan después de su fecha límiteOT M-7473 · Cliente 1: su fecha límite era el 4\/1\/2020; termina el/);
+  // Ya vencida: va aparte, ninguna hora extra la salva (24/11)
+  assert.match(within(plan).getByLabelText("OT ya vencidas").textContent, /⚫ 1 OT ya tenía la fecha límite vencida antes de hoy.*OT M-7473 · Cliente 1: su fecha límite era el 4\/1\/2020; termina el/);
+  assert.equal(within(plan).queryByLabelText("OT que no llegan a su fecha límite"), null);
   // Cambiar de semana no destilda: muestra la parte del plan de esa semana
   fireEvent.click(screen.getByLabelText("Período siguiente"));
   assert.match(carga.textContent, /Lo que el plan pone del 1\/11\/2026 al 7\/11\/2026/);
@@ -436,15 +439,15 @@ test("📊 Carga — switch: según fechas objetivo pide horas extra por semana;
   fireEvent.click(screen.getByText("📅 Según fechas objetivo (SEMANA)"));
   assert.match(within(resumen()).getByLabelText("Horas extra por semana").textContent, /Semana del 25\/10\/2026: .* h \(sáb\.? 31\/10\/2026\)/);
   // El paso ③ suma a las horas de la planta el sábado de horas extra (Tadeo, 29/10)
-  assert.match(screen.getByLabelText("Carga de la planta").textContent, /Las horas de la planta incluyen .* h de horas extra \(1 día\)/);
+  assert.match(screen.getByLabelText("Carga de la planta").textContent, /Las horas de la planta incluyen .* h de horas extra en este período \(1 día\)/);
   const horasPlanta = () => screen.getByText("Horas de la planta").parentElement.textContent;
   const conExtra = horasPlanta();
   fireEvent.click(screen.getByText("🏭 Según capacidad de la planta"));
   assert.notEqual(horasPlanta(), conExtra, "sin horas extra, la planta tiene menos horas");
   assert.doesNotMatch(screen.getByLabelText("Carga de la planta").textContent, /incluyen .* de horas extra/);
   assert.equal(within(resumen()).queryByLabelText("Horas extra por semana"), null);
-  assert.match(resumen().textContent, /🔴 Terminan después de su fecha límiteOT M-7473 · Cliente 1: fecha límite el 31\/10\/2026; termina el \d+\/11\/2026/);
-  assert.match(screen.getByLabelText("Carga de la planta").textContent, /✅ Entra en el período/);
+  assert.match(resumen().textContent, /🔴 1 OT termina después de su fecha límiteOT M-7473 · Cliente 1: fecha límite el 31\/10\/2026; termina el \d+\/11\/2026/);
+  assert.match(screen.getByLabelText("Carga de la planta").textContent, /El plan usa \d+ % de las horas de la gente/);
 });
 
 test("buscarOts y tildarTodas — busca sin tildes por número, cliente o proyecto; tilda o destilda solo las de la lista", () => {
@@ -1195,6 +1198,26 @@ test("conHorasExtra — cada día extra rinde como el día más largo de la gril
   const dias = [{ gente: 2, maquina: 2 }, { gente: 8, maquina: 9 }, { gente: 0, maquina: 0 }];
   assert.deepEqual(conHorasExtra(cap, 0, dias), { ...cap, horasExtra: 0, diasExtra: 0 });
   assert.deepEqual(conHorasExtra(cap, 2, dias), { gente: 26, maquina: 23, personas: 1, horasExtra: 16, diasExtra: 2 });
+});
+
+test("conHorasExtra — con las horas que el plan de verdad pone esos días, no todo el equipo (24/11)", () => {
+  const cap = { gente: 10, maquina: 5, personas: 1 };
+  const dias = [{ gente: 8, maquina: 9 }];
+  assert.deepEqual(conHorasExtra(cap, 2, dias, 3), { gente: 13, maquina: 23, personas: 1, horasExtra: 3, diasExtra: 2 });
+});
+
+test("cargaPeriodo — Armado es una fila: con gente libre, el freno puede ser Armado (24/11)", () => {
+  // 10 operarios × 40 h = 400 h de gente; la planta abierta 40 h; Armado hasta 4 a la vez = 160 h
+  const capacidad = { gente: 400, maquina: 40, personas: 10 };
+  const ot = { etapas: { corte: { gente: 10, maquina: 10 }, canteado: { gente: 10, maquina: 5 }, mecanizado: { gente: 10, maquina: 10 }, armado: { gente: 150, maquina: 150 } } };
+  const c = cargaPeriodo({ ots: [ot], params: { eficiencia: 100, max_armadores_ot: 4, maquinas_cnc: 2 }, capacidad });
+  assert.equal(c.armado.personas, 4);
+  assert.equal(c.armado.disponibles, 160);
+  assert.equal(c.uso, 180 / 400);
+  assert.equal(c.cuello.id, "armado");
+  assert.equal(c.extra, 0, "a la gente le sobran horas");
+  // Con menos operarios que el máximo, arman los que hay
+  assert.equal(cargaPeriodo({ ots: [ot], params: { eficiencia: 100, max_armadores_ot: 4 }, capacidad: { ...capacidad, personas: 2 } }).armado.personas, 2);
 });
 
 test("📊 Carga — ⚡ ordenar de la forma más eficiente pone los números de prioridad", async () => {
