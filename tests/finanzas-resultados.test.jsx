@@ -474,3 +474,56 @@ test("Resultados — lista de las entregas del Plan y de las salteadas por estar
   assert.ok(screen.getByText("OT A-4371 · Pérez"));
   assert.ok(screen.getByText("OT M-7001 · en el libro: ENTREGA OT 7001"));
 });
+
+// ─── Detalle de entregas del mes (24/11) ───
+
+test("detalleEntregas — cada entrega con su origen y las posibles repetidas", async () => {
+  const { detalleEntregas } = await import("../app/lib/finanzasEntregasPlan.js");
+  const EG = "04.01.01.001.002";
+  const proyectos = [{ id: 1, ot: "M-7000", cliente: "Gómez", division: "MUEBLES" }, { id: 4, ot: "A-4371", cliente: "Pérez SA", division: "ALUMINIO" }, { id: 5, ot: "M-7005", cliente: "Ruiz", division: "MUEBLES" }];
+  const filas = detalleEntregas({
+    ops: [
+      { fecha: "2026-10-05", cuenta_debe: "01.01.02.001.001", cuenta_haber: EG, total: 1000000, proyecto_id: 1, origen: "entrega_ot", entidad: "Gómez" },
+      { fecha: "2026-09-20", cuenta_debe: "01.01.02.001.001", cuenta_haber: EG, total: 500000, origen: "libro", entidad: "PEREZ S.A.", descripcion: "ENTREGA ABERTURAS" },
+      { fecha: "2026-10-07", cuenta_debe: EG, cuenta_haber: "01.01.02.001.001", total: 10000, proyecto_id: 1, origen: "libro" },
+      { fecha: "2026-10-08", cuenta_debe: "01.01.02.001.001", cuenta_haber: EG, total: 999, estado: "para_revisar" },
+      { fecha: "2024-10-08", cuenta_debe: "01.01.02.001.001", cuenta_haber: EG, total: 999 },
+    ],
+    cuentasEntregas: new Set([EG]), proyectos, meses: ["2026-09", "2026-10"],
+    entregasPlan: [{ proyecto_id: 4, fecha: "2026-10-01", valor: 2000000 }, { proyecto_id: 1, fecha: "2026-10-01", valor: 7 }],
+    estimadas: [{ proyecto_id: 5, fecha: "2026-10-15", valor: 300 }],
+  });
+  assert.deepEqual(filas.map((f) => [f.fecha, f.ot, f.origen, f.importe]), [
+    ["2026-09-20", "", "libro", 500000],
+    ["2026-10-01", "A-4371", "plan", 2000000],
+    ["2026-10-05", "M-7000", "entrega_ot", 1000000],
+    ["2026-10-07", "M-7000", "libro", -10000],
+    ["2026-10-15", "M-7005", "estimada", 300],
+  ]);
+  assert.equal(filas[1].division, "ALUMINIO");
+  assert.equal(filas[1].origen_texto, "Plan (precio, sin entrega anotada)");
+  // Mismo cliente (PEREZ S.A. = Pérez SA), una sin OT y otra de OT, 11 días: las dos marcadas
+  assert.match(filas[0].repetida, /OT A-4371/);
+  assert.match(filas[1].repetida, /Libro del 2026-09-20 \(ENTREGA ABERTURAS\)/);
+  assert.equal(filas[2].repetida, undefined);
+});
+
+test("Resultados — tocando un mes se ve el detalle de sus entregas", async () => {
+  const datos = {
+    hasta: "2026-10", config: { materiales_pct: 40 },
+    ...estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: PROYECTOS, hasta: "2026-10", materialesPct: 40 }),
+    entregas_detalle: [
+      { fecha: "2026-10-01", mes: "2026-10", ot: "A-4371", cliente: "Pérez SA", division: "ALUMINIO", origen: "plan", origen_texto: "Plan (precio, sin entrega anotada)", descripcion: "", importe: 2000000, repetida: "Libro del 2026-09-20" },
+      { fecha: "2026-09-20", mes: "2026-09", ot: "", cliente: "PEREZ S.A.", division: "", origen: "libro", origen_texto: "Libro", descripcion: "ENTREGA ABERTURAS", importe: 500000 },
+    ],
+  };
+  global.fetch = async () => new Response(JSON.stringify(datos), { status: 200 });
+  render(<FinanzasResultados />);
+  assert.ok(await screen.findByRole("table", { name: "Entregas del mes" }));
+  assert.ok(screen.getByText("A-4371"));
+  assert.ok(screen.getByText(/¿Repetida con Libro del 2026-09-20\?/));
+  assert.ok(screen.getByText(/1 entrega podría estar repetida/));
+  fireEvent.click(screen.getByRole("button", { name: "Ver las entregas de Sep 26" }));
+  assert.ok(await screen.findByText("ENTREGA ABERTURAS"));
+  assert.equal(screen.queryByText("A-4371"), null);
+});
