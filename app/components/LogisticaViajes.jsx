@@ -19,8 +19,9 @@ import {
   ACCIONES_PARADA, AVISO_MIGRACION_VIAJES, ESTADOS_VIAJE, MAX_PARADAS, TIPOS_LUGAR, TIPOS_VIAJE, accionParada, accionPorTipo,
   choquesDelDia, kmEnLineaRecta, moverParada, obrasDeOts, ordenarPorCercania, puedeGestionarLogistica,
   textoUbicacion, tipoLugar, tipoViaje, viajeEditable, avanceViaje, estadoParada, viajeEnCurso, tieneRemito, numeroRemito,
-  paradaConOc, ocsParaLugar,
+  paradaConOc, ocsParaLugar, ultimaUbicacion, haceCuanto,
 } from "../lib/logistica";
+import { linkGoogleMaps } from "../lib/ubicacion";
 import { Chip, FilaDeslizable } from "./ui";
 import { postLogistica } from "./LogisticaScreen";
 import BotonesRecorrido from "./LogisticaRecorrido";
@@ -363,6 +364,8 @@ function FichaViaje({ viaje, paradas, lugares, vehiculos, empleados, ocs = [], e
   const origen = lugares.find((l) => l.id === viaje.origen_id) || null;
   const vehiculo = vehiculos.find((v) => v.id === viaje.vehiculo_id);
   const chofer = empleados.find((e) => e.id === viaje.chofer_id);
+  // Dónde está (o estuvo por última vez): Gypi abierto, la última parada o la salida (208)
+  const ubic = viaje.estado === "en_camino" || viaje.estado === "terminado" ? ultimaUbicacion(viaje, paradas) : null;
 
   const cancelar = async () => {
     if (!motivo.trim()) { setError("Poné el motivo"); return; }
@@ -395,6 +398,12 @@ function FichaViaje({ viaje, paradas, lugares, vehiculos, empleados, ocs = [], e
         </div>
         <div className="text-[13px] text-gypi-dim">Sale de {origen ? origen.nombre : "—"}{viaje.vuelve ? " y vuelve" : ""}</div>
         {viaje.notas && <div className="text-[13px] mt-1">📝 {viaje.notas}</div>}
+        {ubic && (
+          <div className="text-[13px] mt-1">
+            📍 {viaje.estado === "en_camino" ? "Última ubicación" : "Ubicación"} {haceCuanto(ubic.at)} ({ubic.donde}){" "}
+            <a href={linkGoogleMaps(ubic)} target="_blank" rel="noopener noreferrer" className="font-semibold">Ver en el mapa</a>
+          </div>
+        )}
       </div>
       <BotonesRecorrido origen={origen} paradas={paradas} vuelve={viaje.vuelve} />
       <ol aria-label="Paradas" className="list-none m-0 p-0 flex flex-col gap-1.5 mb-3">

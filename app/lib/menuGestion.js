@@ -59,11 +59,13 @@ export const BOTONES_GESTION = {
     ],
   },
   // Logística (pedido de Tadeo, 23/11): parte 1 (203) = lugares y la
-  // dirección de la obra de las OT; parte 2 (204) = armar los viajes.
+  // dirección de la obra de las OT; parte 2 (204) = armar los viajes;
+  // parte 6 (208) = el tablero del dueño (primero, es lo que se mira a diario).
   logistica: {
     label: "Logística",
     detalle: "Viajes, remitos, recorridos y lugares",
     opciones: [
+      { id: "log-tablero", label: "Tablero", modulo: "logistica" },
       { id: "log-viajes", label: "Viajes", modulo: "logistica" },
       { id: "log-lugares", label: "Lugares y obras", modulo: "logistica" },
     ],
@@ -114,7 +116,7 @@ export const BOTONES_GESTION = {
 /** El ícono de cada opción (menú de la izquierda y tarjetas del Inicio de Finanzas). */
 export const ICONO_GESTION = {
   vivo: "🟢", ot: "📋", reportes: "📊", panel: "📈", planificacion: "📅", minuta: "📝",
-  stock: "📦", "inventario-valorizado": "💲", movimientos: "📥", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "log-viajes": "🚚", "log-lugares": "📍", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-cuentas": "📒", "fin-sueldos": "👷", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-mayor": "📚", "fin-devengamiento": "📆", "fin-resultados": "📊", "fin-patrimonio": "⚖️", "fin-flujo": "💵", "fin-cxp": "🗂", "fin-reporte": "📑", "fin-informe-tesoreria": "🏧", "fin-cierre": "🔍", "fin-libro": "📗", "fin-config": "🧾", "fin-inversiones": "📈", "fin-cuenta-ot": "📋", "fin-unificados": "🔗", "fin-sos": "📄",
+  stock: "📦", "inventario-valorizado": "💲", movimientos: "📥", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "log-tablero": "📊", "log-viajes": "🚚", "log-lugares": "📍", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-cuentas": "📒", "fin-sueldos": "👷", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-mayor": "📚", "fin-devengamiento": "📆", "fin-resultados": "📊", "fin-patrimonio": "⚖️", "fin-flujo": "💵", "fin-cxp": "🗂", "fin-reporte": "📑", "fin-informe-tesoreria": "🏧", "fin-cierre": "🔍", "fin-libro": "📗", "fin-config": "🧾", "fin-inversiones": "📈", "fin-cuenta-ot": "📋", "fin-unificados": "🔗", "fin-sos": "📄",
 };
 
 /** Pestañas de un botón para esta empresa: sin lo apagado, lo que pide el

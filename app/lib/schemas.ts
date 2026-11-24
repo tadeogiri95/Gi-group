@@ -1319,8 +1319,11 @@ export const logisticaBody = z.discriminatedUnion("accion", [
   }).strict(),
   z.object({ accion: z.literal("viaje_cancelar"), id: idFlota, motivo: z.string().trim().min(1, "Poné el motivo").max(300) }).strict(),
   // Parte 3 (205): el chofer sale, cumple cada parada y termina el viaje
-  z.object({ accion: z.literal("viaje_salir"), id: idFlota }).strict(),
-  z.object({ accion: z.literal("viaje_terminar"), id: idFlota }).strict(),
+  // Parte 6 (208): con la ubicación del celular al salir y al terminar (si dio permiso)
+  z.object({ accion: z.literal("viaje_salir"), id: idFlota, lat: latitud, lng: longitud }).strict().refine(conPinCompleto, MENSAJE_PIN),
+  z.object({ accion: z.literal("viaje_terminar"), id: idFlota, lat: latitud, lng: longitud }).strict().refine(conPinCompleto, MENSAJE_PIN),
+  // Parte 6 (208): la ubicación del chofer mientras tiene Gypi abierto
+  z.object({ accion: z.literal("viaje_ubicacion"), id: idFlota, lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) }).strict(),
   z.object({
     accion: z.literal("parada_cumplir"),
     id: idFlota,

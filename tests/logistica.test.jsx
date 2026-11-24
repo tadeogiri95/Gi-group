@@ -38,7 +38,7 @@ test("módulo — Logística viene con las OT, se apaga aparte y tiene su botón
   const planta = { modulos: modulosEfectivos({ plan: "planta_15" }) };
   assert.ok(planta.modulos.includes("logistica"));
   assert.equal(conBoton("logistica", planta), true);
-  assert.deepEqual(opcionesBoton("logistica", planta, { rol: "gerencial" }).map((o) => o.id), ["log-viajes", "log-lugares"]);
+  assert.deepEqual(opcionesBoton("logistica", planta, { rol: "gerencial" }).map((o) => o.id), ["log-tablero", "log-viajes", "log-lugares"]);
   assert.deepEqual(getItems("gerencial", 0, planta.modulos).map((i) => i.label), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Logística", "Finanzas", "Más"]);
   // Apagada en Más → Módulos: sin botón
   const apagada = { modulos: planta.modulos.filter((m) => m !== "logistica"), modulos_apagados: ["logistica"] };
@@ -1205,4 +1205,139 @@ test("pantalla Mis viajes con OC — muestra lo pendiente, pide el remito del pr
   const b = enviados.find((x) => x.accion === "parada_cumplir");
   assert.deepEqual([b.estado, b.remito_proveedor], ["entregado", "0001-555"]);
   assert.deepEqual(b.renglones.map((r) => [r.origen, r.ref, r.cantidad, r.hecha]), [["oc", 7, 6, 6]]);
+});
+
+// ─── Parte 6 (208): tablero del dueño y ubicación ───
+
+test("tablero — por chofer y vehículo, firmas pendientes, a tiempo, incidencias y última ubicación", () => {
+  const vs = [
+    { id: 1, numero: 1, fecha: "2026-11-24", estado: "en_camino", chofer_id: "a", vehiculo_id: 7, ubic_lat: -34.5, ubic_lng: -58.4, ubic_at: "2026-11-24T13:00:00Z", salida_lat: -34.4, salida_lng: -58.9, salida_at: "2026-11-24T11:00:00Z" },
+    { id: 2, numero: 2, fecha: "2026-11-24", estado: "planificado", chofer_id: "a", vehiculo_id: 8 },
+    { id: 3, numero: 3, fecha: "2026-11-24", estado: "cancelado", chofer_id: "b", vehiculo_id: 7 },
+    { id: 4, numero: 4, fecha: "2026-11-20", estado: "terminado", chofer_id: "b", vehiculo_id: 7 },
+    { id: 5, numero: 5, fecha: "2026-11-21", estado: "en_camino", chofer_id: null, vehiculo_id: null },
+  ];
+  const ps = [
+    { id: 10, viaje_id: 1, orden: 1, estado: "entregado", hecha_at: "2026-11-24T12:00:00Z", hecha_lat: -34.55, hecha_lng: -58.45, sin_firma: true, firma_url: null },
+    { id: 11, viaje_id: 1, orden: 2, estado: "pendiente" },
+    { id: 12, viaje_id: 2, orden: 1, estado: "pendiente" },
+    { id: 13, viaje_id: 4, orden: 1, estado: "parcial", motivo: "Faltó un bulto", hecha_at: "2026-11-21T15:00:00Z", sin_firma: true, firma_url: "x" },
+    { id: 14, viaje_id: 4, orden: 2, estado: "rechazado", motivo: "No era lo pedido", hecha_at: "2026-11-20T15:00:00Z" },
+    { id: 15, viaje_id: 5, orden: 1, estado: "pendiente" },
+  ];
+  const porChofer = L5.viajesPor(vs, ps, "2026-11-24", "chofer_id");
+  assert.deepEqual(porChofer.map((g) => [g.clave, g.viajes.length, g.hechas, g.total]), [["a", 2, 1, 3]], "sin los cancelados");
+  assert.deepEqual(L5.viajesPor(vs, ps, "2026-11-24", "vehiculo_id").map((g) => g.clave), [7, 8]);
+  assert.deepEqual(L5.firmasPendientes(ps).map((p) => p.id), [10], "la que ya firmó por el link no");
+  const t = L5.entregasATiempo(vs, ps, { desde: "2026-11-01", hoy: "2026-11-24" });
+  assert.deepEqual([t.aTiempo, t.tarde, t.total, t.porcentaje], [2, 1, 3, 67], "la parcial se hizo al día siguiente");
+  assert.deepEqual(t.atrasadas.map((p) => p.id), [15], "pendiente de un día anterior");
+  assert.deepEqual(L5.incidencias(ps).map((p) => p.id), [13, 14]);
+  // La última ubicación: la más nueva entre Gypi abierto, las paradas y la salida
+  const u = L5.ultimaUbicacion(vs[0], ps.filter((p) => p.viaje_id === 1));
+  assert.deepEqual([u.lat, u.donde], [-34.5, "Gypi abierto"]);
+  assert.equal(L5.ultimaUbicacion({ ...vs[0], ubic_at: null }, ps.filter((p) => p.viaje_id === 1)).donde, "parada 1");
+  assert.equal(L5.ultimaUbicacion({ id: 9 }, []), null);
+  const ahora = new Date("2026-11-24T13:05:00Z").getTime();
+  assert.equal(L5.haceCuanto("2026-11-24T13:00:00Z", ahora), "hace 5 min");
+  assert.equal(L5.haceCuanto("2026-11-24T10:00:00Z", ahora), "hace 3 h");
+  assert.equal(L5.haceCuanto("2026-11-24T13:04:50Z", ahora), "recién");
+  // Validación y migración
+  assert.equal(logisticaBody.safeParse({ accion: "viaje_ubicacion", id: 1, lat: -34.5, lng: -58.4 }).success, true);
+  assert.equal(logisticaBody.safeParse({ accion: "viaje_ubicacion", id: 1, lat: 120, lng: -58.4 }).success, false);
+  assert.equal(logisticaBody.safeParse({ accion: "viaje_salir", id: 1, lat: -34.5 }).success, false, "el pin va completo");
+  const sql = readFileSync(new URL("../supabase/migrations/208_logistica_ubicacion.sql", import.meta.url), "utf8");
+  assert.match(sql, /do \$mig\$/);
+  assert.match(sql, /add column if not exists ubic_at/);
+  assert.ok(MIGRACIONES.some((m) => m.n === 208 && m.tablas.logistica_viajes.includes("ubic_lat")));
+});
+
+test("/api/logistica ubicación — al salir y terminar; la del chofer en camino; sin la 208 igual sale", async () => {
+  let escrito = mockMisViajes({ viaje: { id: 40, numero: 7, estado: "planificado", chofer_id: EMP } });
+  assert.equal((await api.POST(req(await token("operativo"), { accion: "viaje_salir", id: 40, lat: -34.45, lng: -58.91 }))).status, 200);
+  let patch = escrito.find((x) => x.tabla === "logistica_viajes" && x.metodo === "PATCH").body;
+  assert.deepEqual([patch.estado, patch.salida_lat, patch.salida_lng], ["en_camino", -34.45, -58.91]);
+  // Ubicación en vivo: solo el chofer, con el viaje en camino
+  escrito = mockMisViajes();
+  let res = await api.POST(req(await token("operativo"), { accion: "viaje_ubicacion", id: 40, lat: -34.5, lng: -58.5 }));
+  assert.deepEqual(await res.json(), { ok: true, guardada: true });
+  patch = escrito.find((x) => x.tabla === "logistica_viajes" && x.metodo === "PATCH");
+  assert.deepEqual([patch.body.ubic_lat, patch.body.ubic_lng, !!patch.body.ubic_at], [-34.5, -58.5, true]);
+  assert.match(patch.url, /estado=eq.en_camino/);
+  escrito = mockMisViajes({ viaje: { id: 40, numero: 7, estado: "terminado", chofer_id: EMP } });
+  res = await api.POST(req(await token("operativo"), { accion: "viaje_ubicacion", id: 40, lat: -34.5, lng: -58.5 }));
+  assert.equal((await res.json()).guardada, false);
+  assert.ok(!escrito.some((x) => x.metodo === "PATCH"));
+  mockMisViajes({ viaje: { id: 40, numero: 7, estado: "en_camino", chofer_id: "33333333-3333-3333-3333-333333333333" } });
+  assert.equal((await api.POST(req(await token("operativo"), { accion: "viaje_ubicacion", id: 40, lat: -34.5, lng: -58.5 }))).status, 403);
+  // Terminar con ubicación
+  escrito = mockMisViajes({ paradas: [{ id: 1, estado: "entregado" }] });
+  assert.equal((await api.POST(req(await token("operativo"), { accion: "viaje_terminar", id: 40, lat: -34.46, lng: -58.92 }))).status, 200);
+  patch = escrito.find((x) => x.tabla === "logistica_viajes" && x.metodo === "PATCH").body;
+  assert.deepEqual([patch.estado, patch.llegada_lat], ["terminado", -34.46]);
+
+  // Sin la 208: sale igual, sin la ubicación
+  escrito = [];
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
+    { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
+    {
+      match: (u) => u.includes("/rest/v1/logistica_viajes"),
+      respond: (u, o) => {
+        if (!o.method || o.method === "GET") return { status: 200, body: [{ id: 40, numero: 7, estado: "planificado", chofer_id: EMP }] };
+        const b = JSON.parse(o.body);
+        escrito.push(b);
+        if ("salida_lat" in b) return { status: 400, body: { code: "PGRST204", message: "Could not find the 'salida_lat' column of 'logistica_viajes' in the schema cache" } };
+        return { status: 200, body: [{ id: 40, ...b }] };
+      },
+    },
+  ]);
+  res = await api.POST(req(await token("operativo"), { accion: "viaje_salir", id: 40, lat: -34.45, lng: -58.91 }));
+  assert.equal(res.status, 200);
+  assert.equal(escrito.length, 2);
+  assert.ok(!("salida_lat" in escrito[1]));
+});
+
+test("pantalla Tablero — en camino con su ubicación, por chofer, sin firma (manda el link) e incidencias", async () => {
+  const HOY = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+  const recien = new Date(Date.now() - 4 * 60000).toISOString();
+  const D = {
+    logistica_viajes: [
+      { id: 40, numero: 7, tipo: "distribucion", fecha: HOY, estado: "en_camino", chofer_id: EMP, vehiculo_id: 7, ubic_lat: -34.5, ubic_lng: -58.4, ubic_at: recien },
+      { id: 41, numero: 8, tipo: "abastecimiento", fecha: HOY, estado: "planificado", chofer_id: EMP, vehiculo_id: 7 },
+    ],
+    logistica_paradas: [
+      { id: 1, viaje_id: 40, orden: 1, nombre: "Torre Norte", ots: ["7450"], accion: "entregar", estado: "parcial", motivo: "Faltaron 2 bisagras", sin_firma: true, firma_url: null, hecha_at: new Date().toISOString() },
+      { id: 2, viaje_id: 40, orden: 2, nombre: "Oficinas Catalinas", ots: [], accion: "entregar", estado: "pendiente" },
+      { id: 3, viaje_id: 41, orden: 1, nombre: "Maderera López", ots: [], accion: "retirar", estado: "pendiente" },
+    ],
+    empleados: [{ id: EMP, nombre: "Carlos Gómez" }],
+    vehiculos: [{ id: 7, patente: "AB123CD", marca: "Renault", modelo: "Master" }],
+  };
+  const enviados = [];
+  global.fetch = async (url, opts = {}) => {
+    const body = opts.body ? JSON.parse(opts.body) : null;
+    if (String(url).includes("/api/logistica")) {
+      enviados.push(body);
+      return new Response(JSON.stringify({ ok: true, parada: { remito_numero: 3, token: "abcdefghijklmnopqrstuvwxyz" } }), { status: 200 });
+    }
+    const tabla = String(body?.path || url).split("?")[0];
+    return new Response(JSON.stringify({ data: D[tabla] || [] }), { status: 200 });
+  };
+  const { default: LogisticaTablero } = await import("../app/components/LogisticaTablero.jsx");
+  render(<LogisticaTablero empresaId={E} />);
+  const camino = await screen.findByRole("region", { name: "En camino ahora" });
+  assert.match(camino.textContent, /Viaje 7 · en camino · 1 de 2/);
+  assert.match(camino.textContent, /Carlos Gómez · AB123CD · sigue: Oficinas Catalinas/);
+  assert.match(camino.textContent, /hace 4 min \(Gypi abierto\)/);
+  assert.match(screen.getByRole("link", { name: "Ver en el mapa" }).getAttribute("href"), /-34.5,-58.4/);
+  assert.match(screen.getByRole("region", { name: "Viajes por chofer" }).textContent, /Carlos Gómez · 1 de 3 paradas/);
+  assert.match(screen.getByRole("region", { name: "Viajes por vehículo" }).textContent, /AB123CD · Renault Master · 2 viajes/);
+  assert.match(screen.getByRole("region", { name: "Incidencias" }).textContent, /Parcial · Torre Norte.*Faltaron 2 bisagras/);
+  assert.match(screen.getByRole("region", { name: "Entregas a tiempo" }).textContent, /1 de 1/);
+  // Mandar el link del remito para que firmen
+  fireEvent.click(screen.getByRole("button", { name: "Mandar el remito de Torre Norte" }));
+  await waitFor(() => assert.deepEqual(enviados[0], { accion: "remito_preparar", id: 1 }));
+  assert.ok(await screen.findByRole("link", { name: /Mandar por WhatsApp/ }));
 });
