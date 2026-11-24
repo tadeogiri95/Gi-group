@@ -438,6 +438,11 @@ test("📊 Carga — switch: según fechas objetivo pide horas extra por semana;
   assert.equal(within(resumen()).queryByLabelText("Horas extra por semana"), null);
   fireEvent.click(screen.getByText("📅 Según fechas objetivo (SEMANA)"));
   assert.match(within(resumen()).getByLabelText("Horas extra por semana").textContent, /Semana del 25\/10\/2026: .* h \(sáb\.? 31\/10\/2026\)/);
+  // Cartel arriba de todo con personas y proceso de cada día extra (24/11)
+  const cartel = screen.getByLabelText("Horas extra necesarias");
+  assert.match(cartel.textContent, /⏱ Hacen falta .* h de horas extra/);
+  assert.match(cartel.textContent, /sáb\.? 31\/10\/2026: \d+ personas?, .* h/);
+  assert.match(cartel.textContent, /\d+ en (Corte|Canteado|Mecanizado|Armado) \(/);
   // El paso ③ suma a las horas de la planta el sábado de horas extra (Tadeo, 29/10)
   assert.match(screen.getByLabelText("Carga de la planta").textContent, /Las horas de la planta incluyen .* h de horas extra en este período \(1 día\)/);
   const horasPlanta = () => screen.getByText("Horas de la planta").parentElement.textContent;
@@ -446,6 +451,7 @@ test("📊 Carga — switch: según fechas objetivo pide horas extra por semana;
   assert.notEqual(horasPlanta(), conExtra, "sin horas extra, la planta tiene menos horas");
   assert.doesNotMatch(screen.getByLabelText("Carga de la planta").textContent, /incluyen .* de horas extra/);
   assert.equal(within(resumen()).queryByLabelText("Horas extra por semana"), null);
+  assert.equal(screen.queryByLabelText("Horas extra necesarias"), null, "según capacidad no hay cartel");
   assert.match(resumen().textContent, /🔴 1 OT termina después de su fecha límiteOT M-7473 · Cliente 1: fecha límite el 31\/10\/2026; termina el \d+\/11\/2026/);
   assert.match(screen.getByLabelText("Carga de la planta").textContent, /El plan usa \d+ % de las horas de la gente/);
 });
@@ -1198,6 +1204,18 @@ test("conHorasExtra — cada día extra rinde como el día más largo de la gril
   const dias = [{ gente: 2, maquina: 2 }, { gente: 8, maquina: 9 }, { gente: 0, maquina: 0 }];
   assert.deepEqual(conHorasExtra(cap, 0, dias), { ...cap, horasExtra: 0, diasExtra: 0 });
   assert.deepEqual(conHorasExtra(cap, 2, dias), { gente: 26, maquina: 23, personas: 1, horasExtra: 16, diasExtra: 2 });
+});
+
+test("genteHorasExtra — cuántas personas y en qué proceso cada día extra (24/11)", async () => {
+  const { genteHorasExtra } = await import("../app/lib/planAutomatico.js");
+  const segmentos = [
+    { fecha: "2026-11-28", etapa: "armado", gente: 14 }, { fecha: "2026-11-28", etapa: "canteado", gente: 8 },
+    { fecha: "2026-11-28", etapa: "corte", gente: 0.5 }, { fecha: "2026-11-27", etapa: "armado", gente: 99 },
+  ];
+  const [d] = genteHorasExtra([{ fecha: "2026-11-28", horas: 22.5 }], segmentos, 8);
+  assert.deepEqual(d.procesos.map((x) => [x.nombre, x.personas]), [["Corte", 1], ["Canteado", 1], ["Armado", 2]]);
+  assert.equal(d.personas, 4);
+  assert.equal(d.horas, 22.5);
 });
 
 test("conHorasExtra — con las horas que el plan de verdad pone esos días, no todo el equipo (24/11)", () => {

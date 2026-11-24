@@ -37,7 +37,7 @@ import SelectorSemana from "./SelectorSemana";
 import { clavePlan } from "../lib/reordenarPlan";
 import { puedeVerPrecios, leerPrecios, valorizarPlan, nombreMes, textoValorOt } from "../lib/valorizacion";
 import { fmtPesos } from "../lib/costo";
-import { planHorizonte, trabajoDelPeriodo, ordenEficiente } from "../lib/planAutomatico";
+import { planHorizonte, trabajoDelPeriodo, ordenEficiente, genteHorasExtra } from "../lib/planAutomatico";
 import { inicioDeSemana } from "../lib/semanaObjetivo";
 import { cuerpoPlan } from "../lib/planGuardado";
 import { materialOt } from "../lib/ot";
@@ -386,6 +386,9 @@ function CargaPlan({ empresaId, divisiones, etapas, division, params, onParametr
   return (
     <section aria-label="Carga de la planta">
       <AvisosOt sinTiempos={sinTiempos} sinPrecio={sinPrecio} />
+      {base === "objetivo" && plan?.diasExtra.length > 0 && (
+        <CartelHorasExtra dias={genteHorasExtra(plan.diasExtra, plan.segmentos, Math.max(0, ...(horasSemana || [])))} />
+      )}
 
       {faltan.length > 0 && (
         <div role="alert" className="g-card mb-3 text-[13px]">
@@ -715,6 +718,30 @@ function textoTarde(t) {
 }
 
 const cuantas = (n) => (n === 1 ? "1 OT" : `${n} OT`);
+const personasTxt = (n) => (n === 1 ? "1 persona" : `${n} personas`);
+
+/**
+ * Cartel de horas extra, arriba de todo (Tadeo, 24/11: "debe resaltarse esa
+ * necesidad para que visualmente se entienda rápido"): cada día extra con
+ * cuántas personas y en qué proceso.
+ */
+function CartelHorasExtra({ dias }) {
+  const total = dias.reduce((t, d) => t + d.horas, 0);
+  return (
+    <div role="alert" aria-label="Horas extra necesarias" className="rounded-xl border-2 border-gypi-red bg-gypi-red/10 p-3 mb-3">
+      <div className="font-heading text-lg font-bold text-gypi-red mb-1">⏱ Hacen falta {fmtH(total)} de horas extra</div>
+      <div className="text-[13px] text-gypi-dim mb-2">Para que las OT lleguen a su fecha límite, en {dias.length === 1 ? "1 día" : `${dias.length} días`} que hoy no se trabajan:</div>
+      <ul className="list-none m-0 p-0 text-[14px]">
+        {dias.map((d) => (
+          <li key={d.fecha} className="py-1 border-t border-gypi-red/30 first:border-t-0">
+            <b>{nombreDia(d.fecha)} {fechaCorta(d.fecha)}</b>: {personasTxt(d.personas)}, {fmtH(d.horas)}
+            <span className="block text-[13px]">{d.procesos.map((x) => `${x.personas} en ${x.nombre} (${fmtH(x.horas)})`).join(" · ")}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 /**
  * Qué frena el plan en el período (Tadeo, 24/11): lo más ocupado entre cada
