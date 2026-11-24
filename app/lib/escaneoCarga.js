@@ -22,7 +22,7 @@
 //     lleva "M7819-BULTO3".
 // Un suelto se carga entero con un escaneo (una lectura por renglón).
 import { textoDeQr } from "./linkQr";
-import { leerBarrasPieza, textoBarrasPieza } from "./codigoBarras";
+import { leerBarrasPieza, leerBarrasPiezaNumero, textoBarrasPieza } from "./codigoBarras";
 
 const OT_VALIDA = /^[\w.-]{1,40}$/;
 
@@ -80,6 +80,11 @@ export function leerQr(texto) {
     const [primera, ...otras] = barras.map((b) => ({ ot: b.ot, piezaNombre: b.nombre }));
     return otras.length ? { ...primera, otras } : primera;
   }
+
+  // Pieza que se llama solo con un número (24/11): "M7541-32" parece el
+  // código de una sub-OT; también puede ser la pieza "32" de la OT M-7541
+  const numero = leerBarrasPiezaNumero(s);
+  if (numero && OT_VALIDA.test(s)) return { ot: s, otras: [{ ot: numero.ot, piezaNombre: numero.nombre }] };
 
   // QR de la OT en la planilla: el número solo
   return OT_VALIDA.test(s) ? { ot: s } : null;
