@@ -58,6 +58,15 @@ export const BOTONES_GESTION = {
       { id: "maquinaria", label: "Maquinaria", modulo: "maquinaria" },
     ],
   },
+  // Logística (pedido de Tadeo, 23/11; 203): parte 1 = lugares y la
+  // dirección de la obra de las OT. Los viajes y Mis viajes vienen después.
+  logistica: {
+    label: "Logística",
+    detalle: "Viajes, remitos, recorridos y lugares",
+    opciones: [
+      { id: "log-lugares", label: "Lugares y obras", modulo: "logistica" },
+    ],
+  },
   // Finanzas (F1, 171): solo el rol Dueño, ni el Supervisor (pedido 09/11).
   // Desde el 10/11 va en la barra de abajo del celular como un módulo más.
   finanzas: {
@@ -104,7 +113,7 @@ export const BOTONES_GESTION = {
 /** El ícono de cada opción (menú de la izquierda y tarjetas del Inicio de Finanzas). */
 export const ICONO_GESTION = {
   vivo: "🟢", ot: "📋", reportes: "📊", panel: "📈", planificacion: "📅", minuta: "📝",
-  stock: "📦", "inventario-valorizado": "💲", movimientos: "📥", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-cuentas": "📒", "fin-sueldos": "👷", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-mayor": "📚", "fin-devengamiento": "📆", "fin-resultados": "📊", "fin-patrimonio": "⚖️", "fin-flujo": "💵", "fin-cxp": "🗂", "fin-reporte": "📑", "fin-informe-tesoreria": "🏧", "fin-cierre": "🔍", "fin-libro": "📗", "fin-config": "🧾", "fin-inversiones": "📈", "fin-cuenta-ot": "📋", "fin-unificados": "🔗", "fin-sos": "📄",
+  stock: "📦", "inventario-valorizado": "💲", movimientos: "📥", compras: "🛒", flota: "🚚", maquinaria: "⚙️", "log-lugares": "📍", "fin-inicio": "🏠", "fin-movimientos": "📒", "fin-tesoreria": "💰", "fin-cuentas": "📒", "fin-sueldos": "👷", "fin-personas": "📇", "fin-pagos": "💸", "fin-cheques": "🏦", "fin-mayor": "📚", "fin-devengamiento": "📆", "fin-resultados": "📊", "fin-patrimonio": "⚖️", "fin-flujo": "💵", "fin-cxp": "🗂", "fin-reporte": "📑", "fin-informe-tesoreria": "🏧", "fin-cierre": "🔍", "fin-libro": "📗", "fin-config": "🧾", "fin-inversiones": "📈", "fin-cuenta-ot": "📋", "fin-unificados": "🔗", "fin-sos": "📄",
 };
 
 /** Pestañas de un botón para esta empresa: sin lo apagado, lo que pide el

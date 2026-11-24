@@ -24,20 +24,20 @@ const ADMIN = { rol: "administrativo" };
 const SUPERVISOR = { rol: "administrativo", solo_su_division: true };
 const ids = (opciones) => seccionesMas(opciones).map((s) => s.id);
 
-test("barra de gestión — Inicio · Producción · Materiales · Mantenimiento · Finanzas · Más; cada botón con sus módulos", () => {
+test("barra de gestión — Inicio · Producción · Materiales · Mantenimiento · Logística · Finanzas · Más; cada botón con sus módulos", () => {
   const labels = (modulos) => getItems("gerencial", 0, modulos).map((i) => i.label);
-  assert.deepEqual(labels(PLANTA.modulos), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Finanzas", "Más"]);
+  assert.deepEqual(labels(PLANTA.modulos), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Logística", "Finanzas", "Más"]);
   // Finanzas es solo del Dueño: la oficina y el Supervisor no la ven en la barra
-  assert.deepEqual(getItems("administrativo", 0, PLANTA.modulos).map((i) => i.label), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Más"]);
+  assert.deepEqual(getItems("administrativo", 0, PLANTA.modulos).map((i) => i.label), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Logística", "Más"]);
   assert.deepEqual(labels(ASISTENCIA.modulos), ["Inicio", "Más"]);
   assert.equal(conBoton("proyectos", PLANTA), true);
   assert.equal(conBoton("proyectos", ASISTENCIA), false);
   // Lo apagado en Más → Módulos saca el botón entero si no le queda nada
   const sinInventario = PLANTA.modulos.filter((m) => m !== "stock" && m !== "compras");
-  assert.deepEqual(labels(sinInventario), ["Inicio", "Producción", "Mantenimiento", "Finanzas", "Más"]);
-  assert.deepEqual(labels(PLANTA.modulos.filter((m) => m !== "flota")), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Finanzas", "Más"], "queda Maquinaria");
-  assert.deepEqual(labels(PLANTA.modulos.filter((m) => m !== "flota" && m !== "maquinaria")), ["Inicio", "Producción", "Materiales", "Finanzas", "Más"]);
-  assert.deepEqual(labels(PLANTA.modulos.filter((m) => m !== "finanzas")), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Más"], "Finanzas apagada");
+  assert.deepEqual(labels(sinInventario), ["Inicio", "Producción", "Mantenimiento", "Logística", "Finanzas", "Más"]);
+  assert.deepEqual(labels(PLANTA.modulos.filter((m) => m !== "flota")), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Logística", "Finanzas", "Más"], "queda Maquinaria");
+  assert.deepEqual(labels(PLANTA.modulos.filter((m) => m !== "flota" && m !== "maquinaria")), ["Inicio", "Producción", "Materiales", "Logística", "Finanzas", "Más"]);
+  assert.deepEqual(labels(PLANTA.modulos.filter((m) => m !== "finanzas")), ["Inicio", "Producción", "Materiales", "Mantenimiento", "Logística", "Más"], "Finanzas apagada");
   // Los permisos pendientes se ven sobre "Más"
   assert.equal(getItems("gerencial", 3, PLANTA.modulos).find((i) => i.id === "config").badge, 3);
 });

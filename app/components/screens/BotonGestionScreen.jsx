@@ -23,6 +23,8 @@ import InventarioScreen from "../InventarioScreen";
 import MovimientosScreen, { pedirCarga } from "../MovimientosScreen";
 import FlotaScreen from "../FlotaScreen";
 import MaquinariaScreen from "../MaquinariaScreen";
+// Logística (203): Lugares y obras
+import LogisticaScreen from "../LogisticaScreen";
 import PlanificacionScreen from "../PlanificacionScreen";
 import MinutaPestana from "../MinutaPestana";
 import FinanzasConfig from "../FinanzasConfig";
@@ -117,6 +119,7 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {!bloqueado && actual.id === "compras" && <ComprasScreen empresaId={empresaId} empresa={empresa} usuario={usuario} />}
         {!bloqueado && actual.id === "flota" && <FlotaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "flota-alertas" ? "alertas" : "vehiculos"} />}
         {!bloqueado && actual.id === "maquinaria" && <MaquinariaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "maquinaria-alertas" ? "alertas" : "maquinas"} />}
+        {!bloqueado && actual.id === "log-lugares" && <LogisticaScreen empresaId={empresaId} usuario={usuario} />}
         {!bloqueado && actual.id === "planificacion" && <PlanificacionScreen empresaId={empresaId} />}
         {!bloqueado && actual.id === "minuta" && <MinutaPestana empresa={empresa} />}
         {!bloqueado && actual.id === "panel" && <PanelProduccion />}
