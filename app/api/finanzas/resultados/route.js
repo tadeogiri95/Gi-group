@@ -25,6 +25,10 @@
 // las que ya figuran en una entrega del libro se saltean y se listan
 // (plan_ot y plan_en_libro_ot). Ver app/lib/finanzasEntregasPlan.js.
 //
+// Detalle de entregas (24/11): entregas_detalle trae cada entrega de la
+// ventana (libro, Gypi, Plan, estimadas) con su origen y la marca de posible
+// repetida, para ver un mes entero en la pantalla.
+//
 // 20/11: trae plazos_sin_interes { cantidad, importe, certificados }: los
 // plazos fijos vencidos cuyo interés todavía no está registrado (aviso).
 //
@@ -38,7 +42,7 @@ import { hoyAr } from "../../../lib/finanzasOperaciones";
 import { logger } from "../../../lib/logger";
 import { materialesRealesDeOts } from "../../../lib/costoRealServidor";
 import { entregasEstimadas, MOTIVOS_NO_ESTIMADA } from "../../../lib/finanzasEntregasEstimadas";
-import { entregasDelPlan } from "../../../lib/finanzasEntregasPlan";
+import { entregasDelPlan, detalleEntregas } from "../../../lib/finanzasEntregasPlan";
 import { plazosSinInteres } from "../../../lib/finanzasPlazosFijosServidor";
 import { CLAVE_RESULTADOS, configResultados, estadoResultados, finDeMes, mesesHasta, resumenDivisiones, validarPonderador } from "../../../lib/finanzasResultados";
 
@@ -67,6 +71,20 @@ async function materialesDeEntregas(e, ops, cuentas, otrasIds = []) {
   }
 }
 
+/** Cada entrega de la ventana (24/11); si algo falla, la lista vacía (el estado se arma igual). */
+async function entregasDelMes(sesion, e, cuentas, meses, hasta, proyectos, entregasPlan, estimadas) {
+  try {
+    const codigos = cuentas.filter((c) => /^ING_ENT/i.test(String(c.linea_eerr || ""))).map((c) => c.codigo);
+    if (!codigos.length) return [];
+    const lista = codigos.map((c) => `"${String(c).replace(/"/g, "")}"`).join(",");
+    const ops = await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&fecha=gte.${meses[0]}-01&fecha=lte.${finDeMes(hasta)}&or=(cuenta_haber.in.(${lista}),cuenta_debe.in.(${lista}))&select=id,fecha,cuenta_debe,cuenta_haber,neto,total,total_ars,proyecto_id,centro_costo,estado,origen,descripcion,referencia,entidad&order=fecha.asc,id.asc`, 50000);
+    return detalleEntregas({ ops: ops || [], cuentasEntregas: new Set(codigos), proyectos, entregasPlan, estimadas, meses });
+  } catch (err) {
+    logger.warn(`[finanzas] detalle de entregas ${err?.message}`);
+    return [];
+  }
+}
+
 async function leerConfig(e) {
   const cfg = await sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_RESULTADOS}&select=valor&limit=1`, { silent: true, fallback: [] });
   return configResultados(cfg?.[0]?.valor);
@@ -86,7 +104,7 @@ export async function GET(request) {
     const [cuentas, ops, proyectos, config, centros] = await Promise.all([
       leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre,rubro,linea_eerr,atribucion&order=codigo.asc`),
       leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&fecha=gte.${meses[0]}-01&fecha=lte.${finDeMes(hasta)}&select=${COLUMNAS}&order=fecha.asc,id.asc`, 200000),
-      leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,division`, 20000),
+      leer(sesion, `proyectos?empresa_id=eq.${e}&select=id,ot,cliente,obra,division&order=id.asc`, 20000),
       leerConfig(e),
       leer(sesion, `fin_centros_costo?empresa_id=eq.${e}&select=codigo,division`).catch(() => []),
     ]);
@@ -111,8 +129,10 @@ export async function GET(request) {
       .sort((a, b) => a.motivo.localeCompare(b.motivo) || (a.fecha || "").localeCompare(b.fecha || "") || a.ot.localeCompare(b.ot));
     // 20/11: plazos fijos vencidos sin el interés registrado (no entran en el resultado)
     const plazos_sin_interes = await plazosSinInteres(sesion).catch(() => null);
+    // Cada entrega de la ventana, con su origen (24/11)
+    const entregas_detalle = await entregasDelMes(sesion, e, cuentas || [], meses, hasta, proyectos || [], plan.entregas, estimadas);
     const plan_ot = plan.entregas.map(({ ot, cliente, fecha, valor }) => ({ ot, cliente, fecha, valor }));
-    return NextResponse.json({ hasta, config, division, divisiones, por_division, estimadas_ot, no_estimadas_ot, plan_ot, plan_en_libro_ot: plan.enLibro, plazos_sin_interes, ...estado });
+    return NextResponse.json({ hasta, config, division, divisiones, por_division, estimadas_ot, no_estimadas_ot, plan_ot, plan_en_libro_ot: plan.enLibro, entregas_detalle, plazos_sin_interes, ...estado });
   } catch (err) {
     if (falta179(err)) return NextResponse.json({ error: FALTA_179, falta_migracion: 179 }, { status: 409 });
     return errorFinanzas(err, "resultados GET");

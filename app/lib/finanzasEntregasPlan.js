@@ -17,6 +17,9 @@
 import { sbGetAll } from "./sbHelpers";
 import { leerPreciosOt } from "./finanzasMaterialesOt";
 import { logger } from "./logger";
+import { importeResultado } from "./finanzasResultados";
+import { claveNombre } from "./finanzasProveedores";
+import { ORIGENES } from "./finanzasOperaciones";
 
 /** Quien anula sin ser una persona (como en finanzasVentas.js). */
 const ANULO_GYPI = /^Gypi\b/;
@@ -86,6 +89,88 @@ export function planEntregasPlan({ proyectos = [], precios = new Map(), entregas
   salida.entregas.sort(orden);
   salida.enLibro.sort(orden);
   return salida;
+}
+
+/** Días que puede haber entre dos entregas del mismo cliente para avisar que podrían ser la misma. */
+export const DIAS_REPETIDA = 62;
+const ORIGEN_TEXTO = {
+  entrega_ot: "Gypi (OT terminada)",
+  libro: "Libro",
+  plan: "Plan (precio, sin entrega anotada)",
+  estimada: "Estimada (por materiales)",
+};
+const dias = (a, b) => Math.abs(Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86400000;
+
+/**
+ * Todas las entregas de la ventana, una por renglón, como las suma el estado
+ * de resultados (24/11, pedido de Tadeo: "debería poder verse el detalle de
+ * todas las entregas para un determinado mes"). Pura.
+ *
+ * Posible repetida: una entrega del libro (o cargada a mano) que no está
+ * ligada a ninguna OT y otra que sí sale de una OT (la de Gypi, la del Plan o
+ * la estimada), del mismo cliente y con menos de DIAS_REPETIDA días entre una
+ * y otra. Las dos quedan marcadas con la otra.
+ * @param {object} d
+ * @param {object[]} d.ops renglones vivos y confirmados en cuentas de Entregas (con fecha, cuenta_debe, cuenta_haber, importes, proyecto_id, origen, descripcion, referencia, entidad, centro_costo)
+ * @param {Set<string>} d.cuentasEntregas códigos de las cuentas de Entregas
+ * @param {object[]} d.proyectos con id, ot, cliente, obra, division
+ * @param {{ proyecto_id: number, fecha: string, valor: number }[]} [d.entregasPlan]
+ * @param {{ proyecto_id: number, fecha: string, valor: number }[]} [d.estimadas]
+ * @param {string[]} d.meses AAAA-MM de la ventana
+ * @returns {{ fecha: string, mes: string, ot: string, cliente: string, division: string, origen: string, origen_texto: string, descripcion: string, importe: number, repetida?: string }[]}
+ */
+export function detalleEntregas({ ops = [], cuentasEntregas = new Set(), proyectos = [], entregasPlan = [], estimadas = [], meses = [] }) {
+  const enVentana = new Set(meses);
+  const porId = new Map(proyectos.map((p) => [Number(p.id), p]));
+  const filas = [];
+  const conEntrega = new Set();
+  for (const o of ops) {
+    if (o.anulada_at || o.estado === "para_revisar") continue;
+    const mes = String(o.fecha || "").slice(0, 7);
+    if (!enVentana.has(mes)) continue;
+    // Haber en Entregas suma; debe (un descuento, una nota de crédito) resta
+    const signo = (cuentasEntregas.has(o.cuenta_haber) ? 1 : 0) - (cuentasEntregas.has(o.cuenta_debe) ? 1 : 0);
+    if (!signo) continue;
+    const p = o.proyecto_id ? porId.get(Number(o.proyecto_id)) : null;
+    if (p) conEntrega.add(Number(p.id));
+    filas.push({
+      fecha: String(o.fecha).slice(0, 10), mes, ot: p ? String(p.ot || "") : "",
+      cliente: String(o.entidad || p?.cliente || p?.obra || "").trim(),
+      division: String(p?.division || o.centro_costo || "").trim(),
+      origen: o.origen === "entrega_ot" ? "entrega_ot" : o.origen || "manual",
+      origen_texto: ORIGEN_TEXTO[o.origen] || ORIGENES[o.origen] || "Cargada a mano",
+      descripcion: String(o.descripcion || o.referencia || "").replace(/\s+/g, " ").trim().slice(0, 160),
+      importe: centavos(importeResultado(o) * signo),
+    });
+  }
+  // Las del Plan y las estimadas, igual que el estado: no si la OT ya tiene una entrega en la ventana
+  for (const [lista, origen] of [[entregasPlan, "plan"], [estimadas, "estimada"]]) {
+    for (const x of lista) {
+      const mes = String(x.fecha || "").slice(0, 7);
+      const pid = Number(x.proyecto_id);
+      if (!enVentana.has(mes) || !(Number(x.valor) > 0) || !pid || conEntrega.has(pid)) continue;
+      conEntrega.add(pid);
+      const p = porId.get(pid);
+      filas.push({
+        fecha: String(x.fecha).slice(0, 10), mes, ot: String(p?.ot || x.ot || ""),
+        cliente: String(p?.cliente || p?.obra || x.cliente || "").trim(), division: String(p?.division || "").trim(),
+        origen, origen_texto: ORIGEN_TEXTO[origen], descripcion: "", importe: centavos(x.valor),
+      });
+    }
+  }
+  // Posibles repetidas: del libro sin OT contra una que sale de una OT, mismo cliente y fechas cercanas
+  const sinOt = filas.filter((f) => !f.ot && f.importe > 0 && claveNombre(f.cliente));
+  const deOt = filas.filter((f) => f.ot && f.importe > 0 && claveNombre(f.cliente));
+  for (const a of sinOt) {
+    const k = claveNombre(a.cliente);
+    for (const b of deOt) {
+      if (claveNombre(b.cliente) !== k || dias(a.fecha, b.fecha) > DIAS_REPETIDA) continue;
+      const deA = `${a.origen_texto} del ${a.fecha}${a.descripcion ? ` (${a.descripcion.slice(0, 60)})` : ""}`;
+      a.repetida = a.repetida ? a.repetida : `OT ${b.ot} · ${b.origen_texto} del ${b.fecha}`;
+      if (!b.repetida) b.repetida = deA;
+    }
+  }
+  return filas.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.ot.localeCompare(b.ot) || a.cliente.localeCompare(b.cliente));
 }
 
 const leer = (sesion, path, maxFilas = 20000) => sbGetAll(path, { sesion, maxFilas }).then((r) => r.data || []);

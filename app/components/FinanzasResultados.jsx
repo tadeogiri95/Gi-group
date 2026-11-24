@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { hoyAr } from "../lib/finanzasOperaciones";
-import { nombreMes } from "../lib/finanzasResultados";
+import { nombreMes, claveDivision } from "../lib/finanzasResultados";
 import { textoPctEstimado } from "../lib/finanzasOtClientes";
 import ConfigMateriales from "./FinanzasPctMateriales";
 import BotonesExportar from "./FinanzasExportar";
@@ -194,6 +194,60 @@ function NoEstimadas({ ots }) {
   );
 }
 
+/**
+ * Cada entrega del mes elegido (24/11, pedido de Tadeo): de dónde sale (libro,
+ * Gypi, Plan o estimada) y el aviso de las que podrían estar repetidas.
+ */
+export function DetalleEntregas({ filas, meses, mes, onMes, division }) {
+  const delMes = filas.filter((f) => f.mes === mes && (!division || claveDivision(f.division) === claveDivision(division)));
+  const total = delMes.reduce((s, f) => s + (Number(f.importe) || 0), 0);
+  const repetidas = delMes.filter((f) => f.repetida).length;
+  return (
+    <section className="mt-3 border border-gypi-border rounded-lg p-2" aria-label="Detalle de entregas del mes">
+      <div className="flex flex-wrap items-center gap-2 mb-1">
+        <h3 className="m-0 text-[14px] font-bold">📦 Entregas de</h3>
+        <select aria-label="Mes del detalle" className="text-[13px] border border-gypi-border rounded px-1 py-0.5 bg-gypi-bg text-gypi-text" value={mes} onChange={(ev) => onMes(ev.target.value)}>
+          {meses.map((m) => <option key={m} value={m}>{nombreMes(m)}</option>)}
+        </select>
+        <span className="text-[12px] text-gypi-dim">{delMes.length === 1 ? "1 entrega" : `${delMes.length} entregas`} · total {miles(total)}{division ? ` · solo ${division}` : ""}</span>
+      </div>
+      {repetidas > 0 && <p className="m-0 mb-1 text-[12px] text-gypi-amber-ink">⚠ {repetidas === 1 ? "1 entrega podría estar repetida" : `${repetidas} entregas podrían estar repetidas`}: una del libro sin OT y otra de una OT, del mismo cliente y con menos de dos meses entre una y otra. Si son la misma, anulá la del libro o anotale la OT.</p>}
+      {delMes.length === 0 ? <p className="m-0 text-[12px] text-gypi-dim">No hay entregas en este mes.</p> : (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[12px]" aria-label="Entregas del mes">
+            <thead>
+              <tr className="bg-gypi-surface">
+                <th className="text-left px-1.5 py-1">Fecha</th>
+                <th className="text-left px-1.5 py-1">OT</th>
+                <th className="text-left px-1.5 py-1">Cliente</th>
+                <th className="text-left px-1.5 py-1">División</th>
+                <th className="text-left px-1.5 py-1">De dónde sale</th>
+                <th className="text-right px-1.5 py-1">Importe</th>
+              </tr>
+            </thead>
+            <tbody>
+              {delMes.map((f, i) => (
+                <tr key={`${f.fecha}-${f.ot}-${i}`} className={`border-t border-gypi-border align-top ${f.repetida ? "bg-gypi-amber/10" : ""}`}>
+                  <td className="px-1.5 py-0.5 font-mono whitespace-nowrap">{dma(f.fecha)}</td>
+                  <td className="px-1.5 py-0.5 whitespace-nowrap">{f.ot || "—"}</td>
+                  <td className="px-1.5 py-0.5">
+                    {f.cliente || "—"}
+                    {f.descripcion && <span className="block text-gypi-dim">{f.descripcion}</span>}
+                    {f.repetida && <span className="block text-gypi-amber-ink">⚠ ¿Repetida con {f.repetida}?</span>}
+                  </td>
+                  <td className="px-1.5 py-0.5">{f.division || "—"}</td>
+                  <td className="px-1.5 py-0.5">{f.origen_texto}</td>
+                  <td className={`px-1.5 py-0.5 text-right font-mono whitespace-nowrap ${f.importe < 0 ? "text-gypi-red" : ""}`}>{miles(f.importe)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function FinanzasResultados() {
   const [hasta, setHasta] = useState(hoyAr().slice(0, 7));
   const [datos, setDatos] = useState(null);
@@ -203,6 +257,7 @@ export default function FinanzasResultados() {
   const [config, setConfig] = useState(false);
   const [reparto, setReparto] = useState(false);
   const [division, setDivision] = useState("");
+  const [mesDetalle, setMesDetalle] = useState("");
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -265,7 +320,7 @@ export default function FinanzasResultados() {
           <thead>
             <tr className="bg-gypi-surface">
               <th className="text-left px-2 py-1.5 sticky left-0 bg-gypi-surface min-w-[220px]">Concepto</th>
-              {datos.meses.map((m) => <th key={m} className="text-right px-2 py-1.5 whitespace-nowrap">{nombreMes(m)}</th>)}
+              {datos.meses.map((m) => <th key={m} className="text-right px-2 py-1.5 whitespace-nowrap"><button type="button" className="bg-transparent border-none p-0 font-bold text-gypi-text cursor-pointer underline decoration-dotted" aria-label={`Ver las entregas de ${nombreMes(m)}`} onClick={() => setMesDetalle(m)}>{nombreMes(m)}</button></th>)}
               <th className="text-right px-2 py-1.5 whitespace-nowrap">Total</th>
             </tr>
           </thead>
@@ -296,6 +351,10 @@ export default function FinanzasResultados() {
       {((datos.plan_ot || []).length > 0 || (datos.plan_en_libro_ot || []).length > 0) && <EntregasDelPlan ots={datos.plan_ot || []} enLibro={datos.plan_en_libro_ot || []} />}
       {datos.entregas_estimadas > 0 && <EntregasEstimadas ots={datos.estimadas_ot || []} pctMateriales={datos.config?.materiales_pct} />}
       {(datos.no_estimadas_ot || []).length > 0 && <NoEstimadas ots={datos.no_estimadas_ot} />}
+
+      {Array.isArray(datos.entregas_detalle) && datos.meses.length > 0 && (
+        <DetalleEntregas filas={datos.entregas_detalle} meses={datos.meses} mes={datos.meses.includes(mesDetalle) ? mesDetalle : datos.meses[datos.meses.length - 1]} onMes={setMesDetalle} division={datos.division} />
+      )}
 
       <AvisoPlazosSinInteres datos={datos.plazos_sin_interes} />
       {datos.sin_linea.length > 0 && (
