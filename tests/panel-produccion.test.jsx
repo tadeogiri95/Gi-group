@@ -274,6 +274,12 @@ test("pantalla — bloques con semáforo y detalle, desde /api/reportes/panel", 
   assert.equal(tono("preventivo"), "atencion");
   assert.equal(tono("cuello"), "mal");
   assert.match(document.querySelector('[data-indicador="cuello"]').textContent, /Armado/);
+  // Cada proceso dice qué es: horas planificadas, no trabajadas (Tadeo, 24/11)
+  const corte = document.querySelector('[data-indicador="carga-corte"]').textContent;
+  assert.match(corte, /Corte planificado100 h/);
+  assert.match(corte, /33 % de lo planificado en la semana/);
+  assert.match(corte, /no son horas trabajadas ni avance de las OT/);
+  assert.match(document.querySelector('[data-indicador="carga"]').textContent, /plan confirmado.*semana entera/);
   assert.ok(document.querySelector('[data-indicador="valor"]'), "con precios se ve $ producidos");
   assert.ok(screen.getByRole("table", { name: "OT en proceso por etapa" }).textContent.includes("cuello de botella"));
   assert.match(screen.getByRole("region", { name: "Detalle" }).textContent, /7100.*2 días tarde/s);
