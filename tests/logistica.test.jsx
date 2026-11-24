@@ -545,3 +545,290 @@ test("pantalla de viajes — sin la 204 avisa; el operario ve los viajes pero no
   fireEvent.click(screen.getByRole("button", { name: "Ver viaje 7" }));
   assert.equal(screen.queryByRole("button", { name: "✏️ Cambiar el viaje" }), null);
 });
+
+// ─── Parte 3 (205): Mis viajes del chofer ───
+
+const L3 = await import("../app/lib/logistica.js");
+const { default: MisViajes } = await import("../app/components/MisViajes.jsx");
+const SB = "https://test.supabase.co/storage/v1/object/public/reportes-obra";
+
+test("mis viajes — renglones de bultos y sueltos, resultado según lo tildado y lo que falta para cumplir", () => {
+  const r = L3.renglonesDeOts({
+    ots: ["7450"],
+    bultos: [{ id: 2, ot: "7450", numero: 2, contenido: "Bajo mesada" }, { id: 1, ot: "7450", numero: 1 }, { id: 9, ot: "9999", numero: 1 }],
+    sueltos: [{ id: 5, ot: "7450", codigo: "BIS", descripcion: "Bisagra", medida: "35mm", cantidad: 12 }],
+  });
+  assert.deepEqual(r.map((x) => [x.origen, x.texto, x.cantidad, x.hecha]), [
+    ["bulto", "OT 7450 · Bulto 1 de 2", 1, 1],
+    ["bulto", "OT 7450 · Bulto 2 de 2 · Bajo mesada", 1, 1],
+    ["suelto", "OT 7450 · BIS · Bisagra · 35mm", 12, 12],
+  ]);
+  assert.equal(L3.resultadoDeRenglones(r), "entregado");
+  assert.equal(L3.resultadoDeRenglones(r.map((x, i) => (i === 2 ? { ...x, hecha: 8 } : x))), "parcial");
+  assert.equal(L3.resultadoDeRenglones(r.map((x) => ({ ...x, hecha: 0 }))), "rechazado");
+  assert.equal(L3.resultadoDeRenglones([]), null);
+
+  const f = L3.faltaParaCumplir;
+  assert.match(f({}), /Elegí cómo terminó/);
+  assert.match(f({ estado: "entregado" }), /al menos una foto/);
+  assert.match(f({ estado: "entregado", fotos: ["a"] }), /Falta la firma/);
+  assert.equal(f({ estado: "entregado", fotos: ["a"], sin_firma: true }), null, "sin nadie para firmar");
+  assert.equal(f({ estado: "entregado", fotos: ["a"], firma_url: "x" }), null);
+  assert.equal(f({ estado: "entregado", accion: "retirar", fotos: ["a"] }), null, "en un retiro la firma es opcional");
+  assert.match(f({ estado: "parcial", fotos: ["a"], firma_url: "x" }), /motivo/);
+  assert.match(f({ estado: "rechazado", motivo: "golpeado" }), /foto/, "lo rechazado también lleva foto");
+  assert.equal(f({ estado: "rechazado", motivo: "golpeado", fotos: ["a"] }), null, "lo rechazado no se firma");
+  assert.match(f({ estado: "no_visitado" }), /por qué no se fue/);
+  assert.equal(f({ estado: "no_visitado", motivo: "cerrado" }), null, "si no se fue, sin foto ni firma");
+  assert.match(f({ estado: "entregado", fotos: ["1", "2", "3", "4", "5", "6"], sin_firma: true }), /Hasta 5/);
+  assert.match(f({ estado: "parcial", motivo: "x", fotos: ["a"], sin_firma: true, renglones: r }), /bajá la cantidad/);
+});
+
+test("mis viajes — qué viajes ve el chofer, el texto del botón, el avance y quién lo puede cumplir", () => {
+  const HOY = "2026-11-24";
+  const vs = [
+    { id: 1, numero: 1, estado: "terminado", fecha: "2026-11-23", chofer_id: EMP },
+    { id: 2, numero: 2, estado: "planificado", fecha: HOY, hora: "14:00", chofer_id: EMP },
+    { id: 3, numero: 3, estado: "en_camino", fecha: HOY, chofer_id: EMP },
+    { id: 4, numero: 4, estado: "planificado", fecha: HOY, chofer_id: "otro" },
+    { id: 5, numero: 5, estado: "cancelado", fecha: HOY, chofer_id: EMP },
+    { id: 6, numero: 6, estado: "terminado", fecha: HOY, chofer_id: EMP },
+    { id: 7, numero: 7, estado: "planificado", fecha: "2026-11-26", chofer_id: EMP },
+  ];
+  const mios = L3.misViajes(vs, EMP, HOY);
+  assert.deepEqual(mios.map((v) => v.id), [3, 2, 7, 6], "primero el que está en camino; sin los de otro, cancelados ni terminados de otro día");
+  assert.match(L3.detalleMisViajes(mios, HOY), /Viaje 3 en camino/);
+  assert.equal(L3.detalleMisViajes(mios.filter((v) => v.id !== 3), HOY), "Tenés 1 viaje para hoy");
+  assert.equal(L3.detalleMisViajes([vs[6]], HOY), "1 viaje armado para los próximos días");
+  assert.deepEqual(L3.avanceViaje([{ estado: "entregado" }, { estado: "pendiente" }, { estado: "no_visitado" }]), { total: 3, hechas: 2, faltan: 1 });
+  assert.equal(L3.puedeHacerViaje("operativo", { chofer_id: EMP }, EMP), true);
+  assert.equal(L3.puedeHacerViaje("operativo", { chofer_id: "otro" }, EMP), false);
+  assert.equal(L3.puedeHacerViaje("gerencial", { chofer_id: "otro" }, EMP), true, "el Dueño lo carga por el chofer");
+  assert.equal(L3.estadoParada("entregado", "retirar").label, "Retirado");
+  assert.equal(new URL(L3.linkComoLlegar({ lat: -34.55, lng: -58.45 })).searchParams.get("destination"), "-34.55,-58.45");
+  assert.equal(L3.linkComoLlegar({}), null);
+  // La migración: un bloque, columnas nuevas y en el chequeo de la base
+  const sql = readFileSync(new URL("../supabase/migrations/205_logistica_mis_viajes.sql", import.meta.url), "utf8");
+  assert.match(sql, /do \$mig\$/);
+  assert.match(sql, /add column if not exists fotos text\[\]/);
+  assert.match(sql, /cardinality\(fotos\) <= 5/);
+  assert.ok(MIGRACIONES.some((m) => m.n === 205 && m.tablas.logistica_paradas.includes("firma_url")));
+});
+
+function mockMisViajes({ viaje = { id: 40, numero: 7, estado: "en_camino", chofer_id: EMP }, paradas = [], parada = { id: 1, viaje_id: 40, accion: "entregar" }, sin205 = false } = {}) {
+  const escrito = [];
+  const anotar = (tabla, u, o) => {
+    const body = o.body ? JSON.parse(o.body) : null;
+    escrito.push({ tabla, metodo: o.method || "GET", url: u, body });
+    return body;
+  };
+  global.fetch = createFetchMock([
+    ...authPassHandlers(),
+    { match: (u) => u.includes("/rest/v1/empresa?id=eq."), respond: () => ({ status: 200, body: [{ plan_activo: "pro", plan_vence: "2099-01-01" }] }) },
+    { match: (u) => u.includes("/rest/v1/empresa_modulos"), respond: () => ({ status: 200, body: [] }) },
+    {
+      match: (u) => u.includes("/rest/v1/logistica_viajes"),
+      respond: (u, o) => {
+        const body = anotar("logistica_viajes", u, o);
+        if (!o.method || o.method === "GET") return { status: 200, body: viaje ? [viaje] : [] };
+        if (sin205) return { status: 400, body: { code: "PGRST204", message: "Could not find the 'salida_at' column of 'logistica_viajes' in the schema cache" } };
+        return { status: 200, body: [{ ...viaje, ...body }] };
+      },
+    },
+    {
+      match: (u) => u.includes("/rest/v1/logistica_paradas"),
+      respond: (u, o) => {
+        const body = anotar("logistica_paradas", u, o);
+        if (!o.method || o.method === "GET") return { status: 200, body: /[?&]id=eq\./.test(u) ? (parada ? [parada] : []) : paradas };
+        if (sin205) return { status: 400, body: { code: "PGRST204", message: "Could not find the 'renglones' column of 'logistica_paradas' in the schema cache" } };
+        return { status: 200, body: [{ ...parada, ...body }] };
+      },
+    },
+  ]);
+  return escrito;
+}
+
+test("/api/logistica salir, cumplir y terminar — el chofer del viaje, con fotos de la app, y no termina con paradas pendientes", async () => {
+  // Salir: el operario que es el chofer
+  let escrito = mockMisViajes({ viaje: { id: 40, numero: 7, estado: "planificado", chofer_id: EMP } });
+  let res = await api.POST(req(await token("operativo"), { accion: "viaje_salir", id: 40 }));
+  assert.equal(res.status, 200);
+  const salida = escrito.find((x) => x.tabla === "logistica_viajes" && x.metodo === "PATCH");
+  assert.equal(salida.body.estado, "en_camino");
+  assert.ok(salida.body.salida_at);
+  assert.match(salida.url, /estado=eq.planificado/);
+  // Otro operario no puede
+  mockMisViajes({ viaje: { id: 40, numero: 7, estado: "planificado", chofer_id: "33333333-3333-3333-3333-333333333333" } });
+  assert.equal((await api.POST(req(await token("operativo"), { accion: "viaje_salir", id: 40 }))).status, 403);
+
+  // Cumplir una entrega parcial con foto y firma
+  escrito = mockMisViajes();
+  const foto = `${SB}/${E}/foto1.jpg`;
+  res = await api.POST(req(await token("operativo"), {
+    accion: "parada_cumplir", id: 1, estado: "parcial", motivo: "Faltó un bulto",
+    renglones: [{ origen: "bulto", ref: 1, ot: "7450", texto: "OT 7450 · Bulto 1 de 2", cantidad: 1, hecha: 1 }, { origen: "bulto", ref: 2, ot: "7450", texto: "OT 7450 · Bulto 2 de 2", cantidad: 1, hecha: 0 }],
+    fotos: [foto], firma_url: `${SB}/${E}/firma.png`, firma_nombre: "Ana Pérez", firma_dni: "30111222", lat: -34.55, lng: -58.45,
+  }));
+  assert.equal(res.status, 200);
+  const cumplida = escrito.find((x) => x.tabla === "logistica_paradas" && x.metodo === "PATCH").body;
+  assert.deepEqual([cumplida.estado, cumplida.motivo, cumplida.fotos, cumplida.firma_nombre, cumplida.sin_firma, cumplida.hecha_por, cumplida.hecha_lat], ["parcial", "Faltó un bulto", [foto], "Ana Pérez", false, EMP, -34.55]);
+  assert.equal(cumplida.renglones.length, 2);
+  assert.ok(cumplida.hecha_at);
+
+  // Una foto que no se subió desde la app, o sin foto: no
+  mockMisViajes();
+  assert.equal((await api.POST(req(await token("operativo"), { accion: "parada_cumplir", id: 1, estado: "entregado", fotos: ["https://otro.com/x.jpg"], sin_firma: true }))).status, 400);
+  mockMisViajes();
+  res = await api.POST(req(await token("operativo"), { accion: "parada_cumplir", id: 1, estado: "entregado", sin_firma: true }));
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /foto/);
+  // Si el viaje no había salido, sale al cumplir la primera parada
+  escrito = mockMisViajes({ viaje: { id: 40, numero: 7, estado: "planificado", chofer_id: EMP } });
+  res = await api.POST(req(await token("operativo"), { accion: "parada_cumplir", id: 1, estado: "no_visitado", motivo: "Cerrado", fotos: [foto] }));
+  assert.equal(res.status, 200);
+  assert.ok(escrito.some((x) => x.tabla === "logistica_viajes" && x.metodo === "PATCH" && x.body.estado === "en_camino"));
+  const noFue = escrito.find((x) => x.tabla === "logistica_paradas" && x.metodo === "PATCH").body;
+  assert.deepEqual([noFue.estado, noFue.fotos, noFue.motivo], ["no_visitado", [], "Cerrado"], "si no se fue, sin fotos");
+  // Un viaje terminado ya no se cambia
+  mockMisViajes({ viaje: { id: 40, numero: 7, estado: "terminado", chofer_id: EMP } });
+  assert.equal((await api.POST(req(await token("operativo"), { accion: "parada_cumplir", id: 1, estado: "no_visitado", motivo: "x" }))).status, 409);
+
+  // Terminar: con una parada pendiente no; con todas cumplidas sí
+  mockMisViajes({ paradas: [{ id: 1, estado: "entregado" }, { id: 2, estado: "pendiente" }] });
+  res = await api.POST(req(await token("operativo"), { accion: "viaje_terminar", id: 40 }));
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /Falta 1 parada/);
+  escrito = mockMisViajes({ paradas: [{ id: 1, estado: "entregado" }, { id: 2, estado: "no_visitado" }] });
+  assert.equal((await api.POST(req(await token("operativo"), { accion: "viaje_terminar", id: 40 }))).status, 200);
+  const fin = escrito.find((x) => x.tabla === "logistica_viajes" && x.metodo === "PATCH");
+  assert.deepEqual([fin.body.estado, !!fin.body.llegada_at], ["terminado", true]);
+
+  // El operario sigue sin poder armar o cancelar; sin la 205 avisa
+  mockMisViajes();
+  assert.equal((await api.POST(req(await token("operativo"), { accion: "viaje_cancelar", id: 40, motivo: "x" }))).status, 403);
+  mockMisViajes({ viaje: { id: 40, numero: 7, estado: "planificado", chofer_id: EMP }, sin205: true });
+  res = await api.POST(req(await token("operativo"), { accion: "viaje_salir", id: 40 }));
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /migración 205/);
+});
+
+function mockPantallaChofer({ estadoViaje = "planificado", paradas = null } = {}) {
+  const enviados = [];
+  const HOY = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+  const D = {
+    logistica_viajes: [{ id: 40, numero: 7, tipo: "distribucion", fecha: HOY, hora: "08:30:00", estado: estadoViaje, chofer_id: EMP, origen_id: 1, vuelve: true }],
+    logistica_paradas: paradas || [
+      { id: 1, viaje_id: 40, orden: 1, nombre: "Torre Norte", ots: ["7450"], cliente: "Pérez", direccion: "Libertador 100", lat: -34.55, lng: -58.45, accion: "entregar", estado: "pendiente", renglones: [], fotos: [] },
+      { id: 2, viaje_id: 40, orden: 2, nombre: "Maderera López", ots: [], lugar_id: 3, direccion: "Calle 2", accion: "retirar", estado: "pendiente", renglones: [], fotos: [] },
+    ],
+    logistica_lugares: [
+      { id: 1, nombre: "Planta Pilar", lat: -34.45, lng: -58.91 },
+      { id: 3, nombre: "Maderera López", direccion: "Calle 2", telefono: "11 4444-5555", contacto: "Juan" },
+    ],
+    bultos_ot: [{ id: 1, ot: "7450", numero: 1, contenido: "Alacena" }, { id: 2, ot: "7450", numero: 2 }],
+    sueltos_ot: [{ id: 5, ot: "7450", codigo: "BIS", descripcion: "Bisagra", cantidad: 12 }],
+  };
+  global.fetch = async (url, opts = {}) => {
+    const body = opts.body ? JSON.parse(opts.body) : null;
+    if (String(url).includes("/api/upload")) return new Response(JSON.stringify({ url: `${SB}/${E}/foto.jpg` }), { status: 200 });
+    if (String(url).includes("/api/logistica")) {
+      enviados.push(body);
+      return new Response(JSON.stringify({ ok: true, parada: {}, viaje: {} }), { status: 200 });
+    }
+    const tabla = String(body?.path || url).split("?")[0];
+    return new Response(JSON.stringify({ data: D[tabla] || [] }), { status: 200 });
+  };
+  return enviados;
+}
+
+test("pantalla Mis viajes — sale, cumple una parada con lo de la OT, foto y sin firma", async () => {
+  const enviados = mockPantallaChofer();
+  render(<MisViajes empleadoId={EMP} onClose={() => {}} />);
+  const lista = await screen.findByRole("list", { name: "Mis viajes" });
+  assert.match(lista.textContent, /Viaje 7 · Entrega/);
+  assert.match(lista.textContent, /0 de 2 paradas/);
+  fireEvent.click(screen.getByRole("button", { name: "Abrir viaje 7" }));
+  assert.ok(screen.getByRole("link", { name: /Ver recorrido en Google Maps/ }));
+  fireEvent.click(screen.getByRole("button", { name: "🚚 Salir" }));
+  await waitFor(() => assert.deepEqual(enviados[0], { accion: "viaje_salir", id: 40 }));
+
+  // La parada 1: bultos y sueltos de la OT, todos tildados
+  fireEvent.click(screen.getByRole("button", { name: "Parada 1: Torre Norte" }));
+  const rs = await screen.findByRole("list", { name: "Renglones" });
+  assert.match(rs.textContent, /Bulto 1 de 2 · Alacena/);
+  assert.match(rs.textContent, /BIS · Bisagra/);
+  assert.match(screen.getByRole("link", { name: "🗺️ Cómo llegar" }).getAttribute("href"), /destination=-34.55%2C-58.45/);
+  // Entregó 10 de 12 bisagras: queda parcial solo
+  fireEvent.change(screen.getByLabelText("Cantidad de OT 7450 · BIS · Bisagra"), { target: { value: "10" } });
+  assert.equal(screen.getByRole("button", { name: "🟠 Una parte" }).getAttribute("aria-pressed"), "true");
+  // Sin motivo ni foto no deja guardar
+  fireEvent.click(screen.getByRole("button", { name: "Guardar la parada" }));
+  assert.match(screen.getByRole("alert").textContent, /motivo/);
+  fireEvent.change(screen.getByLabelText("¿Qué pasó?"), { target: { value: "Faltaron 2 bisagras" } });
+  // jsdom no carga imágenes: la foto va sin achicar
+  const ImagenReal = global.Image;
+  const LectorReal = global.FileReader;
+  global.FileReader = window.FileReader;
+  global.Image = class { set src(_v) { setTimeout(() => this.onerror?.(new Error("sin imágenes"))); } };
+  const file = new window.File(["x"], "foto.jpg", { type: "image/jpeg" });
+  fireEvent.change(screen.getByLabelText("Sacar foto"), { target: { files: [file] } });
+  await screen.findByRole("button", { name: "Ver foto 1" });
+  global.Image = ImagenReal;
+  global.FileReader = LectorReal;
+  fireEvent.click(screen.getByRole("checkbox", { name: /No hay nadie para firmar/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Guardar la parada" }));
+  await waitFor(() => assert.equal(enviados.length, 2));
+  const b = enviados[1];
+  assert.deepEqual([b.accion, b.id, b.estado, b.motivo, b.sin_firma, b.firma_url], ["parada_cumplir", 1, "parcial", "Faltaron 2 bisagras", true, null]);
+  assert.equal(b.fotos.length, 1);
+  assert.deepEqual(b.renglones.map((r) => [r.origen, r.cantidad, r.hecha]), [["bulto", 1, 1], ["bulto", 1, 1], ["suelto", 12, 10]]);
+});
+
+test("pantalla Mis viajes — en camino con una pendiente no deja terminar; el retiro muestra el teléfono del lugar", async () => {
+  mockPantallaChofer({
+    estadoViaje: "en_camino",
+    paradas: [
+      { id: 1, viaje_id: 40, orden: 1, nombre: "Torre Norte", ots: ["7450"], accion: "entregar", estado: "entregado", renglones: [], fotos: [] },
+      { id: 2, viaje_id: 40, orden: 2, nombre: "Maderera López", ots: [], lugar_id: 3, direccion: "Calle 2", accion: "retirar", estado: "pendiente", renglones: [], fotos: [] },
+    ],
+  });
+  render(<MisViajes empleadoId={EMP} viajeId={40} onClose={() => {}} />);
+  const term = await screen.findByRole("button", { name: "🏁 Terminar el viaje" });
+  assert.equal(term.disabled, true);
+  assert.match(screen.getByRole("list", { name: "Paradas del viaje" }).textContent, /👉 Sigue/);
+  fireEvent.click(screen.getByRole("button", { name: "Parada 2: Maderera López" }));
+  assert.equal((await screen.findByRole("link", { name: "📞 Llamar" })).getAttribute("href"), "tel:1144445555");
+  assert.ok(screen.getByRole("button", { name: "✅ Retiré todo" }));
+});
+
+test("ficha del viaje — el Dueño ve cómo terminó cada parada (fotos, firma, motivo) y lo puede cargar por el chofer", async () => {
+  const HOY = new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+  const D = {
+    logistica_viajes: [{ id: 40, numero: 7, tipo: "distribucion", fecha: HOY, estado: "en_camino", chofer_id: EMP, origen_id: 1, vuelve: true, salida_at: `${HOY}T11:00:00Z` }],
+    logistica_paradas: [
+      { id: 1, viaje_id: 40, orden: 1, nombre: "Torre Norte", ots: ["7450"], accion: "entregar", estado: "parcial", motivo: "Faltó un bulto", hecha_por: EMP, hecha_at: `${HOY}T12:30:00Z`,
+        renglones: [{ origen: "bulto", texto: "Bulto 1", cantidad: 1, hecha: 1 }, { origen: "bulto", texto: "Bulto 2", cantidad: 1, hecha: 0 }],
+        fotos: [`${SB}/${E}/a.jpg`], firma_url: `${SB}/${E}/f.png`, firma_nombre: "Ana Pérez", firma_dni: "30111222" },
+      { id: 2, viaje_id: 40, orden: 2, nombre: "Casa Gómez", ots: [], accion: "entregar", estado: "pendiente" },
+    ],
+    empleados: [{ id: EMP, nombre: "Carlos Chofer" }],
+  };
+  global.fetch = async (url, opts = {}) => {
+    const body = opts.body ? JSON.parse(opts.body) : null;
+    const tabla = String(body?.path || url).split("?")[0];
+    return new Response(JSON.stringify({ data: D[tabla] || [] }), { status: 200 });
+  };
+  render(<LogisticaViajes empresaId={E} usuario={{ rol: "gerencial", id: "44444444-4444-4444-4444-444444444444" }} />);
+  const lista = await screen.findByRole("list", { name: "Viajes del día" });
+  assert.match(lista.textContent, /1 de 2 paradas/);
+  fireEvent.click(screen.getByRole("button", { name: "Ver viaje 7" }));
+  const ps = screen.getByRole("list", { name: "Paradas" });
+  assert.match(ps.textContent, /🟠 Parcial/);
+  assert.match(ps.textContent, /Carlos Chofer/);
+  assert.match(ps.textContent, /Faltó un bulto/);
+  assert.match(ps.textContent, /1 de 2 renglones completos\. Faltó: Bulto 2/);
+  assert.match(ps.textContent, /Firmó Ana Pérez, DNI 30111222/);
+  assert.ok(screen.getByRole("button", { name: "Ver foto 1 de Torre Norte" }));
+  assert.ok(screen.getByRole("img", { name: "Firma de Ana Pérez" }));
+  assert.ok(screen.getByRole("button", { name: "🚚 Cargar las paradas por el chofer" }));
+});

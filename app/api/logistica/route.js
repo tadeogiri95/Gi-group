@@ -13,6 +13,13 @@
 //                    (si después cambian, el viaje armado no se mueve). Solo
 //                    se edita mientras está planificado.
 //   viaje_cancelar → con el motivo (no se borra)
+// Parte 3 (205). Lo usa el chofer del viaje (o quien gestiona Logística):
+//   viaje_salir    → el viaje pasa a "en camino" con la hora de salida
+//   parada_cumplir → cómo terminó la parada (entregado, parcial, rechazado o
+//                    no visitado), lo que se entregó, fotos, firma y motivo.
+//                    Se puede corregir mientras el viaje no terminó. Si el
+//                    viaje no había salido, sale en ese momento.
+//   viaje_terminar → con todas las paradas cumplidas
 // La lectura va por /api/data (logistica_lugares, logistica_viajes y
 // logistica_paradas, solo lectura; proyectos).
 // Con RLS_RUTAS=on todo va con el pase del usuario ({ sesion }).
@@ -24,8 +31,19 @@ import { sbGet, sbPost, sbPatch, sbDelete } from "../../lib/sbHelpers";
 import { broadcastRefresh } from "../../lib/broadcast";
 import { rechazarSiSinPlan } from "../../lib/planEnforcement";
 import { requireModuloSesion } from "../../lib/accesosServidor";
-import { puedeGestionarLogistica, AVISO_MIGRACION_LOGISTICA, AVISO_MIGRACION_VIAJES, obrasDeOts, viajeEditable } from "../../lib/logistica";
+import {
+  puedeGestionarLogistica, puedeHacerViaje, faltaParaCumplir, avanceViaje, viajeEditable, obrasDeOts,
+  AVISO_MIGRACION_LOGISTICA, AVISO_MIGRACION_VIAJES, AVISO_MIGRACION_MIS_VIAJES,
+} from "../../lib/logistica";
 import { logger } from "../../lib/logger";
+
+const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const ACCIONES_CHOFER = new Set(["viaje_salir", "parada_cumplir", "viaje_terminar"]);
+
+function faltaMigracionMisViajes(err) {
+  const m = String(err?.message);
+  return /salida_at|llegada_at|renglones|fotos|firma_url|firma_nombre|firma_dni|sin_firma|motivo|hecha_(por|at|lat|lng)/.test(m) && /does not exist|42703|PGRST204|schema cache/.test(m);
+}
 
 function faltaMigracionViajes(err) {
   const m = String(err?.message);
@@ -166,6 +184,78 @@ async function cancelarViaje(sesion, { id, motivo }) {
   return NextResponse.json({ ok: true, viaje: v });
 }
 
+/** El viaje, si existe y esta persona lo puede cumplir. */
+async function viajeDelChofer(sesion, id) {
+  const [v] = (await sbGet(`logistica_viajes?id=eq.${id}&empresa_id=eq.${sesion.empresa_id}&select=id,numero,estado,chofer_id`, { sesion })) || [];
+  if (!v) return { error: noEncontrado("ese viaje") };
+  if (!puedeHacerViaje(sesion.rol, v, sesion.empleado_id)) return { error: NextResponse.json({ error: "Este viaje lo hace otra persona" }, { status: 403 }) };
+  return { viaje: v };
+}
+
+async function salirViaje(sesion, { id }) {
+  const e = sesion.empresa_id;
+  const { viaje, error } = await viajeDelChofer(sesion, id);
+  if (error) return error;
+  if (viaje.estado === "en_camino") return NextResponse.json({ ok: true, viaje });
+  if (viaje.estado !== "planificado") return NextResponse.json({ error: "El viaje ya terminó o está cancelado" }, { status: 409 });
+  const [v] = (await sbPatch(`logistica_viajes?id=eq.${id}&empresa_id=eq.${e}&estado=eq.planificado`, { estado: "en_camino", salida_at: new Date().toISOString(), updated_at: new Date().toISOString() }, { sesion })) || [];
+  broadcastRefresh(e, "logistica_viajes");
+  return NextResponse.json({ ok: true, viaje: v || viaje });
+}
+
+async function cumplirParada(sesion, d) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  const [p] = (await sbGet(`logistica_paradas?id=eq.${d.id}&empresa_id=eq.${e}&select=id,viaje_id,accion`, opts)) || [];
+  if (!p) return noEncontrado("esa parada");
+  const { viaje, error } = await viajeDelChofer(sesion, p.viaje_id);
+  if (error) return error;
+  if (viaje.estado !== "planificado" && viaje.estado !== "en_camino") return NextResponse.json({ error: "El viaje ya terminó o está cancelado: no se puede cambiar" }, { status: 409 });
+  // Fotos y firma: solo imágenes subidas por /api/upload para esta empresa
+  const deLaApp = (url) => !url || url.startsWith(`${SB_URL}/storage/v1/object/public/reportes-obra/${e}/`);
+  if (!d.fotos.every(deLaApp) || !deLaApp(d.firma_url)) return NextResponse.json({ error: "Las fotos y la firma tienen que hacerse desde la app" }, { status: 400 });
+  const falta = faltaParaCumplir({ ...d, accion: p.accion });
+  if (falta) return NextResponse.json({ error: falta }, { status: 400 });
+
+  const ahora = new Date().toISOString();
+  if (viaje.estado === "planificado") {
+    await sbPatch(`logistica_viajes?id=eq.${viaje.id}&empresa_id=eq.${e}&estado=eq.planificado`, { estado: "en_camino", salida_at: ahora, updated_at: ahora }, opts);
+  }
+  const noFue = d.estado === "no_visitado";
+  const fila = {
+    estado: d.estado,
+    renglones: noFue ? [] : d.renglones,
+    fotos: noFue ? [] : d.fotos,
+    firma_url: noFue || d.sin_firma ? null : d.firma_url,
+    firma_nombre: noFue || d.sin_firma ? null : d.firma_nombre,
+    firma_dni: noFue || d.sin_firma ? null : d.firma_dni,
+    sin_firma: !noFue && d.sin_firma,
+    motivo: d.estado === "entregado" ? null : d.motivo,
+    hecha_por: sesion.empleado_id || null,
+    hecha_at: ahora,
+    hecha_lat: d.lat,
+    hecha_lng: d.lng,
+  };
+  const [parada] = (await sbPatch(`logistica_paradas?id=eq.${p.id}&empresa_id=eq.${e}`, fila, opts)) || [];
+  broadcastRefresh(e, "logistica_viajes");
+  return NextResponse.json({ ok: true, parada: parada || { ...p, ...fila } });
+}
+
+async function terminarViaje(sesion, { id }) {
+  const e = sesion.empresa_id;
+  const { viaje, error } = await viajeDelChofer(sesion, id);
+  if (error) return error;
+  if (viaje.estado !== "en_camino") return NextResponse.json({ error: viaje.estado === "planificado" ? "El viaje todavía no salió" : "El viaje ya terminó o está cancelado" }, { status: 409 });
+  const paradas = (await sbGet(`logistica_paradas?viaje_id=eq.${id}&empresa_id=eq.${e}&select=id,estado`, { sesion })) || [];
+  const { faltan } = avanceViaje(paradas);
+  if (faltan) return NextResponse.json({ error: `${faltan === 1 ? "Falta 1 parada" : `Faltan ${faltan} paradas`}: marcá cómo terminó cada una (si no se fue, "No se fue")` }, { status: 409 });
+  const ahora = new Date().toISOString();
+  const [v] = (await sbPatch(`logistica_viajes?id=eq.${id}&empresa_id=eq.${e}&estado=eq.en_camino`, { estado: "terminado", llegada_at: ahora, updated_at: ahora }, { sesion })) || [];
+  if (!v) return NextResponse.json({ error: "El viaje ya terminó o está cancelado" }, { status: 409 });
+  broadcastRefresh(e, "logistica_viajes");
+  return NextResponse.json({ ok: true, viaje: v });
+}
+
 export async function POST(request) {
   try {
     const sesion = await validarToken(request);
@@ -173,7 +263,9 @@ export async function POST(request) {
     const raw = await request.json().catch(() => null);
     const parsed = validateBody(logisticaBody, raw);
     if (parsed.response) return parsed.response;
-    if (!puedeGestionarLogistica(sesion.rol)) {
+    // El chofer cumple su viaje; lo demás es de quien gestiona Logística
+    const deChofer = ACCIONES_CHOFER.has(parsed.data.accion);
+    if (!deChofer && !puedeGestionarLogistica(sesion.rol)) {
       return NextResponse.json({ error: "Los lugares y las direcciones los cargan el Dueño, los supervisores y Administración" }, { status: 403 });
     }
     const sinPlan = await rechazarSiSinPlan(sesion.empresa_id);
@@ -187,8 +279,12 @@ export async function POST(request) {
       if (d.accion === "lugar_baja") return await bajaLugar(sesion, d);
       if (d.accion === "viaje_guardar") return await guardarViaje(sesion, d);
       if (d.accion === "viaje_cancelar") return await cancelarViaje(sesion, d);
+      if (d.accion === "viaje_salir") return await salirViaje(sesion, d);
+      if (d.accion === "parada_cumplir") return await cumplirParada(sesion, d);
+      if (d.accion === "viaje_terminar") return await terminarViaje(sesion, d);
       return await direccionObra(sesion, d);
     } catch (err) {
+      if (faltaMigracionMisViajes(err)) return NextResponse.json({ error: AVISO_MIGRACION_MIS_VIAJES }, { status: 409 });
       if (faltaMigracionViajes(err)) return NextResponse.json({ error: AVISO_MIGRACION_VIAJES }, { status: 409 });
       if (faltaMigracion(err)) return NextResponse.json({ error: AVISO_MIGRACION_LOGISTICA }, { status: 409 });
       throw err;

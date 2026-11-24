@@ -1315,4 +1315,28 @@ export const logisticaBody = z.discriminatedUnion("accion", [
       .min(1, "Agregá al menos una parada").max(15, "Hasta 15 paradas por viaje"),
   }).strict(),
   z.object({ accion: z.literal("viaje_cancelar"), id: idFlota, motivo: z.string().trim().min(1, "Poné el motivo").max(300) }).strict(),
+  // Parte 3 (205): el chofer sale, cumple cada parada y termina el viaje
+  z.object({ accion: z.literal("viaje_salir"), id: idFlota }).strict(),
+  z.object({ accion: z.literal("viaje_terminar"), id: idFlota }).strict(),
+  z.object({
+    accion: z.literal("parada_cumplir"),
+    id: idFlota,
+    estado: z.enum(["entregado", "parcial", "rechazado", "no_visitado"]),
+    renglones: z.array(z.object({
+      origen: z.enum(["bulto", "suelto", "mano"]),
+      ref: idFlota.nullable().optional().transform((v) => v ?? null),
+      ot: z.string().trim().max(40).nullable().optional().transform((v) => v || null),
+      texto: z.string().trim().min(1, "Cada renglón necesita qué es").max(200),
+      cantidad: z.number().positive().max(99999),
+      hecha: z.number().min(0).max(99999),
+    }).strict()).max(200).default([]),
+    fotos: z.array(z.string().url().max(500)).max(5, "Hasta 5 fotos por parada").default([]),
+    firma_url: z.string().url().max(500).nullable().optional().transform((v) => v || null),
+    firma_nombre: textoSuelto(120),
+    firma_dni: textoSuelto(20),
+    sin_firma: z.boolean().default(false),
+    motivo: textoSuelto(300),
+    lat: latitud,
+    lng: longitud,
+  }).strict().refine(conPinCompleto, MENSAJE_PIN),
 ]);
