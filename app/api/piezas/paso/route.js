@@ -17,6 +17,10 @@
 //   deshacer → saca el escaneo (el mismo operario hasta 30 minutos después,
 //              o gestión). No toca el avance de la etapa.
 //   deshacer_modulo → lo mismo para todas las piezas de un módulo.
+// Canto por lados (25/11, migración 209): en la etapa que tiene entre sus
+// columnas los lados del panel (L1A, L1B, L2A, L2B) cada escaneo es un lado
+// con canto (lados_pieza). La pieza queda pegada (pasos_pieza) recién con el
+// último lado: 4 piezas de 3 lados = 12 escaneos. Deshacer saca el último lado.
 // Con RLS_RUTAS=on todo va con el pase del usuario ({ sesion }).
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
@@ -27,7 +31,8 @@ import { ROLES_GESTION } from "../../../lib/dataPolicy";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { requireModuloSesion } from "../../../lib/accesosServidor";
-import { leerQrPieza, leerQrModulo, etapasSalteadas } from "../../../lib/piezas";
+import { leerQrPieza, leerQrModulo, etapasSalteadas, etapaPorLados, columnasDeTexto, escaneosPorPieza } from "../../../lib/piezas";
+import { falta209 } from "../../../lib/piezasServidor";
 import { leerBarrasPiezaNumero } from "../../../lib/codigoBarras";
 import { normalizarOt } from "../../../lib/escaneoCarga";
 import { logger } from "../../../lib/logger";
@@ -40,6 +45,33 @@ function faltaMigracion(err) {
   return (m.includes("pasos_pieza") || m.includes("piezas_ot")) && /does not exist|could not find|PGRST205|42P01/i.test(m);
 }
 const falta112 = (err) => /por_pieza/.test(String(err?.message));
+const faltaLados = (err) => /lados_pieza/.test(String(err?.message)) && /does not exist|could not find|PGRST205|42P01/i.test(String(err?.message));
+
+const CAMPOS_PIEZA = "id,ot,nombre,unidad,de,etapas";
+
+/** Piezas con sus lados con canto; sin la migración 209, sin los lados (cuentan 1). */
+async function leerPiezasOt(filtro, opts) {
+  try {
+    return (await sbGet(`${filtro}&select=${CAMPOS_PIEZA},lados`, opts)) || [];
+  } catch (err) {
+    if (!falta209(err)) throw err;
+    return (await sbGet(`${filtro}&select=${CAMPOS_PIEZA}`, opts)) || [];
+  }
+}
+
+/** Lados ya escaneados de cada pieza en la etapa: Map id → cantidad; null sin la migración 209. */
+async function ladosEscaneados(sesion, ids, etapa, opts) {
+  if (!ids.length) return new Map();
+  try {
+    const filas = (await sbGet(`lados_pieza?empresa_id=eq.${sesion.empresa_id}&etapa=eq.${etapa}&pieza_id=in.(${ids.join(",")})&select=pieza_id`, opts)) || [];
+    const m = new Map();
+    for (const f of filas) m.set(Number(f.pieza_id), (m.get(Number(f.pieza_id)) || 0) + 1);
+    return m;
+  } catch (err) {
+    if (faltaLados(err)) return null;
+    throw err;
+  }
+}
 
 /** Cuántas filas cumplen el filtro (sin traerlas). */
 async function contar(path, opts) {
@@ -91,11 +123,11 @@ async function pausaDe(sesion, ot, opts) {
 
 /** La etapa elegida, si se escanea por pieza; si no, la respuesta de error. */
 async function etapaPorPieza(sesion, codigo, opts) {
-  const [etapa] = (await sbGet(`etapas?empresa_id=eq.${sesion.empresa_id}&codigo=eq.${codigo}&select=codigo,nombre,activa,por_pieza&limit=1`, opts)) || [];
+  const [etapa] = (await sbGet(`etapas?empresa_id=eq.${sesion.empresa_id}&codigo=eq.${codigo}&select=codigo,nombre,activa,por_pieza,columna_pieza&limit=1`, opts)) || [];
   if (!etapa || !etapa.por_pieza || etapa.activa === false) {
     return { response: NextResponse.json({ error: "Esa etapa ya no se escanea por pieza. Elegí otra (Más → Producción → Etapas)." }, { status: 400 }) };
   }
-  return { etapa };
+  return { etapa: { ...etapa, porLados: etapaPorLados(columnasDeTexto(etapa.columna_pieza)) } };
 }
 
 /** ¿Pasaron todas las piezas de la OT que llevan esta etapa? Si sí, la etapa queda terminada. */
@@ -172,7 +204,7 @@ async function escanear(sesion, datos) {
   }
   if (lectura.nombre && !lectura.unidad) return escanearRenglon(sesion, datos, lectura);
   if (lectura.nombre) return escanearPiezaPlanilla(sesion, datos, lectura);
-  const [pieza] = (await sbGet(`piezas_ot?id=eq.${lectura.id}&empresa_id=eq.${e}&select=id,ot,nombre,unidad,de,etapas&limit=1`, opts)) || [];
+  const [pieza] = await leerPiezasOt(`piezas_ot?id=eq.${lectura.id}&empresa_id=eq.${e}&limit=1`, opts);
   // Número escrito a mano que no existe: casi siempre es un error al tipear,
   // no una planilla vuelta a pegar (auditoría 01/11)
   if (!pieza && !lectura.ot) {
@@ -194,7 +226,7 @@ async function unidadesDelRenglon(sesion, otQr, nombre, opts) {
   const e = sesion.empresa_id;
   const [proyecto] = (await sbGet(`proyectos?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(otQr)}&select=ot&limit=1`, opts)) || [];
   const ot = proyecto?.ot || otQr;
-  const piezas = (await sbGet(`piezas_ot?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}&nombre=eq.${encodeURIComponent(nombre)}&select=id,ot,nombre,unidad,de,etapas&order=unidad.asc`, opts)) || [];
+  const piezas = await leerPiezasOt(`piezas_ot?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}&nombre=eq.${encodeURIComponent(nombre)}&order=unidad.asc`, opts);
   return { ot, piezas };
 }
 
@@ -237,7 +269,7 @@ async function escanearRenglon(sesion, datos, lectura, renglon = null) {
       faltan: [], progreso: null, etapaTerminada: null, conteo: { pasaron: piezas.length, de: piezas.length },
     });
   }
-  return anotarPieza(sesion, datos, siguiente, { conteo: { pasaron: hechos.size + 1, de: piezas.length } });
+  return anotarPieza(sesion, datos, siguiente, { piezas, hechos });
 }
 
 /**
@@ -250,15 +282,20 @@ async function escanearPiezaPlanilla(sesion, datos, lectura) {
   const opts = { sesion };
   const [proyecto] = (await sbGet(`proyectos?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(lectura.ot)}&select=ot&limit=1`, opts)) || [];
   const ot = proyecto?.ot || lectura.ot;
-  const [pieza] = (await sbGet(`piezas_ot?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}&nombre=eq.${encodeURIComponent(lectura.nombre)}&unidad=eq.${lectura.unidad}&select=id,ot,nombre,unidad,de,etapas&limit=1`, opts)) || [];
+  const [pieza] = await leerPiezasOt(`piezas_ot?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(ot)}&nombre=eq.${encodeURIComponent(lectura.nombre)}&unidad=eq.${lectura.unidad}&limit=1`, opts);
   if (!pieza) {
     return NextResponse.json({ error: `La OT ${ot} no tiene la pieza ${lectura.nombre} (${lectura.unidad} de ${lectura.de}). Revisá que la planilla esté pegada en 🧩 Piezas y que la OT y el nombre estén escritos igual.` }, { status: 404 });
   }
   return anotarPieza(sesion, datos, pieza);
 }
 
-/** Anota que la pieza pasó por la etapa (si no estaba) y cuenta el avance de la etapa. */
-async function anotarPieza(sesion, datos, pieza, extra = {}) {
+/**
+ * Anota que la pieza pasó por la etapa (si no estaba) y cuenta el avance de la etapa.
+ * renglon = { piezas, hechos } cuando se escaneó el código del renglón: la
+ * respuesta dice cuántas de la cantidad van (conteo).
+ * En la etapa de canto (por lados) anota un lado; la pieza pasa recién con el último.
+ */
+async function anotarPieza(sesion, datos, pieza, renglon = null) {
   const e = sesion.empresa_id;
   const opts = { sesion };
   const { etapa, response } = await etapaPorPieza(sesion, datos.etapa, opts);
@@ -268,24 +305,51 @@ async function anotarPieza(sesion, datos, pieza, extra = {}) {
   const pasos = (await sbGet(`pasos_pieza?pieza_id=eq.${pieza.id}&empresa_id=eq.${e}&select=etapa,created_at`, opts)) || [];
   const requerida = (pieza.etapas || []).map(Number).includes(datos.etapa);
   const previo = pasos.find((p) => Number(p.etapa) === datos.etapa);
+  const conteo = (sumada) => (renglon ? { conteo: { pasaron: renglon.hechos.size + (sumada ? 1 : 0), de: renglon.piezas.length } } : {});
   if (previo) {
-    return NextResponse.json({ ok: true, ya: true, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan: [], progreso: null, etapaTerminada: null, momento: previo.created_at, ...extra });
+    return NextResponse.json({ ok: true, ya: true, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan: [], progreso: null, etapaTerminada: null, momento: previo.created_at, ...conteo(false) });
   }
 
   const faltan = requerida ? etapasSalteadas(pieza, datos.etapa, pasos) : [];
+  const momento = momentoValido(datos.momento, Date.now());
+  // Canto por lados (209): un escaneo por lado con canto
+  let lados = null;
+  const necesarios = escaneosPorPieza(pieza, etapa.porLados);
+  if (necesarios > 1) {
+    const unidades = renglon?.piezas || [pieza];
+    const hechos = await ladosEscaneados(sesion, unidades.map((u) => u.id), datos.etapa, opts);
+    if (hechos) {
+      await sbPost("lados_pieza", {
+        empresa_id: e, ot: pieza.ot, pieza_id: pieza.id, etapa: datos.etapa,
+        empleado_id: sesion.empleado_id || null, created_at: momento,
+      }, opts);
+      broadcastRefresh(e, "lados_pieza");
+      const completas = renglon?.hechos || new Set();
+      const lado = (hechos.get(Number(pieza.id)) || 0) + 1;
+      const total = unidades.reduce((s, u) => s + escaneosPorPieza(u, true), 0);
+      const sumados = unidades.reduce((s, u) => {
+        const n = escaneosPorPieza(u, true);
+        return s + (completas.has(Number(u.id)) ? n : Math.min(n, hechos.get(Number(u.id)) || 0));
+      }, 0) + 1;
+      lados = { lado: Math.min(lado, necesarios), de: necesarios, hechos: Math.min(sumados, total), total };
+      if (lado < necesarios) {
+        return NextResponse.json({ ok: true, ya: false, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan, progreso: null, etapaTerminada: null, lados, ...conteo(false), ...(await pausaDe(sesion, pieza.ot, opts)) });
+      }
+    }
+  }
   const r = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/pasos_pieza?on_conflict=pieza_id,etapa`, {
     method: "POST",
     headers: await sbHeaders(opts, { Prefer: "resolution=ignore-duplicates,return=minimal" }),
     body: JSON.stringify({
       empresa_id: e, ot: pieza.ot, pieza_id: pieza.id, etapa: datos.etapa, requerida,
-      empleado_id: sesion.empleado_id || null, created_at: momentoValido(datos.momento, Date.now()),
+      empleado_id: sesion.empleado_id || null, created_at: momento,
     }),
   });
   if (!r.ok) throw new Error(`POST pasos_pieza: ${await r.text()}`);
   broadcastRefresh(e, "pasos_pieza");
 
   const { progreso, etapaTerminada } = requerida ? await progresoEtapa(sesion, pieza.ot, etapa, opts) : { progreso: null, etapaTerminada: null };
-  return NextResponse.json({ ok: true, ya: false, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan, progreso, etapaTerminada, ...extra, ...(await pausaDe(sesion, pieza.ot, opts)) });
+  return NextResponse.json({ ok: true, ya: false, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan, progreso, etapaTerminada, ...(lados ? { lados } : {}), ...conteo(true), ...(await pausaDe(sesion, pieza.ot, opts)) });
 }
 
 async function deshacerModulo(sesion, datos) {
@@ -307,19 +371,39 @@ async function deshacerModulo(sesion, datos) {
   return NextResponse.json({ ok: true, deshechas: borrar.length });
 }
 
+/** El último lado escaneado de la pieza en la etapa (209); null si no hay o falta la migración. */
+async function ultimoLado(sesion, piezaId, etapa, opts) {
+  try {
+    const [l] = (await sbGet(`lados_pieza?pieza_id=eq.${piezaId}&etapa=eq.${etapa}&empresa_id=eq.${sesion.empresa_id}&select=id,empleado_id,created_at&order=created_at.desc,id.desc&limit=1`, opts)) || [];
+    return l || null;
+  } catch (err) {
+    if (faltaLados(err)) return null;
+    throw err;
+  }
+}
+
 async function deshacer(sesion, datos) {
   const e = sesion.empresa_id;
   const opts = { sesion };
   const filtro = `pasos_pieza?pieza_id=eq.${datos.pieza_id}&etapa=eq.${datos.etapa}&empresa_id=eq.${e}`;
   const [paso] = (await sbGet(`${filtro}&select=id,empleado_id,created_at&limit=1`, opts)) || [];
-  if (!paso) return NextResponse.json({ ok: true });
-  const propio = paso.empleado_id && paso.empleado_id === sesion.empleado_id
-    && Date.now() - Date.parse(paso.created_at) <= MINUTOS_DESHACER * 60000;
+  // Canto por lados: se saca el último lado (y la pieza deja de estar completa)
+  const lado = await ultimoLado(sesion, datos.pieza_id, datos.etapa, opts);
+  const escaneo = lado || paso;
+  if (!escaneo) return NextResponse.json({ ok: true });
+  const propio = escaneo.empleado_id && escaneo.empleado_id === sesion.empleado_id
+    && Date.now() - Date.parse(escaneo.created_at) <= MINUTOS_DESHACER * 60000;
   if (!propio && !ROLES_GESTION.has(sesion.rol)) {
     return NextResponse.json({ error: `Solo podés deshacer tus escaneos de los últimos ${MINUTOS_DESHACER} minutos. Pedíselo al encargado.` }, { status: 403 });
   }
-  await sbDelete(`pasos_pieza?id=eq.${paso.id}&empresa_id=eq.${e}`, opts);
-  broadcastRefresh(e, "pasos_pieza");
+  if (paso) {
+    await sbDelete(`pasos_pieza?id=eq.${paso.id}&empresa_id=eq.${e}`, opts);
+    broadcastRefresh(e, "pasos_pieza");
+  }
+  if (lado) {
+    await sbDelete(`lados_pieza?id=eq.${lado.id}&empresa_id=eq.${e}`, opts);
+    broadcastRefresh(e, "lados_pieza");
+  }
   return NextResponse.json({ ok: true });
 }
 

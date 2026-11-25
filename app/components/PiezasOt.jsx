@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch, sbGetAll } from "../lib/supabase";
 import { TAMANOS_ETIQUETA } from "../lib/carga";
 import {
-  reglasPieza, nombresEtapas, leerPiezas, expandirPiezas, agruparRenglones, cambiosAlReemplazar, medidas, imprimirEtiquetasPiezas,
+  reglasPieza, nombresEtapas, leerPiezas, textoLados, expandirPiezas, agruparRenglones, cambiosAlReemplazar, medidas, imprimirEtiquetasPiezas,
   imprimirEtiquetasModulos, modulosConPiezas,
   avancePiezas, textoAvancePiezas,
 } from "../lib/piezas";
@@ -234,7 +234,7 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
                             {vista.renglones.slice(0, 60).map((r) => (
                               <tr key={r.nombre} className="border-t border-gypi-border">
                                 <td className="p-1">{r.nombre}</td><td className="p-1">{r.cantidad}</td><td className="p-1">{medidas(r) || "—"}</td>
-                                <td className="p-1">{r.etapas.map(nombreDe).join(", ") || "—"}</td>
+                                <td className="p-1">{r.etapas.map(nombreDe).join(", ") || "—"}{r.lados > 0 && ` · ${textoLados(r.lados)}`}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -311,7 +311,7 @@ export default function PiezasOt({ proyecto, empresaId, empresa = null, esGestio
                   <div className="flex items-start gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="text-[13px] font-bold">{r.nombre} <span className="font-normal text-gypi-dim">× {r.piezas.length}</span></div>
-                      <div className="text-xs text-gypi-dim truncate">{[medidas(r), r.material, r.modulo && `Módulo ${r.modulo}`].filter(Boolean).join(" · ")}</div>
+                      <div className="text-xs text-gypi-dim truncate">{[medidas(r), r.material, r.modulo && `Módulo ${r.modulo}`, r.lados > 0 && textoLados(r.lados)].filter(Boolean).join(" · ")}</div>
                     </div>
                     <button onClick={() => imprimir(r.piezas)} aria-label={`Imprimir las etiquetas de ${r.nombre}`}
                       className="min-w-[44px] min-h-[44px] rounded-lg border border-gypi-border bg-transparent text-sm cursor-pointer">🖨</button>

@@ -57,7 +57,7 @@ test("planilla — hoja PLANILLA: 47 renglones, 218 piezas, medidas, material y 
   assert.equal(r.renglones.length, 47);
   assert.equal(expandirPiezas(r.renglones).length, 218);
   assert.deepEqual(buscar(r, "M.izq-11"), {
-    nombre: "M.izq-11", modulo: "M.izq", material: "ENCHAPADO 19MM SOBRE MDF KIRI", l1: 402, l2: 342, cantidad: 2, etapas: [1, 2, 3],
+    nombre: "M.izq-11", modulo: "M.izq", material: "ENCHAPADO 19MM SOBRE MDF KIRI", l1: 402, l2: 342, cantidad: 2, etapas: [1, 2, 3], lados: 1,
   });
   assert.equal(buscar(r, "11").modulo, null, "sin guion no hay módulo");
   assert.equal(buscar(r, "Cenefa - T1").modulo, "Cenefa");

@@ -317,6 +317,8 @@ export const piezasBody = z.discriminatedUnion("accion", [
       l2: medidaPieza,
       cantidad: z.number().int().min(1).max(500),
       etapas: etapasPieza,
+      // Lados con canto (L1A…L2B con E y COLOR, 25/11); null = la planilla no los trae
+      lados: z.number().int().min(0).max(4).nullable().optional(),
     }).strict()).min(1).max(1000)
       .refine((l) => l.reduce((n, r) => n + r.cantidad, 0) <= 3000, { message: "Una OT puede tener hasta 3000 piezas" })
       .refine((l) => new Set(l.map((r) => r.nombre)).size === l.length, { message: "Hay renglones con el mismo nombre" }),

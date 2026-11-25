@@ -535,7 +535,7 @@ export default function AdminEmpresaScreen({ empresa, empresaId, onUpdate, divis
             {etapaForm.por_pieza && <>
               <label className="g-label mb-1.5 block" htmlFor="etapa-columna-pieza">Columnas de la planilla técnica (opcional)</label>
               <input id="etapa-columna-pieza" className="g-input mb-1" maxLength={300} value={etapaForm.columna_pieza} onChange={(e) => setEtapaForm((f) => ({ ...f, columna_pieza: e.target.value }))} placeholder="Ej: Canto, L1A, L1B" />
-              <div className="text-xs text-gypi-dim mb-2.5">Vacío: pasan todas las piezas. Si escribís nombres de columnas (separados por coma), pasan solo las piezas que tienen algo en alguna de esas columnas.</div>
+              <div className="text-xs text-gypi-dim mb-2.5">Vacío: pasan todas las piezas. Si escribís nombres de columnas (separados por coma), pasan solo las piezas que tienen algo en alguna de esas columnas. Con los lados L1A, L1B, L2A, L2B (canto), cada pieza se escanea una vez por lado con canto (E y COLOR distintos de 0).</div>
             </>}
             <div className="text-xs text-gypi-dim mb-2.5">Las etapas que se escanean por pieza aparecen en 🧩 Escanear piezas. Cuando pasan todas las piezas de una OT, la etapa queda terminada.</div>
             <div className="g-label mb-1.5">Color</div>

@@ -91,9 +91,11 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
       const deshacer = !ok ? null
         : data.modulo ? { accion: "deshacer_modulo", ot: data.modulo.ot, modulo: data.modulo.nombre, etapa: data.etapa }
           : data.pieza?.id ? { accion: "deshacer", pieza_id: data.pieza.id, etapa: data.etapa } : null;
-      // QR de la pieza (mismo para todas las unidades): "Sumar otra" sin volver a escanear
-      const otra = data.conteo && !data.ya && data.conteo.pasaron < data.conteo.de ? texto : null;
-      agregar({ ...m, deshacer, otra, ot: data.modulo?.ot || data.pieza?.ot || null });
+      // QR de la pieza (mismo para todas las unidades): "Sumar otra" sin volver a escanear.
+      // En canto por lados (25/11) suma el siguiente lado.
+      const quedanLados = data.lados && data.lados.hechos < data.lados.total;
+      const otra = !data.ya && ((data.conteo && data.conteo.pasaron < data.conteo.de) || quedanLados) ? texto : null;
+      agregar({ ...m, deshacer, otra, lados: Boolean(data.lados), ot: data.modulo?.ot || data.pieza?.ot || null });
     } catch (e) {
       agregar({ tono: "rojo", texto: e?.message || "No se pudo anotar la pieza.", detalle: null });
     }
@@ -177,7 +179,7 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
                   {r.ot && <LinkPdfOt ot={r.ot} indice={indicePdf} />}
                   {r.otra && (
                     <button onClick={() => { vistos.current.delete(`${etapa}|${r.otra}`); anotar(r.otra); }}
-                      className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold cursor-pointer text-current underline">+1 otra</button>
+                      className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold cursor-pointer text-current underline">{r.lados ? "+1 lado" : "+1 otra"}</button>
                   )}
                   {r.deshacer && (
                     <button onClick={() => deshacer(r)} className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold cursor-pointer text-current underline">Deshacer</button>

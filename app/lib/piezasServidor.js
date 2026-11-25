@@ -29,7 +29,20 @@ export async function reglasDeEmpresa(e, opts = {}) {
   return reglasPieza(etapas);
 }
 
+/** ¿Falta la migración 209 (piezas_ot.lados)? */
+export const falta209 = (err) => /lados/.test(String(err?.message)) && /column|does not exist|could not find|PGRST204|42703/i.test(String(err?.message));
+
 async function upsertPiezas(filas, opts) {
+  try {
+    await upsertLotes(filas, opts);
+  } catch (err) {
+    // Sin la migración 209 las piezas se guardan igual, sin los lados (cuentan 1)
+    if (!falta209(err)) throw err;
+    await upsertLotes(filas.map(({ lados, ...resto }) => resto), opts);
+  }
+}
+
+async function upsertLotes(filas, opts) {
   for (let i = 0; i < filas.length; i += LOTE) {
     const r = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/piezas_ot?on_conflict=empresa_id,ot,nombre,unidad`, {
       method: "POST",
@@ -66,6 +79,7 @@ export async function guardarPiezas({ e, ot, renglones, opts = {}, empleadoId = 
     unidad: p.unidad,
     de: p.de,
     etapas: ordenar(p.etapas),
+    lados: Number.isInteger(p.lados) ? p.lados : null,
     cargada_at: ahora,
     creado_por: empleadoId,
   })), opts);
