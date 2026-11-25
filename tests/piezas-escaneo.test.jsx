@@ -140,7 +140,7 @@ function req(body, t) {
 const PIEZA = { id: 7, ot: "M-7495", nombre: "M.izq-11", unidad: 2, de: 2, etapas: [1, 2, 3] };
 
 let leidas = [];
-function mock({ pieza = PIEZA, pasos = [], total = 51, pasaron = 38, avance = [], paso = null, falla = null, etapas = ETAPAS, sin112 = false, renglon = null, hechos = [], modulo = [] } = {}) {
+function mock({ pieza = PIEZA, pasos = [], total = 51, pasaron = 38, avance = [], paso = null, falla = null, etapas = ETAPAS, sin112 = false, renglon = null, hechos = [], modulo = [], lados = [], ultimo = null } = {}) {
   const escrito = [];
   leidas = [];
   global.fetch = createFetchMock([
@@ -177,7 +177,15 @@ function mock({ pieza = PIEZA, pasos = [], total = 51, pasaron = 38, avance = []
     },
     { match: (u, o) => u.includes("/rest/v1/avance_etapas") && (!o?.method || o.method === "GET"), respond: () => ({ status: 200, body: avance }) },
     {
-      match: (u, o) => /\/rest\/v1\/(pasos_pieza|avance_etapas)/.test(u) && ["POST", "PATCH", "DELETE"].includes(o?.method),
+      // Canto por lados (209): un escaneo por lado
+      match: (u, o) => u.includes("/rest/v1/lados_pieza?") && (!o?.method || o.method === "GET"),
+      respond: (u) => {
+        if (u.includes("order=created_at.desc")) return { status: 200, body: ultimo ? [ultimo] : [] };
+        return { status: 200, body: lados.map((id) => ({ pieza_id: id })) };
+      },
+    },
+    {
+      match: (u, o) => /\/rest\/v1\/(pasos_pieza|avance_etapas|lados_pieza)/.test(u) && ["POST", "PATCH", "DELETE"].includes(o?.method),
       respond: (u, o) => {
         escrito.push({ metodo: o.method, url: u, body: o.body ? JSON.parse(o.body) : null, prefer: o.headers?.Prefer });
         return { status: 201, body: [] };
@@ -501,4 +509,116 @@ test("piezas de la OT — avance por etapa y 'las que faltan en'", async () => {
   assert.equal(screen.queryAllByText(/1-FONDO/).length, 0);
   fireEvent.change(screen.getByLabelText("Ver"), { target: { value: "1" } });
   assert.ok(screen.getByText("✅ Pasaron todas por Corte."));
+});
+
+// ─── Canto por lados (25/11, Tadeo; migración 209) ───
+
+test("canto por lados — de la planilla sale cuántos lados con canto tiene cada pieza (E y COLOR distintos de 0)", async () => {
+  const { leerPiezas, expandirPiezas, etapaPorLados, escaneosPorPieza } = await import("../app/lib/piezas.js");
+  const tsv = [
+    ["PANEL", "MATERIAL", "MEDIDAS", "", "", "L1 A", "", "", "L1 B", "", "L2 A", "", "L2 B", ""],
+    ["", "", "L1", "L2", "CANT.", "E", "COLOR", "L2", "E", "COLOR", "E", "COLOR", "E", "COLOR"],
+    ["A-1", "MDF 18", "500", "300", "4", "0.45-", "BLANCO", "0", "0", "0", "0.45-", "BLANCO", "2", "GRAFITO"],
+    ["A-2", "MDF 18", "400", "300", "2", "0.45-", "0", "VER PLANO", "0", "0", "0", "0", "0", "0"],
+    ["A-3", "MDF 18", "400", "200", "1", "2", "BLANCO", "0", "0", "0", "0", "0", "0", "0"],
+  ].map((f) => f.join("\t")).join("\n");
+  const reglas = reglasPieza(ETAPAS);
+  assert.equal(reglas.find((r) => r.codigo === 2).porLados, true, "Canto tiene L1A…L2B entre sus columnas");
+  assert.equal(reglas.find((r) => r.codigo === 1).porLados, false);
+  const v = leerPiezas(tsv, reglas);
+  assert.deepEqual(v.renglones.map((r) => [r.nombre, r.lados, r.etapas.includes(2)]), [
+    ["A-1", 3, true],
+    ["A-2", 0, false], // E sin COLOR (y un "VER PLANO" en otra columna) no es canto
+    ["A-3", 1, true],
+  ]);
+  assert.equal(v.sinColumna.some((r) => r.codigo === 2), false);
+  assert.deepEqual(expandirPiezas(v.renglones).filter((p) => p.nombre === "A-1").map((p) => p.lados), [3, 3, 3, 3]);
+  assert.equal(etapaPorLados(["Canto", "L1 A"]), true);
+  assert.equal(etapaPorLados(["FF", "RAN"]), false);
+  assert.equal(escaneosPorPieza({ lados: 3 }, true), 3);
+  assert.equal(escaneosPorPieza({ lados: 3 }, false), 1, "en otra etapa se escanea una vez");
+  assert.equal(escaneosPorPieza({ lados: null }, true), 1, "pieza leída antes de la 209: una vez");
+  // Planilla sin los lados: nada cambia
+  const sinLados = leerPiezas("PANEL\tL1\tL2\tCANT.\nB-1\t300\t200\t2", reglas);
+  assert.equal(sinLados.renglones[0].lados, null);
+  // El esquema acepta los lados al guardar
+  const { piezasBody } = await import("../app/lib/schemas.ts");
+  assert.equal(piezasBody.safeParse({ accion: "cargar", ot: "M-7495", renglones: v.renglones }).success, true);
+});
+
+test("canto por lados — 4 piezas de 3 lados: cada escaneo es un lado y la pieza pasa con el tercero (12 en total)", async () => {
+  const renglon = [1, 2, 3, 4].map((u) => ({ ...PIEZA, id: 20 + u, nombre: "A-1", unidad: u, de: 4, etapas: [1, 2], lados: 3 }));
+  // Primer escaneo: un lado, la pieza todavía no pasó
+  let escrito = mock({ renglon, hechos: [] });
+  let data = await (await api.POST(req({ accion: "escanear", codigo: "OT M-7495 - PIEZA - A-1", etapa: 2 }, await token()))).json();
+  assert.equal(data.ok, true);
+  assert.equal(data.pieza.id, 21);
+  assert.deepEqual(data.lados, { lado: 1, de: 3, hechos: 1, total: 12 });
+  assert.deepEqual(data.conteo, { pasaron: 0, de: 4 });
+  assert.equal(data.progreso, null);
+  assert.equal(escrito.length, 1);
+  assert.match(escrito[0].url, /lados_pieza$/);
+  assert.deepEqual([escrito[0].body.pieza_id, escrito[0].body.etapa, escrito[0].body.empleado_id], [21, 2, EMP]);
+  let m = mensajeEscaneo({ ...data, faltan: [] }, NOMBRES);
+  assert.equal(m.tono, "verde");
+  assert.equal(m.texto, "A-1: pieza 1 de 4, lado 1 de 3 en Canto.");
+  assert.equal(m.detalle, "Van 1 de 12 lados (0 de 4 piezas completas).");
+
+  // Tercer lado: la pieza queda pegada (pasos_pieza) y cuenta para el avance
+  escrito = mock({ renglon, hechos: [], lados: [21, 21] });
+  data = await (await api.POST(req({ accion: "escanear", codigo: "OT M-7495 - PIEZA - A-1", etapa: 2 }, await token()))).json();
+  assert.deepEqual(data.lados, { lado: 3, de: 3, hechos: 3, total: 12 });
+  assert.deepEqual(data.conteo, { pasaron: 1, de: 4 });
+  assert.deepEqual(data.progreso, { pasaron: 38, total: 51 });
+  assert.deepEqual(escrito.map((x) => x.url.replace(/.*\/rest\/v1\//, "")), ["lados_pieza", "pasos_pieza?on_conflict=pieza_id,etapa"]);
+  assert.equal(escrito[1].body.pieza_id, 21);
+  m = mensajeEscaneo({ ...data, faltan: [] }, NOMBRES);
+  assert.equal(m.texto, "A-1: pieza 1 de 4, lado 3 de 3 en Canto.");
+  assert.match(m.detalle, /^✔ Pieza completa\. Van 3 de 12 lados \(1 de 4 piezas completas\)\. Canto: 38 de 51 piezas/);
+
+  // Con la primera pegada sigue con la segunda: 3 + 1 lados hechos y este
+  mock({ renglon, hechos: [21], lados: [21, 21, 21, 22] });
+  data = await (await api.POST(req({ accion: "escanear", codigo: "OT M-7495 - PIEZA - A-1", etapa: 2 }, await token()))).json();
+  assert.equal(data.pieza.id, 22);
+  assert.deepEqual(data.lados, { lado: 2, de: 3, hechos: 5, total: 12 });
+
+  // En Corte (sin lados) se sigue escaneando una vez por pieza
+  escrito = mock({ renglon, hechos: [] });
+  data = await (await api.POST(req({ accion: "escanear", codigo: "OT M-7495 - PIEZA - A-1", etapa: 1 }, await token()))).json();
+  assert.equal(data.lados, undefined);
+  assert.deepEqual(escrito.map((x) => x.url.replace(/.*\/rest\/v1\//, "")), ["pasos_pieza?on_conflict=pieza_id,etapa"]);
+});
+
+test("canto por lados — deshacer saca el último lado (y la pieza deja de estar completa)", async () => {
+  const reciente = { id: 99, empleado_id: EMP, created_at: new Date(Date.now() - 60000).toISOString() };
+  const lado = { id: 501, empleado_id: EMP, created_at: new Date(Date.now() - 60000).toISOString() };
+  let escrito = mock({ paso: reciente, ultimo: lado });
+  let res = await api.POST(req({ accion: "deshacer", pieza_id: 21, etapa: 2 }, await token()));
+  assert.equal(res.status, 200);
+  assert.deepEqual(escrito.map((x) => [x.metodo, x.url.replace(/.*\/rest\/v1\//, "")]), [
+    ["DELETE", `pasos_pieza?id=eq.99&empresa_id=eq.${E}`],
+    ["DELETE", `lados_pieza?id=eq.501&empresa_id=eq.${E}`],
+  ]);
+  // Un lado suelto (la pieza no estaba completa)
+  escrito = mock({ ultimo: lado });
+  res = await api.POST(req({ accion: "deshacer", pieza_id: 21, etapa: 2 }, await token()));
+  assert.equal(res.status, 200);
+  assert.deepEqual(escrito.map((x) => x.url.replace(/.*\/rest\/v1\//, "")), [`lados_pieza?id=eq.501&empresa_id=eq.${E}`]);
+  // El lado de otro operario: solo gestión
+  escrito = mock({ ultimo: { ...lado, empleado_id: OTRO } });
+  res = await api.POST(req({ accion: "deshacer", pieza_id: 21, etapa: 2 }, await token()));
+  assert.equal(res.status, 403);
+  assert.equal(escrito.length, 0);
+});
+
+test("migración 209 — lados por pieza y escaneo de cada lado, con RLS; el chequeo de la base la conoce", async () => {
+  const sql = readFileSync(new URL("../supabase/migrations/209_canto_por_lados.sql", import.meta.url), "utf8");
+  assert.match(sql, /alter table public\.piezas_ot add column if not exists lados smallint/);
+  assert.match(sql, /create table if not exists public\.lados_pieza/);
+  assert.match(sql, /references public\.piezas_ot\(id\) on delete cascade/);
+  assert.match(sql, /alter table public\.lados_pieza enable row level security/);
+  assert.match(sql, /grant usage, select on sequence public\.lados_pieza_id_seq to authenticated/);
+  assert.match(sql, /^do \$mig\$$/m);
+  const { MIGRACIONES } = await import("../app/lib/esquemaMigraciones.js");
+  assert.deepEqual(MIGRACIONES.find((x) => x.n === 209)?.tablas, { piezas_ot: ["lados"], lados_pieza: [] });
 });

@@ -39,7 +39,33 @@ export function reglasPieza(etapas = []) {
       icon: e.icon && !/^[A-Za-z]/.test(e.icon) ? e.icon : null,
       color: e.color || null,
       columnas: columnasDeTexto(e.columna_pieza),
+      porLados: etapaPorLados(columnasDeTexto(e.columna_pieza)),
     }));
+}
+
+/**
+ * Lados del panel en la planilla técnica (25/11, Tadeo): los grupos L1 A,
+ * L1 B, L2 A y L2 B. Un lado lleva canto si sus columnas E y COLOR son
+ * distintas de 0.
+ */
+export const LADOS_PANEL = ["l1a", "l1b", "l2a", "l2b"];
+
+/**
+ * ¿La etapa cuenta por lados? Sí si entre sus columnas (Configuración →
+ * Etapas) está alguno de los lados (L1A, L1B, L2A, L2B): en esa etapa una
+ * pieza con 3 lados de canto se escanea 3 veces.
+ */
+export function etapaPorLados(columnas = []) {
+  return (columnas || []).some((c) => LADOS_PANEL.includes(norm(c)));
+}
+
+/** "1 lado con canto" / "3 lados con canto". */
+export const textoLados = (n) => `${n} ${Number(n) === 1 ? "lado" : "lados"} con canto`;
+
+/** Cuántos escaneos lleva una pieza en una etapa: sus lados con canto si la etapa cuenta por lados, si no 1. */
+export function escaneosPorPieza(pieza, porLados) {
+  const n = Number(pieza?.lados);
+  return porLados && Number.isInteger(n) && n > 1 ? n : 1;
 }
 
 /** código de etapa → nombre ("2" → "Canteado"), de todas las etapas de la empresa. */
@@ -136,6 +162,21 @@ function buscarColumnas(cols) {
 }
 
 /**
+ * Las columnas E y COLOR de cada lado del panel (L1 A, L1 B, L2 A, L2 B):
+ * [{ lado, e, color }] con los índices de columna. Solo los lados que tienen
+ * las dos columnas.
+ */
+function columnasLados(cols) {
+  return LADOS_PANEL.map((lado) => {
+    const del = (titulo) => cols.findIndex((c) => c.hoja === titulo && c.partes.includes(lado));
+    return { lado, e: del("e"), color: del("color") };
+  }).filter((l) => l.e >= 0 && l.color >= 0);
+}
+
+/** Lados con canto de un renglón: E y COLOR distintos de 0. */
+const contarLados = (celdas, lados) => lados.filter((l) => tieneValor(celdas[l.e]) && tieneValor(celdas[l.color])).length;
+
+/**
  * Columnas de la planilla que corresponden a los nombres que la empresa
  * escribió para una etapa. Una columna cuenta si su título, o el del grupo
  * de arriba, es uno de esos nombres (o empieza así, para nombres de 4 letras
@@ -159,6 +200,10 @@ function columnasDeRegla(cols, columnas) {
  *   - Etapa sin columnas: todas las piezas.
  *   - Etapa con columnas: las piezas que tienen algo en alguna de ellas. Si
  *     lo pegado no tiene ninguna de esas columnas, ninguna pieza (y avisa).
+ *   - Etapa con los lados del panel entre sus columnas (L1A…L2B, la de
+ *     canto): las piezas con algún lado con canto (E y COLOR distintos de 0).
+ * Cada renglón trae lados: cuántos lados con canto tiene (null si lo pegado
+ * no tiene las columnas de los lados).
  * Se puede corregir a mano por renglón.
  * @param {string} texto
  * @param {object[]} reglas
@@ -181,8 +226,13 @@ export function leerPiezas(texto, reglas = []) {
   if (col.cantidad < 0) faltaColumnas.push("CANT.");
   if (faltaColumnas.length) return { ...vacio, faltaColumnas };
 
-  const porRegla = reglas.map((r) => ({ regla: r, indices: r.columnas.length ? columnasDeRegla(cols, r.columnas) : null }));
-  const sinColumna = porRegla.filter((x) => x.indices && !x.indices.length).map((x) => x.regla);
+  const lados = columnasLados(cols);
+  const porRegla = reglas.map((r) => ({
+    regla: r,
+    indices: r.columnas.length ? columnasDeRegla(cols, r.columnas) : null,
+    porLados: Boolean(r.porLados && lados.length),
+  }));
+  const sinColumna = porRegla.filter((x) => x.indices && !x.indices.length && !x.porLados).map((x) => x.regla);
   const algunaCon = (celdas, indices) => indices.some((i) => tieneValor(celdas[i]));
   const renglones = [];
   const errores = [];
@@ -216,7 +266,8 @@ export function leerPiezas(texto, reglas = []) {
       avisos.push(`"${nombre}" está repetido: el renglón de la fila ${linea} queda como "${nuevo}".`);
       nombre = nuevo;
     }
-    const etapas = porRegla.filter((x) => !x.indices || algunaCon(celdas, x.indices)).map((x) => x.regla.codigo);
+    const conCanto = lados.length ? contarLados(celdas, lados) : null;
+    const etapas = porRegla.filter((x) => (x.porLados ? conCanto > 0 : !x.indices || algunaCon(celdas, x.indices))).map((x) => x.regla.codigo);
     renglones.push({
       nombre,
       modulo: moduloDe(nombre),
@@ -225,6 +276,7 @@ export function leerPiezas(texto, reglas = []) {
       l2: col.l2 >= 0 ? leerMedida(celdas[col.l2]) : null,
       cantidad,
       etapas,
+      lados: conCanto,
     });
     piezas += cantidad;
   }
@@ -236,7 +288,7 @@ export function expandirPiezas(renglones = []) {
   const out = [];
   renglones.forEach((r, i) => {
     for (let u = 1; u <= r.cantidad; u++) {
-      out.push({ renglon: i, nombre: r.nombre, modulo: r.modulo ?? null, material: r.material ?? null, l1: r.l1 ?? null, l2: r.l2 ?? null, unidad: u, de: r.cantidad, etapas: r.etapas });
+      out.push({ renglon: i, nombre: r.nombre, modulo: r.modulo ?? null, material: r.material ?? null, l1: r.l1 ?? null, l2: r.l2 ?? null, unidad: u, de: r.cantidad, etapas: r.etapas, lados: r.lados ?? null });
     }
   });
   return out;
@@ -248,7 +300,7 @@ export function agruparRenglones(piezas = []) {
   for (const p of piezas) {
     let r = porNombre.get(p.nombre);
     if (!r) {
-      r = { nombre: p.nombre, modulo: p.modulo, material: p.material, l1: p.l1, l2: p.l2, renglon: p.renglon, etapas: p.etapas || [], piezas: [] };
+      r = { nombre: p.nombre, modulo: p.modulo, material: p.material, l1: p.l1, l2: p.l2, renglon: p.renglon, etapas: p.etapas || [], lados: p.lados ?? null, piezas: [] };
       porNombre.set(p.nombre, r);
     }
     r.piezas.push(p);
@@ -619,6 +671,17 @@ function mensajeBase(r, nombres = {}, porOt = null) {
   const progreso = r.progreso ? `${etapa}: ${r.progreso.pasaron} de ${r.progreso.total} piezas de la ${deLaOt(p.ot)}.` : null;
   const terminada = r.etapaTerminada ? ` ✅ Pasaron todas: la etapa ${r.etapaTerminada.nombre} quedó terminada, falta la firma.` : "";
   const detalle = progreso ? `${progreso}${terminada}` : null;
+  // Etapa que cuenta por lados (25/11): cada escaneo es un lado con canto
+  if (r.lados && !r.ya) {
+    const l = r.lados;
+    const cuenta = `${p.nombre}: ${p.de > 1 ? `pieza ${p.unidad} de ${p.de}, ` : ""}lado ${l.lado} de ${l.de} en ${etapa}`;
+    const van = l.total > l.de ? ` Van ${l.hechos} de ${l.total} lados${r.conteo ? ` (${r.conteo.pasaron} de ${r.conteo.de} piezas completas)` : ""}.` : "";
+    const lista = l.lado >= l.de ? " ✔ Pieza completa." : "";
+    const detalleLados = [`${lista}${van}`.trim(), detalle].filter(Boolean).join(" ") || null;
+    if (!r.requerida) return { tono: "amarillo", texto: `${cuenta}, pero según la planilla no pasa por esa etapa.`, detalle: detalleLados };
+    if (r.faltan?.length) return { tono: "amarillo", texto: `${cuenta}, pero no tiene escaneo de ${r.faltan.map(nombreEtapa).join(" ni ")}.`, detalle: detalleLados };
+    return { tono: "verde", texto: `${cuenta}.`, detalle: detalleLados };
+  }
   // QR del renglón: cuántas de la cantidad van en esta etapa
   if (r.conteo) {
     const c = r.conteo;

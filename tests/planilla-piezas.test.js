@@ -151,7 +151,7 @@ test("cada Excel con su OT — sub-OT exacta y el más nuevo si hay dos", () => 
 
 test("qué Excel pedir — Técnica lista, no leídos o cambiados, sin los gigantes", () => {
   assert.deepEqual(excelsPendientes(lista, proyectos, {}).map((p) => p.ot), ["M-7408-230", "M-7961"]);
-  const cargas = { "M-7408-230": { id: "1hU6BkDuYOHXQ43raCKBSq", fecha: "2026-11-06T20:29:57.475Z", v: 3 } };
+  const cargas = { "M-7408-230": { id: "1hU6BkDuYOHXQ43raCKBSq", fecha: "2026-11-06T20:29:57.475Z", v: 4 } };
   assert.deepEqual(excelsPendientes(lista, proyectos, cargas).map((p) => p.ot), ["M-7961"]);
   // Leída con una versión anterior de Gypi (sin la lista de herrajes): se vuelve a leer
   const vieja = { "M-7408-230": { id: "1hU6BkDuYOHXQ43raCKBSq", fecha: "2026-11-06T20:29:57.475Z" } };
@@ -410,6 +410,6 @@ test("PATCH planilla — con columnas SUELTO arma la hoja de sueltos de la OT", 
   assert.equal(herrajes.length, 3);
   assert.deepEqual(herrajes.filter((h) => h.planilla_suelto).map((h) => h.datos.tipo).sort(), ["Herraje", "Perfil"]);
   assert.deepEqual(destinos.filas.filter((d) => d.tipo === "pieza").map((d) => d.clave), ["M1.21", "CENEFA"]);
-  assert.equal(c.v, 3);
+  assert.equal(c.v, 4);
   assert.match(textoCarga(c), /4 sueltos para la carga/);
 });
