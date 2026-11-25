@@ -47,7 +47,7 @@ const op = (fecha, tipo, debe, haber, total, extra = {}) => ({ id: ++n, fecha, t
 const OPS = [
   op("2026-09-20", "SALDO INICIAL", BANCO, "03.01", 100000),
   op("2026-10-01", "VENTA", DEU, VENTAS, 500000, { cliente_id: 1, entidad: "Hotel Norte" }),
-  op("2026-10-06", "VENTA", VENTAS, ENTREGAS, 300000, { cliente_id: 1, entidad: "Hotel Norte" }),
+  op("2026-10-06", "VENTA", VENTAS, ENTREGAS, 300000, { cliente_id: 1, entidad: "Hotel Norte", origen: "entrega_ot" }),
   op("2026-10-07", "COBRO A CLIENTES", BANCO, DEU, 200000, { cliente_id: 1, entidad: "Hotel Norte" }),
   op("2026-10-08", "COMPRAS", "01.01.04", PROV, 80000, { proveedor_id: 5, entidad: "Maderas SA" }),
   op("2026-10-09", "PAGO GASTOS DE LOGÍSTICA", COMB, CAJA, 5000),

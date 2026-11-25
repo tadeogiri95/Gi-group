@@ -137,7 +137,7 @@ test("Resultados — con el costo real, cada entrega lleva los materiales de su 
     { codigo: "ENT", nombre: "Entregas", linea_eerr: "ING_ENT" },
     { codigo: "DEU", nombre: "Deudores", rubro: "ACTIVO CORRIENTE" },
   ];
-  const op = (fecha, pid, neto) => ({ id: Math.random(), fecha, cuenta_debe: "DEU", cuenta_haber: "ENT", neto, total: neto, total_ars: neto, proyecto_id: pid });
+  const op = (fecha, pid, neto) => ({ id: Math.random(), fecha, cuenta_debe: "DEU", cuenta_haber: "ENT", neto, total: neto, total_ars: neto, proyecto_id: pid, origen: "entrega_ot" });
   const ops = [op("2026-09-10", 1, 600000), op("2026-10-10", 1, 400000), op("2026-10-12", 2, 500000), op("2026-10-15", null, 100000)];
   const mat = (r) => r.filas.filter((f) => f.tipo !== "pct" && /Costo de materiales/.test(f.nombre || ""));
   // Sin costo real: el 40 % de todo

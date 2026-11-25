@@ -158,13 +158,12 @@ function NoEstimadas({ ots }) {
 }
 
 /**
- * Cada entrega del mes elegido (24/11, pedido de Tadeo): de dónde sale (libro,
- * Gypi, Plan o estimada) y el aviso de las que podrían estar repetidas.
+ * Cada entrega del mes elegido (24/11, pedido de Tadeo): de dónde sale (a
+ * precio del Plan o estimada por materiales).
  */
 export function DetalleEntregas({ filas, meses, mes, onMes, division }) {
   const delMes = filas.filter((f) => f.mes === mes && (!division || claveDivision(f.division) === claveDivision(division)));
   const total = delMes.reduce((s, f) => s + (Number(f.importe) || 0), 0);
-  const repetidas = delMes.filter((f) => f.repetida).length;
   return (
     <section className="mt-3 border border-gypi-border rounded-lg p-2" aria-label="Detalle de entregas del mes">
       <div className="flex flex-wrap items-center gap-2 mb-1">
@@ -174,7 +173,6 @@ export function DetalleEntregas({ filas, meses, mes, onMes, division }) {
         </select>
         <span className="text-[12px] text-gypi-dim">{delMes.length === 1 ? "1 entrega" : `${delMes.length} entregas`} · total {miles(total)}{division ? ` · solo ${division}` : ""}</span>
       </div>
-      {repetidas > 0 && <p className="m-0 mb-1 text-[12px] text-gypi-amber-ink">⚠ {repetidas === 1 ? "1 entrega podría estar repetida" : `${repetidas} entregas podrían estar repetidas`}: una cargada en el libro sin OT y otra de una OT del Plan, del mismo cliente y con menos de dos meses entre una y otra. Si son la misma, anulá la del libro.</p>}
       {delMes.length === 0 ? <p className="m-0 text-[12px] text-gypi-dim">No hay entregas en este mes.</p> : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[12px]" aria-label="Entregas del mes">
@@ -190,13 +188,11 @@ export function DetalleEntregas({ filas, meses, mes, onMes, division }) {
             </thead>
             <tbody>
               {delMes.map((f, i) => (
-                <tr key={`${f.fecha}-${f.ot}-${i}`} className={`border-t border-gypi-border align-top ${f.repetida ? "bg-gypi-amber/10" : ""}`}>
+                <tr key={`${f.fecha}-${f.ot}-${i}`} className="border-t border-gypi-border align-top">
                   <td className="px-1.5 py-0.5 font-mono whitespace-nowrap">{dma(f.fecha)}</td>
                   <td className="px-1.5 py-0.5 whitespace-nowrap">{f.ot || "—"}</td>
                   <td className="px-1.5 py-0.5">
                     {f.cliente || "—"}
-                    {f.descripcion && <span className="block text-gypi-dim">{f.descripcion}</span>}
-                    {f.repetida && <span className="block text-gypi-amber-ink">⚠ ¿Repetida con {f.repetida}?</span>}
                   </td>
                   <td className="px-1.5 py-0.5">{f.division || "—"}</td>
                   <td className="px-1.5 py-0.5">{f.origen_texto}</td>

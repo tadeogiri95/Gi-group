@@ -116,8 +116,8 @@ test("estado de resultados — el asiento de consumo es el costo de materiales d
   ];
   const op = (fecha, debe, haber, total, extra = {}) => ({ id: Math.random(), fecha, cuenta_debe: debe, cuenta_haber: haber, neto: total, total, total_ars: total, ...extra });
   const ops = [
-    op("2026-11-05", "01.01.02.001.001", "04.01.01.001.002", 1000000, { proyecto_id: 1 }),
-    op("2026-11-05", "01.01.02.001.001", "04.01.01.001.002", 500000, { proyecto_id: 2 }),
+    op("2026-11-05", "01.01.02.001.001", "04.01.01.001.002", 1000000, { proyecto_id: 1, origen: "entrega_ot" }),
+    op("2026-11-05", "01.01.02.001.001", "04.01.01.001.002", 500000, { proyecto_id: 2, origen: "entrega_ot" }),
     // La OT 1 tiene su consumo; la 2 no (va con el 40 %)
     op("2026-11-05", "04.02.01.001.009", "01.01.04.001.002", 300000, { proyecto_id: 1, origen: "consumo_ot" }),
     // Una compra de material: es stock, no costo
