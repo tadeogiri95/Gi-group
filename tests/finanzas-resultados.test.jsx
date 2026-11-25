@@ -8,7 +8,7 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import { estadoResultados, mesesHasta, nombreMes, finDeMes, importeResultado, seccionDe, configResultados, validarPonderador, resumenDivisiones, divisionDeOp, claveDivision } from "../app/lib/finanzasResultados.js";
 import { cuentasDeHoja, limpiarFila } from "../app/lib/finanzas.js";
-import { planEntregasPlan, otMencionada } from "../app/lib/finanzasEntregasPlan.js";
+import { planEntregasPlan } from "../app/lib/finanzasEntregasPlan.js";
 
 before(() => {
   if (!process.env.JWT_SECRET) process.env.JWT_SECRET = "test_secret_de_al_menos_32_caracteres_ok";
@@ -38,7 +38,7 @@ const CUENTAS = [
 const op = (fecha, debe, haber, total, extra = {}) => ({ id: Math.random(), fecha, cuenta_debe: debe, cuenta_haber: haber, neto: 0, total, total_ars: total, ...extra });
 const OPS = [
   // Entrega de una OT de Muebles: 1.000.000 + IVA
-  op("2026-10-05", "01.01.02.001.001", "04.01.01.001.002", 1210000, { neto: 1000000, proyecto_id: 1 }),
+  op("2026-10-05", "01.01.02.001.001", "04.01.01.001.002", 1210000, { neto: 1000000, proyecto_id: 1, origen: "entrega_ot" }),
   op("2026-10-31", "04.02.01.007.001", "02.01.03.001.001", 300000),
   op("2026-10-31", "04.02.01.007.003", "02.01.03.001.001", 100000),
   op("2026-10-10", "04.02.01.001.008", "01.01.01.003.002", 5000),
@@ -50,7 +50,7 @@ const OPS = [
   op("2026-10-22", "04.02.01.001.008", "01.01.01.003.002", 9999, { estado: "para_revisar" }),
   op("2025-10-22", "04.02.01.001.008", "01.01.01.003.002", 9999),
   // Un descuento en septiembre: entrega al debe
-  op("2026-09-15", "04.01.01.001.002", "01.01.02.001.001", 10000, { proyecto_id: 2 }),
+  op("2026-09-15", "04.01.01.001.002", "01.01.02.001.001", 10000, { proyecto_id: 2, origen: "entrega_ot" }),
 ];
 const PROYECTOS = [{ id: 1, division: "MUEBLES" }, { id: 2, division: "ALUMINIO" }];
 
@@ -74,7 +74,7 @@ test("estado de resultados — renglones, materiales estimados, IVA aparte, resu
   const oct = (id) => fila(id).valores[11];
   assert.equal(r.meses[11], "2026-10");
   assert.equal(oct("ING"), 1000000, "ingresos sin IVA");
-  assert.ok(r.filas.some((f) => f.nombre === "Entregas cargadas en el libro · MUEBLES"), "por división");
+  assert.ok(r.filas.some((f) => f.nombre === "Entregas a precio del Plan · MUEBLES"), "por división");
   assert.equal(fila("ING").valores[10], -10000, "un descuento resta");
   const mat = r.filas.find((f) => f.estimado);
   assert.equal(mat.valores[11], 400000, "40 % de las entregas");
@@ -114,7 +114,7 @@ test("NIIF — solo las entregas son ingreso; ventas aparte; gastos por función
   ];
   const ops = [
     op("2026-10-01", "01.01.02.001.001", "04.01.01.001.001", 800000), // OT cargada en el Plan
-    op("2026-10-05", "04.01.01.001.001", "04.01.01.001.002", 500000), // entrega
+    op("2026-10-05", "04.01.01.001.001", "04.01.01.001.002", 500000, { origen: "entrega_ot" }), // entrega
     op("2026-10-06", "01.01.01.003.002", "04.01.02", 20000),
     op("2026-10-07", "04.02.05", "01.01.01.003.002", 30000),
     op("2026-10-08", "04.02.06", "01.01.01.003.002", 15000),
@@ -143,7 +143,7 @@ test("20/11 — intereses ganados (plazos fijos y FCI) van en Resultados financi
     { codigo: "01.01.05", nombre: "Plazo fijo Credicoop", rubro: "ACTIVO CORRIENTE" },
   ];
   const ops = [
-    op("2026-10-05", "01.01.02.001.001", "04.01.01.001.002", 100000),
+    op("2026-10-05", "01.01.02.001.001", "04.01.01.001.002", 100000, { origen: "entrega_ot" }),
     // El interés aparte que registra Gypi: Debe el plazo fijo / Haber Intereses Ganados
     op("2026-10-15", "01.01.05", "04.01.02.002.001", 8000, { tipo: "RENDIMIENTOS FINANCIEROS" }),
     op("2026-10-10", "04.02.01.001.008", "01.01.01.003.002", 600),
@@ -322,9 +322,10 @@ test("entregas estimadas: renglón aparte por división, cuentan para materiales
   assert.equal(est[0].valores[11], 500000);
   assert.equal(est[0].estimado, true);
   assert.equal(r.entregas_estimadas, 1);
-  // Va en Ingresos, antes de las cargadas en el libro (sin precio del Plan en este ejemplo)
+  // Va en Ingresos, después de las de precio del Plan
   const ing = r.filas.filter((f) => f.seccion === "ING" && f.tipo === "linea");
-  assert.equal(ing[0].entrega_estimada, true);
+  const primeraEstimada = ing.findIndex((f) => f.entrega_estimada);
+  assert.ok(primeraEstimada > 0 && ing.slice(0, primeraEstimada).every((f) => f.entrega_plan));
   assert.equal(r.filas.find((f) => f.id === "ING").valores[11], 1500000);
   // Materiales: 40 % de todas las entregas (con precio y estimadas)
   assert.equal(r.filas.find((f) => f.id === "materiales|estimado" || f.nombre.startsWith("Costo de materiales")).valores[11], 600000);
@@ -402,19 +403,7 @@ test("Resultados — lista de las OT sin precio que no se pudieron estimar, por 
 
 // ─── Entregas del Plan (24/11): OT terminadas CON precio sin entrega anotada ───
 
-test("otMencionada — reconoce la OT en el texto del libro sin confundir sub-OT", () => {
-  assert.equal(otMencionada("Entrega M-7795 Menegozzi", "M-7795"), true);
-  assert.equal(otMencionada("OT N° 7795", "M-7795"), true);
-  assert.equal(otMencionada("entrega 7795 cocina", "M-7795"), true);
-  assert.equal(otMencionada("M-77951", "M-7795"), false);
-  assert.equal(otMencionada("M-7751-29", "M-7751"), false);
-  assert.equal(otMencionada("Entrega M-7751-29", "M-7751-29"), true);
-  assert.equal(otMencionada("H 788", "H-788"), true);
-  // Número corto solo: no alcanza (puede ser cualquier cosa)
-  assert.equal(otMencionada("pago 788", "H-788"), false);
-});
-
-test("planEntregasPlan — suma las OT con precio sin entrega, saltea las anotadas y las del libro", () => {
+test("planEntregasPlan — suma las OT con precio sin entrega de Gypi; el libro no cuenta", () => {
   const proyectos = [
     { id: 10, ot: "A-4371", cliente: "Pérez", estado: "cerrado", fecha_entrega: "2026-08-01" },
     { id: 11, ot: "A-4377", estado: "cerrado", fecha_entrega: null, fecha_objetivo: "2026-09-06" },
@@ -435,9 +424,9 @@ test("planEntregasPlan — suma las OT con precio sin entrega, saltea las anotad
     { id: 5, origen: "libro", descripcion: "Entrega", proyecto_id: 18, fecha: "2026-07-03" },
   ];
   const r = planEntregasPlan({ proyectos, precios, entregas, desde: "2025-12-01", hasta: "2026-11-30" });
-  assert.deepEqual(r.entregas.map((x) => [x.ot, x.fecha, x.valor]), [["M-7005", "2026-07-01", 500], ["A-4371", "2026-08-01", 27830000], ["A-4377", "2026-09-06", 12052306]]);
-  assert.equal(r.entregas[1].cliente, "Pérez");
-  assert.deepEqual(r.enLibro.map((x) => [x.ot, x.libro_fecha, x.libro]), [["H-790", "2026-07-03", "Entrega"], ["M-7001", "2026-07-15", "ENTREGA OT 7001 COCINA"]]);
+  assert.deepEqual(r.entregas.map((x) => [x.ot, x.fecha, x.valor]), [["H-790", "2026-07-01", 6], ["M-7001", "2026-07-01", 2], ["M-7005", "2026-07-01", 500], ["A-4371", "2026-08-01", 27830000], ["A-4377", "2026-09-06", 12052306]]);
+  assert.equal(r.entregas[3].cliente, "Pérez");
+  assert.deepEqual(Object.keys(r), ["entregas"]);
 });
 
 test("entregas del Plan: renglón aparte por división, con su PRECIO, y cuentan para materiales", () => {
@@ -447,7 +436,8 @@ test("entregas del Plan: renglón aparte por división, con su PRECIO, y cuentan
     entregasPlan: [{ proyecto_id: 4, fecha: "2026-10-01", valor: 2000000 }, { proyecto_id: 1, fecha: "2026-10-01", valor: 9 }],
     entregasEstimadas: [{ proyecto_id: 4, fecha: "2026-10-01", valor: 5 }],
   });
-  const plan = r.filas.filter((f) => f.entrega_plan);
+  // La entrega de Gypi de la OT 1 (Muebles) también va a precio del Plan
+  const plan = r.filas.filter((f) => f.entrega_plan && f.nombre.endsWith("ALUMINIO"));
   assert.equal(plan.length, 1);
   assert.equal(plan[0].nombre, "Entregas a precio del Plan · ALUMINIO");
   assert.equal(plan[0].valores[11], 2000000);
@@ -468,12 +458,13 @@ test("entregas: la de Gypi y la del Plan van en el mismo renglón a precio del P
   const ing = r.filas.filter((f) => f.seccion === "ING" && f.tipo === "linea");
   assert.equal(ing[0].nombre, "Entregas a precio del Plan · ALUMINIO");
   assert.equal(ing[0].valores[11], 500000);
-  assert.ok(ing.some((f) => f.nombre === "Entregas cargadas en el libro · MUEBLES"));
+  assert.ok(ing.some((f) => f.nombre === "Entregas a precio del Plan · MUEBLES"));
+  assert.ok(!ing.some((f) => /libro/.test(f.nombre)));
 });
 
 // ─── Detalle de entregas del mes (24/11) ───
 
-test("detalleEntregas — cada entrega con su origen y las posibles repetidas", async () => {
+test("detalleEntregas — cada entrega del Plan con su origen; las del libro no cuentan", async () => {
   const { detalleEntregas } = await import("../app/lib/finanzasEntregasPlan.js");
   const EG = "04.01.01.001.002";
   const proyectos = [{ id: 1, ot: "M-7000", cliente: "Gómez", division: "MUEBLES" }, { id: 4, ot: "A-4371", cliente: "Pérez SA", division: "ALUMINIO" }, { id: 5, ot: "M-7005", cliente: "Ruiz", division: "MUEBLES" }];
@@ -482,28 +473,22 @@ test("detalleEntregas — cada entrega con su origen y las posibles repetidas", 
       { fecha: "2026-10-05", cuenta_debe: "01.01.02.001.001", cuenta_haber: EG, total: 1000000, proyecto_id: 1, origen: "entrega_ot", entidad: "Gómez" },
       { fecha: "2026-09-20", cuenta_debe: "01.01.02.001.001", cuenta_haber: EG, total: 500000, origen: "libro", entidad: "PEREZ S.A.", descripcion: "ENTREGA ABERTURAS" },
       { fecha: "2026-10-07", cuenta_debe: EG, cuenta_haber: "01.01.02.001.001", total: 10000, proyecto_id: 1, origen: "libro" },
-      { fecha: "2026-10-08", cuenta_debe: "01.01.02.001.001", cuenta_haber: EG, total: 999, estado: "para_revisar" },
-      { fecha: "2024-10-08", cuenta_debe: "01.01.02.001.001", cuenta_haber: EG, total: 999 },
+      { fecha: "2026-10-08", cuenta_debe: "01.01.02.001.001", cuenta_haber: EG, total: 999, estado: "para_revisar", origen: "entrega_ot" },
+      { fecha: "2024-10-08", cuenta_debe: "01.01.02.001.001", cuenta_haber: EG, total: 999, origen: "entrega_ot" },
     ],
     cuentasEntregas: new Set([EG]), proyectos, meses: ["2026-09", "2026-10"],
     entregasPlan: [{ proyecto_id: 4, fecha: "2026-10-01", valor: 2000000 }, { proyecto_id: 1, fecha: "2026-10-01", valor: 7 }],
     estimadas: [{ proyecto_id: 5, fecha: "2026-10-15", valor: 300 }],
   });
   assert.deepEqual(filas.map((f) => [f.fecha, f.ot, f.origen, f.importe]), [
-    ["2026-09-20", "", "libro", 500000],
     ["2026-10-01", "A-4371", "plan", 2000000],
     ["2026-10-05", "M-7000", "entrega_ot", 1000000],
-    ["2026-10-07", "M-7000", "libro", -10000],
     ["2026-10-15", "M-7005", "estimada", 300],
   ]);
-  assert.equal(filas[1].division, "ALUMINIO");
+  assert.equal(filas[0].division, "ALUMINIO");
+  assert.equal(filas[0].origen_texto, "Precio del Plan");
   assert.equal(filas[1].origen_texto, "Precio del Plan");
-  assert.equal(filas[2].origen_texto, "Precio del Plan");
-  assert.equal(filas[0].origen_texto, "Cargada en el libro");
-  // Mismo cliente (PEREZ S.A. = Pérez SA), una sin OT y otra de OT, 11 días: las dos marcadas
-  assert.match(filas[0].repetida, /OT A-4371/);
-  assert.match(filas[1].repetida, /Cargada en el libro del 2026-09-20 \(ENTREGA ABERTURAS\)/);
-  assert.equal(filas[2].repetida, undefined);
+  assert.equal(filas[2].origen_texto, "Estimada por materiales");
 });
 
 test("Resultados — tocando un mes se ve el detalle de sus entregas", async () => {
@@ -511,17 +496,16 @@ test("Resultados — tocando un mes se ve el detalle de sus entregas", async () 
     hasta: "2026-10", config: { materiales_pct: 40 },
     ...estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: PROYECTOS, hasta: "2026-10", materialesPct: 40 }),
     entregas_detalle: [
-      { fecha: "2026-10-01", mes: "2026-10", ot: "A-4371", cliente: "Pérez SA", division: "ALUMINIO", origen: "plan", origen_texto: "Precio del Plan", descripcion: "", importe: 2000000, repetida: "Libro del 2026-09-20" },
-      { fecha: "2026-09-20", mes: "2026-09", ot: "", cliente: "PEREZ S.A.", division: "", origen: "libro", origen_texto: "Cargada en el libro", descripcion: "ENTREGA ABERTURAS", importe: 500000 },
+      { fecha: "2026-10-01", mes: "2026-10", ot: "A-4371", cliente: "Pérez SA", division: "ALUMINIO", origen: "plan", origen_texto: "Precio del Plan", importe: 2000000 },
+      { fecha: "2026-09-20", mes: "2026-09", ot: "M-6990", cliente: "Ruiz", division: "MUEBLES", origen: "estimada", origen_texto: "Estimada por materiales", importe: 500000 },
     ],
   };
   global.fetch = async () => new Response(JSON.stringify(datos), { status: 200 });
   render(<FinanzasResultados />);
   assert.ok(await screen.findByRole("table", { name: "Entregas del mes" }));
   assert.ok(screen.getByText("A-4371"));
-  assert.ok(screen.getByText(/¿Repetida con Libro del 2026-09-20\?/));
-  assert.ok(screen.getByText(/1 entrega podría estar repetida/));
+  assert.equal(screen.queryByText(/repetida/i), null);
   fireEvent.click(screen.getByRole("button", { name: "Ver las entregas de Sep 26" }));
-  assert.ok(await screen.findByText("ENTREGA ABERTURAS"));
+  assert.ok(await screen.findByText("M-6990"));
   assert.equal(screen.queryByText("A-4371"), null);
 });

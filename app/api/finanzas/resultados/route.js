@@ -22,12 +22,11 @@
 // Entregas a precio del Plan (24/11): las OT terminadas CON precio que Gypi
 // no anotó (entraron a Gypi antes de la fecha de inicio de Ventas) suman su
 // PRECIO en el mes de su ENTREGA del Plan, en el mismo renglón que las que
-// Gypi anotó; las que ya figuran en una entrega del libro se saltean. Ver
-// app/lib/finanzasEntregasPlan.js.
+// Gypi anotó. Ver app/lib/finanzasEntregasPlan.js.
 //
 // Detalle de entregas (24/11): entregas_detalle trae cada entrega de la
-// ventana (libro, Gypi, Plan, estimadas) con su origen y la marca de posible
-// repetida, para ver un mes entero en la pantalla.
+// ventana (a precio del Plan o estimada) con su origen, para ver un mes entero
+// en la pantalla. 25/11: las cargadas a mano en el libro no cuentan.
 //
 // 20/11: trae plazos_sin_interes { cantidad, importe, certificados }: los
 // plazos fijos vencidos cuyo interés todavía no está registrado (aviso).
@@ -77,7 +76,7 @@ async function entregasDelMes(sesion, e, cuentas, meses, hasta, proyectos, entre
     const codigos = cuentas.filter((c) => /^ING_ENT/i.test(String(c.linea_eerr || ""))).map((c) => c.codigo);
     if (!codigos.length) return [];
     const lista = codigos.map((c) => `"${String(c).replace(/"/g, "")}"`).join(",");
-    const ops = await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&fecha=gte.${meses[0]}-01&fecha=lte.${finDeMes(hasta)}&or=(cuenta_haber.in.(${lista}),cuenta_debe.in.(${lista}))&select=id,fecha,cuenta_debe,cuenta_haber,neto,total,total_ars,proyecto_id,centro_costo,estado,origen,descripcion,referencia,entidad&order=fecha.asc,id.asc`, 50000);
+    const ops = await leer(sesion, `fin_operaciones?empresa_id=eq.${e}&anulada_at=is.null&fecha=gte.${meses[0]}-01&fecha=lte.${finDeMes(hasta)}&origen=eq.entrega_ot&or=(cuenta_haber.in.(${lista}),cuenta_debe.in.(${lista}))&select=id,fecha,cuenta_debe,cuenta_haber,neto,total,total_ars,proyecto_id,estado,origen,entidad&order=fecha.asc,id.asc`, 50000);
     return detalleEntregas({ ops: ops || [], cuentasEntregas: new Set(codigos), proyectos, entregasPlan, estimadas, meses });
   } catch (err) {
     logger.warn(`[finanzas] detalle de entregas ${err?.message}`);

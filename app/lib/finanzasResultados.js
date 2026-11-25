@@ -202,7 +202,6 @@ const esDeResultado = (c) => /resultado/i.test(String(c.rubro || "")) || /^0[45]
 /** Los nombres de los renglones de entregas (24/11, pedido de Tadeo). */
 export const ENTREGAS_PLAN = "Entregas a precio del Plan";
 export const ENTREGAS_ESTIMADAS = "Entregas estimadas por materiales";
-export const ENTREGAS_LIBRO = "Entregas cargadas en el libro";
 
 export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centros = [], hasta, materialesPct = MATERIALES_PCT, ponderador = {}, division = "", materialesOt = null, entregasEstimadas = [], entregasPlan = [] }) {
   const meses = mesesHasta(hasta);
@@ -250,16 +249,17 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
     const secNiif = SECCIONES_NIIF.find((x) => x.id === niif);
     const div = ubic.seccion.ingreso && op.proyecto_id ? divisionOt.get(Number(op.proyecto_id)) || "" : "";
     // Entregas (24/11, pedido de Tadeo: nombres claros): la entrega que Gypi
-    // anota al terminar la OT va con las del PRECIO del Plan; lo demás en una
-    // cuenta de Entregas es lo cargado en el libro
+    // anota al terminar la OT va con las del PRECIO del Plan
     const esEntrega = ubic.seccion.id === "ING" && ubic.grupo === "ENT";
-    const dePlan = esEntrega && op.origen === "entrega_ot";
+    // 25/11 (pedido de Tadeo): las entregas cargadas a mano en el libro no
+    // cuentan, solo generaban duplicados; las entregas salen del Plan
+    if (esEntrega && op.origen !== "entrega_ot") return;
+    const dePlan = esEntrega;
     const k = dePlan ? `entregas|plan|${div}` : `${codigo}|${div}`;
     let l = lineas.get(k);
     if (!l && dePlan) l = lineaPlan(div);
     if (!l) {
-      const nombre = esEntrega ? (/^entregas generales$/i.test(String(c.nombre || "").trim()) ? ENTREGAS_LIBRO : `${ENTREGAS_LIBRO} (${c.nombre})`) : c.nombre;
-      l = { cuenta: codigo, linea: c.linea_eerr || `${ubic.seccion.id}_${ubic.grupo}`, division: div, nombre: div ? `${nombre} · ${div}` : nombre, seccion: niif, origen: ubic.seccion.id, grupo: ubic.grupo, valores: cero() };
+      l = { cuenta: codigo, linea: c.linea_eerr || `${ubic.seccion.id}_${ubic.grupo}`, division: div, nombre: div ? `${c.nombre} · ${div}` : c.nombre, seccion: niif, origen: ubic.seccion.id, grupo: ubic.grupo, valores: cero() };
       lineas.set(k, l);
     }
     // Ingresos: haber − debe; el resto: debe − haber
