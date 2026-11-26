@@ -127,6 +127,7 @@ export const MIGRACIONES = [
   { n: 209, archivo: "209_canto_por_lados.sql", nombre: "Canto por lados en el escaneo", tablas: { piezas_ot: ["lados"], lados_pieza: [] } },
   { n: 210, archivo: "210_consumo_canto.sql", nombre: "Consumo de canto desde los escaneos", tablas: { piezas_ot: ["cantos"], movimientos_stock: ["canto"], canto_articulos: [] } },
   { n: 211, archivo: "211_foto_articulos.sql", nombre: "Foto de los artículos (rótulo con QR)", tablas: { articulos_stock: ["foto_url"] } },
+  { n: 212, archivo: "212_sesion_gracia.sql", nombre: "Sesión: no cerrar al renovar en dos pestañas", tablas: { sesiones: ["refresh_jti_anterior", "rotado_en"] } },
 ];
 
 /** Lo que pide una migración, como lista de { tabla, columnas } y funciones. */
