@@ -21,10 +21,13 @@ interface AccessTokenInput {
   empresaId: string;
   legajo: number;
   rol: string;
+  // Reusar el JTI de una sesión ya rotada (gracia de 2 minutos al renovar,
+  // ver /api/refresh-token). Si no viene, se genera uno nuevo.
+  jti?: string;
 }
 
 export async function signAccessToken(input: AccessTokenInput): Promise<TokenResult> {
-  const jti = generateJti();
+  const jti = input.jti || generateJti();
   const token = await new SignJWT({ sub: input.empleadoId, eid: input.empresaId, leg: input.legajo, rol: input.rol, jti })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -35,8 +38,8 @@ export async function signAccessToken(input: AccessTokenInput): Promise<TokenRes
   return { token, jti };
 }
 
-export async function signRefreshToken(input: { empleadoId: string; empresaId: string }): Promise<TokenResult> {
-  const jti = generateJti();
+export async function signRefreshToken(input: { empleadoId: string; empresaId: string; jti?: string }): Promise<TokenResult> {
+  const jti = input.jti || generateJti();
   const token = await new SignJWT({ sub: input.empleadoId, eid: input.empresaId, type: "refresh", jti })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()

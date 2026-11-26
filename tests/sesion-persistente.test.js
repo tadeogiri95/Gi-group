@@ -139,3 +139,56 @@ test("manifest — la app instalada abre con ?source=pwa", async () => {
   const m = JSON.parse(fs.readFileSync(new URL("../public/manifest.json", import.meta.url), "utf8"));
   assert.equal(m.start_url, "/?source=pwa");
 });
+
+// ── No cerrar la sesión por problemas pasajeros (26/11) ──
+// Antes cualquier falla al renovar (sin señal, la base lenta) cerraba Gypi.
+
+const { sb, onUnauthorized } = await import("../app/lib/supabase.js");
+
+function servidorDatos({ data = [], refresh = [] } = {}) {
+  const llamadas = [];
+  global.fetch = async (url) => {
+    const u = String(url);
+    llamadas.push(u);
+    if (u === "/api/data") {
+      const r = data.shift() ?? { status: 401 };
+      return new Response(JSON.stringify(r.body ?? { error: "x" }), { status: r.status });
+    }
+    if (u === "/api/refresh-token") {
+      const st = refresh.shift() ?? 401;
+      return new Response(JSON.stringify(st === 200 ? { token: "eyJnuevo" } : { error: "x" }), { status: st });
+    }
+    throw new Error("fetch inesperado " + u);
+  };
+  return llamadas;
+}
+
+test("sb — la renovación falla por un problema pasajero (503): avisa pero NO cierra la sesión", async () => {
+  let cerro = false;
+  onUnauthorized(() => { cerro = true; });
+  servidorDatos({ data: [{ status: 401 }], refresh: [503, 503] });
+  await assert.rejects(sb.get("proyectos?select=id"), /conectar/);
+  assert.equal(cerro, false);
+});
+
+test("sb — la sesión venció de verdad (renovar da 401): cierra la sesión", async () => {
+  let cerro = false;
+  onUnauthorized(() => { cerro = true; });
+  servidorDatos({ data: [{ status: 401 }], refresh: [401] });
+  await assert.rejects(sb.get("proyectos?select=id"), /Sesión expirada/);
+  assert.equal(cerro, true);
+});
+
+test("sb — renueva y el reintento falla por otra cosa (400): muestra el error sin cerrar la sesión", async () => {
+  let cerro = false;
+  onUnauthorized(() => { cerro = true; });
+  servidorDatos({ data: [{ status: 401 }, { status: 400, body: { error: "Dato inválido" } }], refresh: [200] });
+  await assert.rejects(sb.post("proyectos", { x: 1 }), /Dato inválido/);
+  assert.equal(cerro, false);
+});
+
+test("sb — renueva y reintenta con éxito", async () => {
+  const llamadas = servidorDatos({ data: [{ status: 401 }, { status: 200, body: { data: [{ id: 1 }] } }], refresh: [200] });
+  assert.deepEqual(await sb.get("proyectos?select=id"), [{ id: 1 }]);
+  assert.deepEqual(llamadas, ["/api/data", "/api/refresh-token", "/api/data"]);
+});

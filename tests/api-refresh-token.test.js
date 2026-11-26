@@ -195,3 +195,96 @@ test("refresh-token — solo busca sesiones no revocadas (F2-12: revocar por cam
   assert.equal(res.status, 401);
   assert.ok(urlSesion.includes("revocada=eq.false"), urlSesion);
 });
+
+// ── Gracia de 2 minutos y fallas pasajeras (migración 212) ──
+
+test("refresh-token — pase recién reemplazado (otra pestaña renovó): devuelve el pase vigente sin rotar", async () => {
+  const { token, jti } = await refreshTokenValido();
+  let patcheo = false;
+  global.fetch = createFetchMock([
+    {
+      match: (url) => url.includes("/rest/v1/sesiones?refresh_jti=eq."),
+      respond: () => ({ status: 200, body: [] }),
+    },
+    {
+      match: (url) => url.includes("/rest/v1/sesiones?refresh_jti_anterior=eq."),
+      respond: (url) => {
+        assert.ok(url.includes(`refresh_jti_anterior=eq.${jti}`));
+        assert.ok(url.includes("rotado_en=gt."));
+        assert.ok(url.includes("revocada=eq.false"));
+        return { status: 200, body: [{ id: "sesion-1", jti: "jti-vigente", refresh_jti: "refresh-vigente" }] };
+      },
+    },
+    {
+      match: (url) => url.includes("/rest/v1/empleados") && url.includes("activo=eq.true"),
+      respond: () => ({ status: 200, body: [{ id: EMPLEADO_ID, legajo: 7, empresa_id: EMPRESA_ID, rol: "gerencial" }] }),
+    },
+    {
+      match: (url, opts) => opts?.method === "PATCH",
+      respond: () => { patcheo = true; return { status: 200, body: [] }; },
+    },
+  ]);
+  const res = await POST(req({ refresh_token: token }));
+  assert.equal(res.status, 200);
+  assert.equal(patcheo, false, "en gracia no vuelve a rotar");
+  const { verifyToken } = await import("../app/lib/jwt.ts");
+  const json = await res.json();
+  const acceso = await verifyToken(json.token, "acceso");
+  assert.equal(acceso.jti, "jti-vigente", "las dos pestañas quedan con el mismo pase");
+  const setCookie = res.headers.get("set-cookie") || "";
+  const refreshCookie = setCookie.match(/gypi_refresh=([^;]+)/)[1];
+  const refresh = await verifyToken(refreshCookie, "refresh");
+  assert.equal(refresh.jti, "refresh-vigente");
+});
+
+test("refresh-token — la base no responde: 503 (reintentar), no 401 (cerrar sesión)", async () => {
+  const { token } = await refreshTokenValido();
+  global.fetch = createFetchMock([
+    {
+      match: (url) => url.includes("/rest/v1/sesiones?refresh_jti=eq."),
+      respond: () => ({ status: 500, body: "timeout" }),
+    },
+  ]);
+  const res = await POST(req({ refresh_token: token }));
+  assert.equal(res.status, 503);
+});
+
+test("refresh-token — falla al buscar el empleado: 503, no 'usuario inactivo'", async () => {
+  const { token } = await refreshTokenValido();
+  global.fetch = createFetchMock([
+    {
+      match: (url) => url.includes("/rest/v1/sesiones?refresh_jti=eq."),
+      respond: () => ({ status: 200, body: [{ id: "sesion-1" }] }),
+    },
+    {
+      match: (url) => url.includes("/rest/v1/empleados"),
+      respond: () => ({ status: 503, body: "caída" }),
+    },
+  ]);
+  const res = await POST(req({ refresh_token: token }));
+  assert.equal(res.status, 503);
+});
+
+test("refresh-token — al rotar guarda el pase anterior para la gracia; sin la 212 guarda igual", async () => {
+  const { token, jti } = await refreshTokenValido();
+  const cuerpos = [];
+  global.fetch = createFetchMock([
+    ...handlersBase(jti).filter((h) => !h.match("https://x/rest/v1/sesiones?id=eq.1", { method: "PATCH" })),
+    {
+      match: (url, opts) => url.includes("/rest/v1/sesiones?id=eq.") && opts?.method === "PATCH",
+      respond: (url, opts) => {
+        const b = JSON.parse(opts.body);
+        cuerpos.push(b);
+        // Base sin la migración 212: la columna nueva no existe
+        if ("refresh_jti_anterior" in b) return { status: 400, body: { code: "PGRST204" } };
+        return { status: 200, body: [] };
+      },
+    },
+  ]);
+  const res = await POST(req({ refresh_token: token }));
+  assert.equal(res.status, 200);
+  assert.equal(cuerpos.length, 2);
+  assert.equal(cuerpos[0].refresh_jti_anterior, jti);
+  assert.ok(cuerpos[0].rotado_en);
+  assert.equal("refresh_jti_anterior" in cuerpos[1], false);
+});

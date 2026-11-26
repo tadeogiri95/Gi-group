@@ -17,7 +17,7 @@ export async function restaurarSesion(slug) {
     const pedirMe = () => fetch("/api/me", { credentials: "include", cache: "no-store" });
     let r = await pedirMe();
     if (r.status === 401) {
-      if (!(await refrescarSesion())) return null;
+      if ((await refrescarSesion()) !== "ok") return null;
       r = await pedirMe();
     }
     if (!r.ok) return null;
