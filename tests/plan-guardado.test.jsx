@@ -440,22 +440,93 @@ test("otsDeLosDias — junta las OT de los días elegidos sin repetirlas", async
   assert.deepEqual(otsDeLosDias(dias, []), []);
 });
 
-test("📅 Plan de producción — 🧮 material de varios días sumado contra el stock", async () => {
+// 🧮 Resumen de materiales (Tadeo, 26/11): por semana (por defecto la que
+// viene) o días sueltos, separado en Faplac, Egger, Herrajes y Cantos.
+test("resumenDe — Faplac (y Masisa), Egger, Herrajes, Cantos y Otros", async () => {
+  const { resumenDe } = await import("../app/lib/resumenMateriales.js");
+  assert.equal(resumenDe({ proceso: "corte", marca: "FAPLAC", nombre: "Melamina blanca" }), "faplac");
+  assert.equal(resumenDe({ proceso: "corte", marca: "Masisa", nombre: "Melamina roble" }), "faplac");
+  assert.equal(resumenDe({ proceso: "corte", marca: "Egger", nombre: "Melamina gris" }), "egger");
+  assert.equal(resumenDe({ proceso: "corte", nombre: "Placa Egger H1145" }), "egger", "sin marca: por el nombre");
+  assert.equal(resumenDe({ proceso: "corte", marca: "Otra", nombre: "Fibroplus 3 mm" }), "otros");
+  assert.equal(resumenDe({ proceso: "canteado", marca: "Egger", nombre: "Canto gris" }), "cantos", "los cantos de Egger van en Cantos");
+  assert.equal(resumenDe({ proceso: "armado", marca: "Hafele", nombre: "Bisagra" }), "herrajes");
+});
+
+test("armarResumenes — herrajes y cantos agrupados por tipo; solo lo que falta", async () => {
+  const { armarResumenes } = await import("../app/lib/resumenMateriales.js");
+  const filas = [
+    { sku: "B2", nombre: "Bisagra recta", proceso: "armado", tipo: "Bisagras", cantidad: 4, stock: 10, faltan: 0, ots: [] },
+    { sku: "C1", nombre: "Corredera 45", proceso: "armado", tipo: "Correderas", cantidad: 2, stock: 0, faltan: 2, ots: [] },
+    { sku: "B1", nombre: "Bisagra cazoleta", proceso: "armado", tipo: "Bisagras", cantidad: 8, stock: 2, faltan: 6, ots: [] },
+    { sku: "X", nombre: "Tornillo", proceso: "armado", cantidad: 1, stock: 0, faltan: 1, ots: [] },
+  ];
+  const h = armarResumenes(filas).find((r) => r.id === "herrajes");
+  assert.deepEqual(h.grupos.map((g) => [g.tipo, g.filas.map((f) => f.sku)]), [["Bisagras", ["B1", "B2"]], ["Correderas", ["C1"]], ["Sin tipo", ["X"]]]);
+  assert.equal(h.conFalta, 3);
+  const solo = armarResumenes(filas, { soloFalta: true }).find((r) => r.id === "herrajes");
+  assert.deepEqual(solo.filas.map((f) => f.sku), ["B1", "C1", "X"]);
+  assert.equal(solo.total, 4);
+});
+
+test("semanasDelPlan, semanaQueViene y textoPeriodo", async () => {
+  const { semanasDelPlan, semanaQueViene, textoPeriodo } = await import("../app/lib/resumenMateriales.js");
+  // Jueves 26/11/2026, semana de lunes a domingo: la que viene es la 49 (30/11 al 06/12)
+  assert.deepEqual(semanaQueViene("2026-11-26", "semana_lunes"), { numero: 49, desde: "2026-11-30", hasta: "2026-12-06" });
+  const semanas = semanasDelPlan(["2026-11-27", "2026-11-30", "2026-12-01", "2026-12-07"], "2026-11-26", "semana_lunes");
+  assert.deepEqual(semanas.map((s) => [s.numero, s.fechas]), [[48, ["2026-11-27"]], [49, ["2026-11-30", "2026-12-01"]], [50, ["2026-12-07"]]]);
+  assert.equal(textoPeriodo(["2026-11-30", "2026-12-01"], semanas), "Semana 49 (del 30/11 al 06/12)");
+  assert.equal(textoPeriodo(["2026-11-30"], semanas), "Día 30/11");
+  assert.equal(textoPeriodo(["2026-11-30", "2026-12-01", "2026-12-07"], semanas), "Semana 49 (del 30/11 al 06/12) y Semana 50 (del 07/12 al 13/12)");
+});
+
+test("resumenesXlsx y htmlResumenes — una hoja por resumen, sin precios ni OT", async () => {
+  const { armarResumenes, resumenesXlsx, htmlResumenes, nombreArchivo } = await import("../app/lib/resumenMateriales.js");
+  const { hojasXlsx, leerHojaXlsx } = await import("../app/lib/leerXlsx.js");
+  const filas = [
+    { sku: "PL1", nombre: "Melamina blanca 18", marca: "Faplac", proceso: "corte", unidad: "u", cantidad: 15, stock: 12, faltan: 3, ots: ["7473"] },
+    { sku: "CA1", nombre: "Canto blanco 22", proceso: "canteado", tipo: "PVC 22 mm", unidad: "m", cantidad: 40, stock: 50, faltan: 0, ots: ["7500"] },
+  ];
+  const rs = armarResumenes(filas);
+  const bytes = resumenesXlsx(rs, { periodo: "Semana 49", empresa: "Muebles" });
+  assert.deepEqual(hojasXlsx(bytes), ["Faplac", "Cantos"]);
+  const hoja = leerHojaXlsx(bytes, "Cantos");
+  assert.ok(JSON.stringify(hoja).includes("PVC 22 mm"));
+  assert.ok(JSON.stringify(hoja).includes("Falta pedir"));
+  assert.equal(resumenesXlsx(rs.filter((r) => r.id === "egger"), { periodo: "x" }), null);
+  const html = htmlResumenes(rs, { periodo: "Semana 49 (del 30/11 al 06/12)" });
+  assert.match(html, /Resumen de Faplac/);
+  assert.match(html, /<tr class="tipo"><td colspan="6">PVC 22 mm<\/td><\/tr>/);
+  assert.doesNotMatch(html, /7473/, "sin OT: es para el proveedor");
+  assert.equal(nombreArchivo([rs[0]], "Semana 49 (del 30/11 al 06/12)", "pdf"), "Resumen Faplac - Semana 49 del 30-11 al 06-12.pdf");
+});
+
+test("📅 Plan de producción — 🧮 resumen de materiales: la semana que viene, sumar otra y pestañas", async () => {
+  const { semanaQueViene } = await import("../app/lib/resumenMateriales.js");
   const hoy = hoyArg();
   const sumar = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
-  const manana = sumar(hoy, 1);
-  const pasado = sumar(hoy, 2);
-  const plan = { id: 3, tipo: "horizonte", desde: hoy, hasta: pasado, division_id: "d-m", dias_extra: [], items: [
-    { ot: "7473", etapa: "corte", fecha: hoy, horas: 8, orden: 0 },
-    { ot: "7473", etapa: "corte", fecha: manana, horas: 2, orden: 0 },
-    { ot: "7500", etapa: "corte", fecha: manana, horas: 6, orden: 1 },
-    { ot: "7600", etapa: "corte", fecha: pasado, horas: 6, orden: 0 },
+  const prox = semanaQueViene(hoy, "semana_lunes");
+  const lun = prox.desde;
+  const mar = sumar(lun, 1);
+  const otra = sumar(lun, 7);
+  const plan = { id: 3, tipo: "horizonte", desde: hoy, hasta: otra, division_id: "d-m", dias_extra: [], items: [
+    { ot: "7473", etapa: "corte", fecha: lun, horas: 8, orden: 0 },
+    { ot: "7473", etapa: "corte", fecha: mar, horas: 2, orden: 0 },
+    { ot: "7500", etapa: "corte", fecha: mar, horas: 6, orden: 1 },
+    { ot: "7500", etapa: "canteado", fecha: mar, horas: 2, orden: 1 },
+    { ot: "7600", etapa: "corte", fecha: otra, horas: 6, orden: 0 },
   ] };
   const filas = {
-    necesidades_stock: [{ ot: "7473", sku: "PL1", cantidad: 10 }, { ot: "7500", sku: "PL1", cantidad: 5 }, { ot: "7600", sku: "PL1", cantidad: 7 }],
+    necesidades_stock: [
+      { ot: "7473", sku: "PL1", cantidad: 10 }, { ot: "7500", sku: "PL1", cantidad: 5 }, { ot: "7600", sku: "PL1", cantidad: 7 },
+      { ot: "7500", sku: "CAN", cantidad: 30 },
+    ],
     movimientos_stock: [],
     config_sistema: [{ valor: { etapas: { corte: 1, canteado: 2, mecanizado: 3, armado: 4 } } }],
-    articulos_stock: [{ sku: "PL1", nombre: "Melamina blanca", familia: "Placas, chapas, mallas y paneles", unidad: "u", stock: 12 }],
+    articulos_stock: [
+      { sku: "PL1", nombre: "Melamina blanca", familia: "Placas, chapas, mallas y paneles", marca: "Masisa", unidad: "u", stock: 12 },
+      { sku: "CAN", nombre: "Canto blanco 22", familia: "Herrajes y Accesorios", marca: "Egger", tipo: "PVC 22 mm", unidad: "m", stock: 10 },
+    ],
   };
   global.fetch = async (url, opts) => {
     if (String(url).startsWith("/api/planificacion")) return new Response(JSON.stringify({ ok: true, plan }), { status: 200 });
@@ -465,18 +536,25 @@ test("📅 Plan de producción — 🧮 material de varios días sumado contra e
   };
   render(<PlanSemana divisiones={DIVISIONES} divisionUsuario="Muebles" proyectos={[{ ot: "7473" }, { ot: "7500" }, { ot: "7600" }]} empresaId={E} avance={[]} piezas={[]}
     etapas={[{ codigo: 1, nombre: "Corte" }, { codigo: 2, nombre: "Canteado" }, { codigo: 3, nombre: "Mecanizado" }, { codigo: 4, nombre: "Armado" }]} />);
-  const grupo = await screen.findByRole("group", { name: "Días a sumar" });
+  const semanas = await screen.findByRole("group", { name: "Semanas" });
   const caja = screen.getByRole("region", { name: "Plan de la semana" });
-  const botones = grupo.querySelectorAll("button");
-  // Hoy + mañana: la 7473 (corta los dos días, una sola vez) + la 7500 = 15, hay 12
-  fireEvent.click(botones[1]);
-  fireEvent.click(botones[2]);
-  assert.match(caja.textContent, /2 días · 🔴 Faltan 1 de 1 artículo/);
-  assert.match(caja.textContent, /Melamina blancanecesita 15 u · stock 12faltan 3OT 7473 \/ OT 7500/);
-  // Todos: 10 + 5 + 7 = 22
-  fireEvent.click(botones[0]);
-  assert.match(caja.textContent, /3 días · .*necesita 22 u · stock 12faltan 10/);
-  // Todos de nuevo: no queda ninguno elegido
-  fireEvent.click(botones[0]);
-  assert.doesNotMatch(caja.textContent, /días · /);
+  assert.match(semanas.textContent, new RegExp(`Semana ${prox.numero} · la que viene`));
+  // Por defecto la semana que viene: 7473 (corta dos días, una sola vez) + 7500 = 15 placas (Masisa → Faplac), hay 12
+  await waitFor(() => assert.match(caja.textContent, new RegExp(`Semana ${prox.numero} \\(del`)));
+  assert.match(caja.textContent, /Faplac \(1\) 🔴/);
+  assert.match(caja.textContent, /Melamina blancanecesita 15 u · stock 12faltan 3/);
+  assert.doesNotMatch(screen.getByRole("tablist", { name: "Resúmenes" }).textContent, /Otros/);
+  // Sumar la semana siguiente: + 7 de la 7600 = 22
+  fireEvent.click(semanas.querySelectorAll("button")[1]);
+  assert.match(caja.textContent, /necesita 22 u · stock 12faltan 10/);
+  // Cantos: el de Egger va en Cantos, agrupado por tipo
+  fireEvent.click(screen.getByRole("tab", { name: /Cantos/ }));
+  const panel = screen.getByRole("tabpanel", { name: "Resumen de Cantos" });
+  assert.match(panel.textContent, /PVC 22 mm/);
+  assert.match(panel.textContent, /Canto blanco 22necesita 30 m · stock 10faltan 20/);
+  assert.ok(screen.getByRole("button", { name: /PDF de Cantos/ }));
+  assert.ok(screen.getByRole("button", { name: /Todos en un Excel/ }));
+  // Solo lo que falta: el canto sigue (faltan 20)
+  fireEvent.click(screen.getByRole("checkbox", { name: /Solo lo que falta/ }));
+  assert.match(panel.textContent, /Canto blanco 22/);
 });

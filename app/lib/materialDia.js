@@ -61,7 +61,7 @@ export function faltaPorOt(necesidades = [], movimientos = []) {
  * Material de un día del plan.
  * @param {{ ot: string, etapas: { id: string }[] }[]} ots las OT del día con sus procesos
  * @param {{ falta: Map<string, Map<string, number>>, articulos: Map<string, object>, pendiente: (ot: string, etapa: string) => number }} datos
- * @returns {{ filas: { sku, nombre, unidad, proceso, cantidad, stock, faltan, ots: string[] }[], conFalta: number }}
+ * @returns {{ filas: { sku, nombre, unidad, marca, tipo, proceso, cantidad, stock, faltan, ots: string[] }[], conFalta: number }}
  */
 export function materialDelDia(ots = [], { falta, articulos, pendiente }) {
   const porSku = new Map();
@@ -73,7 +73,7 @@ export function materialDelDia(ots = [], { falta, articulos, pendiente }) {
       const art = articulos.get(sku) || { sku };
       const proceso = procesoMaterial(art);
       if (!proceso || !procesos.has(proceso)) continue;
-      if (!porSku.has(sku)) porSku.set(sku, { sku, nombre: art.nombre || sku, unidad: art.unidad || null, proceso, cantidad: 0, stock: art.stock == null ? null : Number(art.stock), ots: [] });
+      if (!porSku.has(sku)) porSku.set(sku, { sku, nombre: art.nombre || sku, unidad: art.unidad || null, marca: art.marca || null, tipo: art.tipo || null, proceso, cantidad: 0, stock: art.stock == null ? null : Number(art.stock), ots: [] });
       const f = porSku.get(sku);
       f.cantidad = r3(f.cantidad + cantidad);
       if (!f.ots.includes(ot)) f.ots.push(ot);
