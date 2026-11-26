@@ -5,10 +5,12 @@
 // los que calculó la planilla MRP en la última sincronización. Desde la ficha
 // se puede retirar o devolver ese artículo (parte 14). Dueño y Administración
 // ven además el último precio y el historial de precios con fecha (costo de
-// OT, parte A; 164).
+// OT, parte A; 164). También ponen la foto del artículo (211), la que sale en
+// el rótulo con QR que se imprime desde la lista de Stock.
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { sb } from "../lib/supabase";
+import { sb, apiFetch } from "../lib/supabase";
+import BotonFoto from "./BotonFoto";
 import { cantidadTexto, nivelSemaforo } from "../lib/stock";
 import { useEscape } from "../hooks/useEscape";
 import { ORIGENES_PRECIO, historialPrecios, textoFechaPrecio, textoPrecio, ultimosPrecios, veePrecios } from "../lib/preciosArticulos";
@@ -93,7 +95,48 @@ export function PreciosArticulo({ sku, ultimoPlanilla = null }) {
   );
 }
 
-export default function FichaArticulo({ sku, articulo: dado = null, usuario = null, empresaId = null, onClose }) {
+/** Foto del artículo (211): la ve cualquiera; dueños y administradores la ponen, cambian o sacan. */
+export function FotoArticulo({ sku, nombre, foto, puedeEditar, onCambio }) {
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState(null);
+  if (!foto && !puedeEditar) return null;
+  const guardar = async (foto_url) => {
+    setGuardando(true);
+    setError(null);
+    try {
+      const r = await apiFetch("/api/stock/articulos", { method: "PATCH", body: JSON.stringify({ sku, foto_url }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || "No se pudo guardar la foto");
+      onCambio(j.foto_url ?? null);
+    } catch (e) {
+      setError(e.message);
+    }
+    setGuardando(false);
+  };
+  return (
+    <section aria-label="Foto del artículo" className="flex items-center gap-3 mb-3">
+      {foto && (
+        <a href={foto} target="_blank" rel="noopener noreferrer" className="shrink-0">
+          <img src={foto} alt={`Foto de ${nombre || sku}`} className="w-24 h-24 object-cover rounded-[10px] border border-gypi-border" />
+        </a>
+      )}
+      {puedeEditar && (
+        <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+          <BotonFoto label={foto ? "📷 Cambiar la foto" : "📷 Foto del artículo"} disabled={guardando} onFoto={guardar} />
+          {foto && (
+            <button onClick={() => guardar(null)} disabled={guardando}
+              className="min-h-[36px] p-0 bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer text-left">Sacar la foto</button>
+          )}
+          {!foto && <div className="text-[12px] text-gypi-dim">Sale en el rótulo con QR que se imprime desde la lista de Stock.</div>}
+          {guardando && <div className="text-[12px] text-gypi-dim" role="status">Guardando…</div>}
+          {error && <div role="alert" className="text-[12px] text-gypi-red">{error}</div>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+export default function FichaArticulo({ sku, articulo: dado = null, usuario = null, empresaId = null, onClose, onFoto = null }) {
   const [articulo, setArticulo] = useState(dado);
   const [retirando, setRetirando] = useState(false);
   const [estado, setEstado] = useState(dado ? "listo" : "cargando");
@@ -158,6 +201,8 @@ export default function FichaArticulo({ sku, articulo: dado = null, usuario = nu
                 {a.proxima_necesidad ? <div>Próxima necesidad: {a.proxima_necesidad.split("-").reverse().join("/")}</div> : null}
               </div>
             )}
+            <FotoArticulo sku={sku} nombre={a.nombre} foto={a.foto_url || null} puedeEditar={veePrecios(usuario)}
+              onCambio={(foto_url) => { setArticulo((x) => ({ ...x, foto_url })); onFoto?.(sku, foto_url); }} />
             {(a.marca || a.color) && <div className="text-[13px] text-gypi-dim mb-3">{[a.marca, a.color].filter(Boolean).join(" · ")}</div>}
             {veePrecios(usuario) && <PreciosArticulo sku={sku} ultimoPlanilla={a.ultimo_precio ?? null} />}
             {usuario && a.activo !== false && (

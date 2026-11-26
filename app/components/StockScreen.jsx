@@ -224,7 +224,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
           </div>
           {!elegidos.size && (
             <div className="flex flex-wrap items-center gap-x-2 mb-2 text-[12px] text-gypi-dim">
-              <span>🏷 Etiquetas con QR: tildá los artículos, o</span>
+              <span>🏷 Rótulos con QR (y la foto, si tiene): tildá los artículos, o</span>
               <button onClick={elegirFiltrados} disabled={!filtrados.length}
                 className="min-h-[32px] p-0 bg-transparent border-none text-[12px] font-semibold text-gypi-amber-ink cursor-pointer">
                 Elegir {Math.min(filtrados.length, MAX_ETIQUETAS_ARTICULO)} de la lista
@@ -236,6 +236,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
               <li key={a.sku} className="flex items-center gap-2 p-2 rounded-[10px] border border-gypi-border bg-gypi-surface">
                 <input type="checkbox" checked={elegidos.has(a.sku)} onChange={() => alternar(a.sku)}
                   aria-label={`Etiqueta de ${a.nombre || a.sku}`} className="w-6 h-6 shrink-0 cursor-pointer" />
+                {a.foto_url && <img src={a.foto_url} alt="" loading="lazy" className="w-11 h-11 shrink-0 object-cover rounded-[8px] border border-gypi-border" />}
                 <button onClick={() => setFicha(a)} className="flex-1 min-w-0 min-h-[44px] text-left bg-transparent border-none p-0 cursor-pointer text-gypi-text font-body">
                   <div className="text-[14px] font-semibold truncate">{a.nombre || a.sku}</div>
                   <div className="text-[12px] text-gypi-dim truncate">{a.origen === "gypi" ? "🆕 Nuevo, falta pasar a la planilla · " : ""}{a.sku}{a.division ? ` · ${a.division}` : ""}</div>
@@ -254,7 +255,8 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
           </ul>
         </>
       )}
-      {ficha && <FichaArticulo sku={ficha.sku} articulo={ficha} usuario={usuario} empresaId={empresaId} onClose={() => setFicha(null)} />}
+      {ficha && <FichaArticulo sku={ficha.sku} articulo={ficha} usuario={usuario} empresaId={empresaId} onClose={() => setFicha(null)}
+        onFoto={(sku, foto_url) => setArticulos((lista) => lista.map((x) => (x.sku === sku ? { ...x, foto_url } : x)))} />}
     </div>
   );
 }
