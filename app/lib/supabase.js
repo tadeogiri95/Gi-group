@@ -45,35 +45,79 @@ export function onUnauthorized(callback) {
   _onUnauthorized = callback;
 }
 
-// ─── Intentar refresh del token ───
-// Confía en la httpOnly cookie gypi_refresh — no necesita el token en memoria
+// ─── Renovar el pase (refresh) ───
+// Confía en la httpOnly cookie gypi_refresh — no necesita el token en memoria.
+//
+// Devuelve "ok", "vencida" (el servidor dijo 401: la sesión terminó de verdad)
+// o "error" (sin red o problema pasajero del servidor: NO se cierra la sesión).
+//
+// Varias pestañas (o la app instalada y el navegador) comparten las cookies:
+// si renuevan al mismo tiempo, una gana y la otra presentaba un pase ya usado
+// y se cerraba la sesión. Con navigator.locks renueva una pestaña por vez, y
+// si otra acaba de renovar, se usa ese pase sin volver a pedir uno.
+const LLAVE_RENOVADO = "gypi_refresh_at";
+const RECIENTE_MS = 15_000;
+
+function marcaRenovado() {
+  try { return Number(localStorage.getItem(LLAVE_RENOVADO)) || 0; } catch { return 0; }
+}
+
+async function pedirRefresh() {
+  let res;
+  try {
+    res = await fetch("/api/refresh-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+  } catch {
+    return "error";
+  }
+  if (res.status === 401 || res.status === 400) return "vencida";
+  if (!res.ok) return "error";
+  try {
+    const data = await res.json();
+    if (!data.token) return "error";
+    setToken(data.token);
+    try { localStorage.setItem(LLAVE_RENOVADO, String(Date.now())); } catch {}
+    return "ok";
+  } catch {
+    return "error";
+  }
+}
+
+async function renovarUnaVez() {
+  const pedidoEn = Date.now();
+  const conLlave = async () => {
+    // Otra pestaña renovó mientras esperábamos: las cookies ya son nuevas.
+    // El pase en memoria de esta pestaña queda viejo, pero el servidor lee
+    // primero la cookie, así que no hace falta.
+    const marca = marcaRenovado();
+    if (marca >= pedidoEn - 1000 && Date.now() - marca < RECIENTE_MS) return "ok";
+    let r = await pedirRefresh();
+    // Un problema pasajero: un reintento corto antes de rendirse.
+    if (r === "error") {
+      await new Promise((ok) => setTimeout(ok, 1500));
+      r = await pedirRefresh();
+    }
+    return r;
+  };
+  try {
+    if (typeof navigator !== "undefined" && navigator.locks?.request) {
+      return await navigator.locks.request("gypi-refresh", conLlave);
+    }
+  } catch {
+    // sin Web Locks: se renueva igual (el servidor da 2 minutos de gracia)
+  }
+  return conLlave();
+}
+
 async function intentarRefresh() {
   if (_refreshing) {
-    try { return await _refreshing; } catch { return false; }
+    try { return await _refreshing; } catch { return "error"; }
   }
-
-  _refreshing = (async () => {
-    try {
-      const res = await fetch("/api/refresh-token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      if (!res.ok) return false;
-      const data = await res.json();
-      if (data.token) {
-        setToken(data.token);
-        return true;
-      }
-      return false;
-    } catch {
-      return false;
-    } finally {
-      _refreshing = null;
-    }
-  })();
-
-  return _refreshing;
+  _refreshing = renovarUnaVez().finally(() => { _refreshing = null; });
+  try { return await _refreshing; } catch { return "error"; }
 }
 
 // Para restaurar la sesión al abrir la app (F1-03)
@@ -111,8 +155,12 @@ async function req(method, path, body, { cursor, raw } = {}) {
 
   // ═══ CAMBIO 1E: Auto-refresh en 401 ═══
   if (res.status === 401) {
-    const refreshed = await intentarRefresh();
-    if (refreshed) {
+    const renovado = await intentarRefresh();
+    if (renovado === "error") {
+      // Sin red o el servidor tuvo un problema pasajero: la sesión sigue.
+      throw new Error("No se pudo conectar con el servidor. Intentá de nuevo en unos segundos.");
+    }
+    if (renovado === "ok") {
       // Reintentar el request original con el nuevo token
       const newToken = getToken();
       const retryHeaders = { "Content-Type": "application/json" };
@@ -120,22 +168,35 @@ async function req(method, path, body, { cursor, raw } = {}) {
       const retryCsrf = getCsrfToken();
       if (retryCsrf) retryHeaders["x-csrf-token"] = retryCsrf;
 
+      let retryRes;
       try {
-        const retryRes = await fetch("/api/data", {
+        retryRes = await fetch("/api/data", {
           method: "POST",
           headers: retryHeaders,
           credentials: "include",
           body: JSON.stringify({ method, path, body, cursor }),
         });
-        const retryJson = await retryRes.json();
-        if (retryRes.ok && !retryJson.error) return raw ? retryJson : retryJson.data;
-        // Si el retry también falla, caer al logout
       } catch {
-        // Fallo en retry, caer al logout
+        throw new Error("Error de red. Verificá tu conexión.");
+      }
+      let retryJson;
+      try { retryJson = await retryRes.json(); }
+      catch { throw new Error(`Error del servidor (${retryRes.status}). Intentá de nuevo.`); }
+      if (retryRes.status !== 401) {
+        // Cualquier otro error del reintento es del pedido, no de la sesión:
+        // antes caía al cierre de sesión aunque fuera, p. ej., un dato inválido.
+        if (retryRes.status === 402) {
+          const err = new Error(retryJson.error || "Función bloqueada por tu plan");
+          err.paywall = true;
+          err.upgrade_a = retryJson.upgrade_a;
+          throw err;
+        }
+        if (!retryRes.ok || retryJson.error) throw new Error(retryJson.error || `Error ${retryRes.status}`);
+        return raw ? retryJson : retryJson.data;
       }
     }
 
-    // Refresh falló o no hay refresh token → logout
+    // La sesión venció de verdad → logout
     const isRead = !method || method === "GET";
     clearToken();
     if (_onUnauthorized) _onUnauthorized();
