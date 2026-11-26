@@ -17,6 +17,15 @@ const num = (n, d = 1) => (n == null ? "—" : Number(n).toLocaleString("es-AR",
 const pctTxt = (n) => (n == null ? "—" : `${num(n)} %`);
 const horasTxt = (h) => (h == null ? "—" : `${num(h)} h`);
 
+/** Lo que les falta a las OT atrasadas y cuándo termina la última (Tadeo, 26/11). */
+function textoPonerseAlDia(a) {
+  if (!a?.cantidad || !(a.horasFalta > 0)) return null;
+  const partes = [`Les faltan ${horasTxt(a.horasFalta)} de proceso`];
+  if (a.masHoras) partes[0] += `, sobre todo ${a.masHoras.nombre} (${horasTxt(a.masHoras.horas)})`;
+  if (a.ultimoFin) partes.push(`la última termina el ${corta(a.ultimoFin)}${a.semanasHastaUltima != null ? ` (en ${a.semanasHastaUltima} ${a.semanasHastaUltima === 1 ? "semana" : "semanas"})` : ""}`);
+  return partes.join(" · ");
+}
+
 const TONO = {
   bien: { borde: "border-l-gypi-green", txt: "text-gypi-green", punto: "🟢", barra: "bg-gypi-green" },
   atencion: { borde: "border-l-gypi-amber", txt: "text-gypi-amber-ink", punto: "🟡", barra: "bg-gypi-amber" },
@@ -158,7 +167,8 @@ export default function PanelProduccion() {
             <Indicador id="atrasadas" titulo="OT que van tarde según el plan" valor={num(panel.ahora.atrasadas.cantidad, 0)}
               tono={panel.ahora.atrasadas.cantidad ? (panel.ahora.atrasadas.cantidad / Math.max(1, panel.ahora.atrasadas.abiertas) > 0.25 ? "mal" : "atencion") : "bien"}
               detalle={panel.ahora.atrasadas.cantidad ? `de ${panel.ahora.atrasadas.abiertas} en el plan · ${num(panel.ahora.atrasadas.diasPromedio)} días tarde en promedio` : `${panel.ahora.atrasadas.abiertas} OT en el plan, todas en fecha`}
-              ayuda="Hoy, con el plan vivo (el del Gantt): OT que, al ritmo que vienen, terminan la producción después de su fecha límite. Es lo mismo que ⏰ OT atrasadas." />
+              meta={textoPonerseAlDia(panel.ahora.atrasadas)}
+              ayuda="Hoy, con el plan vivo (el del Gantt): OT que, al ritmo que vienen, terminan la producción después de su fecha límite. Es lo mismo que ⏰ OT atrasadas. Abajo: las horas de proceso que todavía les faltan (horas de máquina, y en Armado el tiempo que lleva armarlas), el proceso donde se junta la mayor parte, y cuándo termina la última según el plan vivo." />
             <Indicador id="pausa" titulo="OT en pausa" valor={num(panel.ahora.pausadas.cantidad, 0)} tono={panel.ahora.pausadas.cantidad ? "atencion" : null}
               detalle={panel.ahora.pausadas.motivos.slice(0, 2).map((m) => `${m.motivo} (${m.cantidad})`).join(" · ") || null}
               ayuda="OT puestas en ⏸ pausa hoy, con el motivo. Mientras están en pausa no cuentan en el lead time ni en el plan." />
@@ -170,13 +180,24 @@ export default function PanelProduccion() {
               meta={METAS.cumplimiento.texto} serie={serieDe(semanas, (x) => x.plan.cumplimiento)}
               ayuda="Lo mismo que el informe de producción: de lo que el plan confirmado ponía para la semana, qué % se avanzó (escaneo o % a mano), sumando los procesos y sin que adelantar otra OT compense." />
             <Indicador id="carga" titulo="Carga de la planta" valor={pctTxt(s.plan.carga.pct)} tono={semaforoCarga(s.plan.carga.pct)}
-              detalle={s.plan.carga.disponibles != null ? `${horasTxt(s.plan.carga.horas)} del plan confirmado de ${horasTxt(s.plan.carga.disponibles)} de la grilla (semana entera)` : `${horasTxt(s.plan.carga.horas)} planificadas`}
+              detalle={s.plan.carga.cuello
+                ? `La que frena: ${s.plan.carga.cuello.nombre}, ${horasTxt(s.plan.carga.cuello.horas)} planificadas de ${horasTxt(s.plan.carga.cuello.disponibles)} que puede hacer (${s.plan.carga.cuello.que})`
+                : s.plan.carga.disponibles != null ? `${horasTxt(s.plan.carga.horas)} del plan confirmado de ${horasTxt(s.plan.carga.disponibles)} de la grilla (semana entera)` : `${horasTxt(s.plan.carga.horas)} planificadas`}
               meta="Bien entre 70 y 100 %" serie={serieDe(semanas, (x) => x.plan.carga.pct)}
-              ayuda="Es el plan CONFIRMADO y la semana ENTERA, de lunes a domingo (también los días que ya pasaron). En Planificación, el paso ③ mira el plan que estás armando ahora y solo desde hoy, por eso los dos números pueden no coincidir. Horas de gente que el plan confirmado ponía en cada día de la semana (si se volvió a confirmar a mitad de semana, cada día sale del plan que valía ese día), contra las horas de la grilla de horarios de los operarios de la división que se planifica, la misma gente que usa Planificación (sin instaladores ni otra línea, sin feriados ni vacaciones o ausencias aprobadas). Menos de 70 % es planta ociosa; más de 100 % pide horas extra. Que sobren horas no quiere decir que las OT lleguen: el plan va de a una OT por máquina y en Armado." />
+              ayuda="Qué tan llena está la planta según el plan CONFIRMADO, la semana ENTERA de lunes a domingo. El plan va como una fila: cada máquina hace una OT a la vez y Armado arma pocas OT a la vez con un máximo de armadores, así que no toda la gente puede trabajar al mismo tiempo. Por eso cada proceso se mide contra lo que puede hacer a la vez (horas que la planta está abierta × las personas que entran en ese proceso), y la carga de la planta es la del proceso más lleno, el que frena. Si está cerca de 100 % y hay OT atrasadas, más gente no alcanza: hace falta más horas en ese proceso (horas extra, otro turno o otra máquina). Si está bajo y hay OT atrasadas, el plan confirmado tiene poco trabajo: revisá qué OT están tildadas en Planificación. Menos de 70 % es planta ociosa; más de 100 % pide horas extra." />
+            {s.plan.carga.gente && (
+              <Indicador id="carga-gente" titulo="Gente con trabajo en el plan" valor={pctTxt(s.plan.carga.gente.pct)}
+                detalle={s.plan.carga.gente.disponibles != null ? `${horasTxt(s.plan.carga.gente.horas)} del plan de ${horasTxt(s.plan.carga.gente.disponibles)} de la grilla${s.plan.carga.gente.personas ? ` (${s.plan.carga.gente.personas} operarios)` : ""}` : null}
+                serie={serieDe(semanas, (x) => x.plan.carga.gente?.pct)}
+                ayuda="Qué parte de las horas de TODOS los operarios de la división que se planifica (sin instaladores ni otra línea, sin feriados ni vacaciones o ausencias aprobadas) usa el plan confirmado en la semana. Lo que falta para 100 % es gente que el plan no puede poner a trabajar porque las máquinas y Armado ya están ocupados: se puede pasar a un segundo turno del proceso que frena, o a otras tareas. En Planificación, el paso ③ mira el plan que estás armando y solo desde hoy, por eso los números pueden no coincidir." />
+            )}
             {s.plan.carga.porEtapa.map((q) => (
-              <Indicador key={q.etapa} id={`carga-${q.etapa}`} titulo={`${q.nombre} planificado`} valor={horasTxt(q.horas)}
-                detalle={s.plan.carga.horas > 0 ? `${num((q.horas / s.plan.carga.horas) * 100, 0)} % de lo planificado en la semana` : null}
-                ayuda={`Horas de ${q.nombre} que el plan confirmado puso en esta semana (no son horas trabajadas ni avance de las OT). El % es qué parte de todas las horas planificadas de la semana es ${q.nombre}. Lo que se hizo de verdad está en Cumplimiento del plan.`} />
+              <Indicador key={q.etapa} id={`carga-${q.etapa}`} titulo={`${q.nombre} planificado`} valor={q.pct != null ? pctTxt(q.pct) : horasTxt(q.horas)}
+                tono={q.pct != null && q.horas > 0 ? semaforoCarga(q.pct) : null}
+                detalle={q.pct != null
+                  ? `${horasTxt(q.horas)} de ${horasTxt(q.disponibles)} que puede hacer (${q.que})`
+                  : s.plan.carga.horas > 0 ? `${num((q.horas / s.plan.carga.horas) * 100, 0)} % de lo planificado en la semana` : null}
+                ayuda={`Horas de ${q.nombre} que el plan confirmado puso en esta semana (no son horas trabajadas ni avance de las OT), contra las que ${q.nombre} puede hacer en la semana: las horas que la planta está abierta × ${q.aLaVez ?? 1} ${q.aLaVez === 1 ? "persona" : "personas"} a la vez. Lo que se hizo de verdad está en Cumplimiento del plan.`} />
             ))}
           </Bloque>
 

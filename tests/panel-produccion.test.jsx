@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { render, screen, cleanup } from "@testing-library/react";
 import {
   semanasPanel, semaforo, METAS, semaforoCarga, finProduccionDe, entregasDeSemana, produccionDeSemana, cargaDeSemana,
-  calidadDeSemana, maquinasDeSemana, enProceso, atrasadasPlan, pausadasAhora, armarPanel, itemsDelHistorial,
+  calidadDeSemana, maquinasDeSemana, enProceso, atrasadasPlan, pausadasAhora, armarPanel, itemsDelHistorial, aLaVezPorEtapa,
 } from "../app/lib/panelProduccion.js";
 import { opcionesBoton } from "../app/lib/menuGestion.js";
 
@@ -94,6 +94,30 @@ test("carga — horas del plan de la semana por proceso contra la grilla", () =>
   assert.equal(cargaDeSemana(items, SEMANA, 0).pct, null);
 });
 
+test("carga — manda el proceso que frena, contra lo que puede hacer a la vez (Tadeo, 26/11)", () => {
+  // 40 h abierta la planta, 18 operarios × 40 h = 720 h de gente
+  const capacidad = { gente: 720, maquina: 40, personas: 18 };
+  const params = { maquinas_corte: 1, personas_canteadora: 2, maquinas_cnc: 2, max_armadores_ot: 4, ots_armado_paralelo: 2 };
+  const items = [
+    { etapa: "corte", fecha: "2026-11-16", horas: 38 }, // 1 seccionadora: 38 de 40
+    { etapa: "canteado", fecha: "2026-11-17", horas: 76 }, // 2 personas: 76 de 80
+    { etapa: "mecanizado", fecha: "2026-11-18", horas: 60 }, // 2 CNC: 60 de 80
+    { etapa: "armado", fecha: "2026-11-19", horas: 300 }, // 2 OT × 4: 300 de 320
+  ];
+  const c = cargaDeSemana(items, SEMANA, capacidad, params);
+  assert.equal(c.cuello.etapa, "corte");
+  assert.equal(c.pct, 95, "la carga de la planta es la del proceso más lleno");
+  assert.equal(c.gente.pct, 65.8, "474 de 720: la gente que sobra no entra en las máquinas");
+  assert.equal(c.disponibles, 720);
+  const armado = c.porEtapa.find((q) => q.etapa === "armado");
+  assert.equal(armado.disponibles, 320);
+  assert.equal(armado.pct, 93.8);
+  assert.equal(c.porEtapa.find((q) => q.etapa === "canteado").pct, 95);
+  // Pocos operarios: Armado no puede tener más de los que hay
+  assert.equal(aLaVezPorEtapa(params, 3).armado.personas, 3);
+  assert.match(aLaVezPorEtapa(params).armado.que, /2 OT a la vez con hasta 4 armadores \(8 personas\)/);
+});
+
 test("calidad — OT sin retrabajo, horas y motivos, no conformidades y pendientes", () => {
   const retrabajos = [
     { ot: "1", etapa: "armado", horas: 3, motivo: "medida", created_at: arg("11-17") },
@@ -153,11 +177,15 @@ test("en proceso — OT por etapa, esperando y cuello de botella", () => {
 
 test("atrasadas y pausadas — las del plan vivo que terminan tarde y las OT en pausa hoy", () => {
   const vivo = new Map([
-    ["1", { ot: "1", tarde: true, diasTarde: 4, procesos: [{ completo: false }] }],
-    ["2", { ot: "2", tarde: false, diasTarde: 0, procesos: [{ completo: false }] }],
-    ["3", { ot: "3", tarde: true, diasTarde: 2, procesos: [{ completo: false }] }],
+    ["1", { ot: "1", tarde: true, diasTarde: 4, fin: "2026-12-04", procesos: [{ etapa: "corte", completo: true, horas: 5 }, { etapa: "armado", completo: false, horas: 10 }] }],
+    ["2", { ot: "2", tarde: false, diasTarde: 0, fin: "2026-12-30", procesos: [{ etapa: "armado", completo: false, horas: 50 }] }],
+    ["3", { ot: "3", tarde: true, diasTarde: 2, fin: "2026-11-27", procesos: [{ etapa: "canteado", completo: false, horas: 4 }, { etapa: "armado", completo: false, horas: 6 }] }],
   ]);
-  const a = atrasadasPlan(vivo);
+  const a = atrasadasPlan(vivo, new Map(), "2026-11-20");
+  assert.equal(a.horasFalta, 20, "solo lo que falta de las atrasadas");
+  assert.equal(a.masHoras.nombre, "Armado");
+  assert.equal(a.ultimoFin, "2026-12-04");
+  assert.equal(a.semanasHastaUltima, 2);
   assert.equal(a.cantidad, 2);
   assert.equal(a.abiertas, 3);
   assert.equal(a.diasPromedio, 3);
@@ -243,7 +271,8 @@ test("pantalla — bloques con semáforo y detalle, desde /api/reportes/panel", 
   const semana = (desde, extra = {}) => ({
     desde, hasta: desde, futura: false,
     entregas: { entregadas: 4, conFecha: 4, aTiempo: 3, pct: 75, tarde: [{ ot: "7100", cliente: "Ana", diasTarde: 2, objetivo: "2026-11-18" }], sinFecha: 0, leadTime: 80 },
-    plan: { cumplimiento: 92, procesosPlanificados: 10, procesosCumplidos: 9, carga: { horas: 300, disponibles: 400, pct: 75, porEtapa: [{ etapa: "corte", nombre: "Corte", horas: 100 }] } },
+    plan: { cumplimiento: 92, procesosPlanificados: 10, procesosCumplidos: 9, carga: { horas: 300, disponibles: 400, pct: 98, cuello: { etapa: "corte", nombre: "Corte", pct: 98, horas: 100, disponibles: 102, que: "1 seccionadora" }, gente: { horas: 300, disponibles: 400, pct: 75, personas: 10 },
+      porEtapa: [{ etapa: "corte", nombre: "Corte", horas: 100, disponibles: 102, pct: 98, aLaVez: 1, que: "1 seccionadora" }, { etapa: "armado", nombre: "Armado", horas: 200, disponibles: null, pct: null }] } },
     produccion: { ots: 5, piezas: 900, valor: 1000000, otsLista: [], leadTime: 40 },
     calidad: { horasRetrabajo: 6, otsConRetrabajo: 1, motivos: [{ motivo: "Medida", horas: 6 }], producidas: 5, sinRetrabajo: 80, noConformidades: 2, defectos: [{ cod: "MED", nombre: "Medida mal", cantidad: 2 }], pendientesNuevos: 1 },
     maquinas: { horasParada: 2, fallas: 1, porMaquina: [{ codigo: "CNC1", nombre: "CNC", horas: 2 }] },
@@ -254,7 +283,7 @@ test("pantalla — bloques con semáforo y detalle, desde /api/reportes/panel", 
     semanas: ["2026-10-19", "2026-10-26", "2026-11-02", "2026-11-09", "2026-11-16"].map((d) => semana(d)),
     ahora: {
       enProceso: { etapas: [{ id: "corte", nombre: "Corte", enCurso: 2, esperando: 0, horasEspera: 0, esperaPromedio: null }, { id: "armado", nombre: "Armado", enCurso: 1, esperando: 3, horasEspera: 30, esperaPromedio: 10 }], ots: 6, esperando: 3, valor: 2000000, cuello: { id: "armado", nombre: "Armado", esperando: 3, horasEspera: 30 } },
-      atrasadas: { cantidad: 1, abiertas: 8, diasPromedio: 3, ots: [{ ot: "7200", cliente: "Beto", diasTarde: 3 }] },
+      atrasadas: { cantidad: 1, abiertas: 8, diasPromedio: 3, ots: [{ ot: "7200", cliente: "Beto", diasTarde: 3 }], horasFalta: 30, masHoras: { etapa: "armado", nombre: "Armado", horas: 20 }, ultimoFin: "2026-12-04", semanasHastaUltima: 2 },
       pausadas: { cantidad: 0, ots: [], motivos: [] },
       pendientesAbiertos: 2,
     },
@@ -276,10 +305,17 @@ test("pantalla — bloques con semáforo y detalle, desde /api/reportes/panel", 
   assert.match(document.querySelector('[data-indicador="cuello"]').textContent, /Armado/);
   // Cada proceso dice qué es: horas planificadas, no trabajadas (Tadeo, 24/11)
   const corte = document.querySelector('[data-indicador="carga-corte"]').textContent;
-  assert.match(corte, /Corte planificado100 h/);
-  assert.match(corte, /33 % de lo planificado en la semana/);
+  assert.match(corte, /Corte planificado/);
+  assert.match(corte, /100 h de 102 h que puede hacer \(1 seccionadora\)/);
   assert.match(corte, /no son horas trabajadas ni avance de las OT/);
-  assert.match(document.querySelector('[data-indicador="carga"]').textContent, /plan confirmado.*semana entera/);
+  assert.match(document.querySelector('[data-indicador="carga-armado"]').textContent, /67 % de lo planificado en la semana/);
+  // La carga es la del proceso que frena; la gente va aparte (Tadeo, 26/11)
+  const carga = document.querySelector('[data-indicador="carga"]').textContent;
+  assert.match(carga, /98 %/);
+  assert.match(carga, /La que frena: Corte/);
+  assert.match(carga, /plan CONFIRMADO.*semana ENTERA/);
+  assert.match(document.querySelector('[data-indicador="carga-gente"]').textContent, /75 %.*\(10 operarios\)/);
+  assert.match(document.querySelector('[data-indicador="atrasadas"]').textContent, /Les faltan 30 h de proceso, sobre todo Armado \(20 h\) · la última termina el 4\/12 \(en 2 semanas\)/);
   assert.ok(document.querySelector('[data-indicador="valor"]'), "con precios se ve $ producidos");
   assert.ok(screen.getByRole("table", { name: "OT en proceso por etapa" }).textContent.includes("cuello de botella"));
   assert.match(screen.getByRole("region", { name: "Detalle" }).textContent, /7100.*2 días tarde/s);

@@ -13,7 +13,9 @@
 //                 plan vivo van a llegar tarde; OT en pausa y por qué.
 //   2. Plan       cumplimiento del plan semanal (el mismo cálculo del informe
 //                 de producción) y carga de la planta: horas del plan
-//                 confirmado contra las horas de la grilla de los operarios.
+//                 confirmado de cada proceso contra lo que ese proceso puede
+//                 hacer a la vez; manda el que frena (26/11). Aparte, qué
+//                 parte de las horas de toda la gente usa el plan.
 //   3. Velocidad  lead time en horas de jornada, OT y piezas terminadas,
 //                 $ producidos (solo quien ve precios) y OT en proceso por
 //                 etapa (lo mismo que el 🗂️ Trello). El cuello de botella es
@@ -32,7 +34,7 @@ import { hoyArg } from "./dates";
 import { periodoDe, calcularInforme } from "./informeProduccion";
 import { tableroEtapas, instalacionPorOt, pctPorProceso, otsDelPlan } from "./tableroEtapas";
 import { leadTimeProcesos, ventanasDeGrilla } from "./leadTimeHoras";
-import { ventanasSemana, capacidadPlanta, operariosDePlanta, diasDelPeriodo } from "./cargaPlanta";
+import { ventanasSemana, capacidadPlanta, operariosDePlanta, diasDelPeriodo, personasMaquinas } from "./cargaPlanta";
 import { piezasConManual } from "./avanceManual";
 import { normalizarParametros, divisionPlan } from "./planificacion";
 import { ausenciasDe } from "./capacidadReal";
@@ -160,16 +162,68 @@ export function itemsDelHistorial(planes = []) {
   return out;
 }
 
-/** Horas del plan confirmado de la semana por proceso, contra las horas de la grilla de los operarios. */
-export function cargaDeSemana(items, s, capacidad) {
+/**
+ * Cuántos pueden trabajar a la vez en cada proceso, como arma el plan
+ * (secuencia.js): 1 por seccionadora, las personas de la canteadora, 1 por
+ * CNC y en Armado "OT a la vez" × "máximo de armadores por OT" (o los
+ * operarios que haya, si son menos). `que`: cómo decirlo en la pantalla.
+ */
+export function aLaVezPorEtapa(params = {}, personas = null) {
+  const m = personasMaquinas(params);
+  const otsArmado = params.ots_armado_paralelo || 1;
+  const porOt = params.max_armadores_ot || 1;
+  const armado = Math.max(1, Math.min(porOt * otsArmado, personas || porOt * otsArmado));
+  const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+  return {
+    corte: { personas: m.corte, que: plural(m.corte, "seccionadora", "seccionadoras") },
+    canteado: { personas: m.canteado, que: `la canteadora con ${plural(m.canteado, "persona", "personas")}` },
+    mecanizado: { personas: m.mecanizado, que: plural(m.mecanizado, "CNC", "CNC") },
+    armado: { personas: armado, que: `${plural(otsArmado, "OT", "OT")} a la vez con hasta ${porOt} armadores (${plural(armado, "persona", "personas")})` },
+  };
+}
+
+/**
+ * Carga de la semana (Tadeo, 26/11). Las horas de gente del plan confirmado
+ * por proceso contra lo que ese proceso puede hacer a la vez: horas que la
+ * planta está abierta × personas que entran en el proceso (las máquinas y
+ * Armado van de a una OT, así que la gente que no entra no suma). La carga de
+ * la planta es la del proceso más cargado, el que frena (cuello). Aparte,
+ * `gente`: qué parte de las horas de TODOS los operarios usa el plan (antes
+ * era el número grande y daba 73 % con OT atrasadas: la gente que sobra no
+ * tiene lugar en las máquinas).
+ * @param {object[]} items  renglones del plan { etapa, fecha, horas }
+ * @param {{ desde: string, hasta: string }} s
+ * @param {number|{ gente: number, maquina?: number, personas?: number }|null} capacidad  la de capacidadPlanta (un número = solo la gente)
+ * @param {object} [params]  parámetros de Planificación
+ */
+export function cargaDeSemana(items, s, capacidad, params = {}) {
   const porEtapa = Object.fromEntries(ETAPAS_PLAN.map(({ id }) => [id, 0]));
   for (const i of items || []) if (enSemana(i.fecha, s) && i.etapa in porEtapa) porEtapa[i.etapa] += Number(i.horas) || 0;
   const horas = Object.values(porEtapa).reduce((a, b) => a + b, 0);
+  const cap = capacidad != null && typeof capacidad === "object" ? capacidad : { gente: capacidad };
+  const gente = cap.gente == null ? null : cap.gente;
+  const pctGente = gente > 0 ? redondear((horas / gente) * 100) : null;
+  const abierta = Number.isFinite(cap.maquina) ? cap.maquina : null;
+  const aLaVez = aLaVezPorEtapa(params, cap.personas);
+  const filas = ETAPAS_PLAN.map(({ id, nombre }) => {
+    const disp = abierta == null ? null : abierta * aLaVez[id].personas;
+    return {
+      etapa: id, nombre, horas: redondear(porEtapa[id]),
+      disponibles: disp == null ? null : redondear(disp),
+      pct: disp > 0 ? redondear((porEtapa[id] / disp) * 100) : null,
+      aLaVez: aLaVez[id].personas, que: aLaVez[id].que,
+    };
+  });
+  const conPct = filas.filter((q) => q.pct != null);
+  const cuello = conPct.length ? conPct.reduce((a, b) => (b.pct > a.pct ? b : a)) : null;
   return {
     horas: redondear(horas),
-    disponibles: capacidad == null ? null : redondear(capacidad),
-    pct: capacidad > 0 ? redondear((horas / capacidad) * 100) : null,
-    porEtapa: ETAPAS_PLAN.map(({ id, nombre }) => ({ etapa: id, nombre, horas: redondear(porEtapa[id]) })),
+    disponibles: gente == null ? null : redondear(gente),
+    // La carga de la planta: la del proceso que frena; sin horario de planta, la de la gente
+    pct: cuello ? cuello.pct : pctGente,
+    cuello: cuello && cuello.horas > 0 ? { etapa: cuello.etapa, nombre: cuello.nombre, pct: cuello.pct, horas: cuello.horas, disponibles: cuello.disponibles, que: cuello.que } : null,
+    gente: { horas: redondear(horas), disponibles: gente == null ? null : redondear(gente), pct: pctGente, personas: cap.personas ?? null },
+    porEtapa: filas,
   };
 }
 
@@ -256,12 +310,27 @@ export function enProceso(columnas, precios = null, estimadas = new Set()) {
 }
 
 /** OT que según el plan vivo terminan después de su fecha límite. */
-export function atrasadasPlan(vivo, proyectos = new Map()) {
-  const filas = [...(vivo?.values?.() || [])].filter((r) => r.tarde)
+export function atrasadasPlan(vivo, proyectos = new Map(), hoy = null) {
+  const tardes = [...(vivo?.values?.() || [])].filter((r) => r.tarde);
+  const filas = tardes
     .map((r) => ({ ot: String(r.ot), ...datosOt(proyectos.get(String(r.ot))), diasTarde: r.diasTarde, objetivo: r.objetivo, fin: r.fin }))
     .sort((a, b) => b.diasTarde - a.diasTarde);
   const abiertas = [...(vivo?.values?.() || [])].filter((r) => (r.procesos || []).some((q) => !q.completo)).length;
-  return { cantidad: filas.length, abiertas, diasPromedio: promedio(filas.map((f) => f.diasTarde)), ots: filas };
+  // Lo que les falta (Tadeo, 26/11): horas de cada proceso que el plan vivo
+  // todavía tiene que hacer en las atrasadas, y cuándo termina la última
+  const porEtapa = Object.fromEntries(ETAPAS_PLAN.map(({ id }) => [id, 0]));
+  for (const r of tardes) for (const q of r.procesos || []) if (!q.completo && q.etapa in porEtapa) porEtapa[q.etapa] += Number(q.horas) || 0;
+  const horasFalta = Object.values(porEtapa).reduce((a, b) => a + b, 0);
+  const masHoras = ETAPAS_PLAN.reduce((a, e) => (porEtapa[e.id] > (a ? porEtapa[a.id] : 0) ? e : a), null);
+  const ultimoFin = tardes.reduce((a, r) => (r.fin && (!a || r.fin > a) ? r.fin : a), null);
+  const semanasHastaUltima = ultimoFin && hoy ? Math.max(0, Math.ceil(diasEntre(hoy, ultimoFin) / 7)) : null;
+  return {
+    cantidad: filas.length, abiertas, diasPromedio: promedio(filas.map((f) => f.diasTarde)), ots: filas,
+    horasFalta: redondear(horasFalta),
+    porEtapa: ETAPAS_PLAN.map(({ id, nombre }) => ({ etapa: id, nombre, horas: redondear(porEtapa[id]) })),
+    masHoras: masHoras ? { etapa: masHoras.id, nombre: masHoras.nombre, horas: redondear(porEtapa[masHoras.id]) } : null,
+    ultimoFin, semanasHastaUltima,
+  };
 }
 
 /** OT en pausa ahora, con el motivo. */
@@ -318,12 +387,12 @@ export function armarPanel(d) {
   const filas = semanas.map((s) => {
     const informe = calcularInforme({ periodo: { tipo: "semana", ...s }, items, etapasCodigo, piezas, pasos, manual, avance, proyectos: porOtProyecto, vivo, retrabajos, pausas });
     const produccion = produccionDeSemana(tablero.porOt, pasos, s, precios, estimadas);
-    const capacidad = capacidadPlanta(planta, diasDelPeriodo(s.desde, s.hasta), { feriados, ausencias }).gente;
+    const capacidad = capacidadPlanta(planta, diasDelPeriodo(s.desde, s.hasta), { feriados, ausencias });
     return {
       ...s,
       futura: s.desde > hoy,
       entregas: entregasDeSemana(tablero.porOt, s),
-      plan: { cumplimiento: informe.resumen.cumplimiento, procesosPlanificados: informe.resumen.procesosPlanificados, procesosCumplidos: informe.resumen.procesosCumplidos, carga: cargaDeSemana(items, s, capacidad) },
+      plan: { cumplimiento: informe.resumen.cumplimiento, procesosPlanificados: informe.resumen.procesosPlanificados, procesosCumplidos: informe.resumen.procesosCumplidos, carga: cargaDeSemana(items, s, capacidad, params) },
       produccion,
       calidad: calidadDeSemana({ s, retrabajos, producidas: produccion.otsLista, noConformidades, defectos, pendientes }),
       maquinas: maquinasDeSemana({ s, maquinas, fallas, ahora: ahoraMs }),
@@ -341,7 +410,7 @@ export function armarPanel(d) {
     conPrecios: !!precios,
     ahora: {
       enProceso: enProceso(tablero.columnas, precios, estimadas),
-      atrasadas: atrasadasPlan(vivo, porOtProyecto),
+      atrasadas: atrasadasPlan(vivo, porOtProyecto, hoy),
       pausadas: pausadasAhora(pausas, porOtProyecto),
       pendientesAbiertos: (pendientes || []).filter((p) => !p.resuelto).length,
     },
