@@ -19,6 +19,7 @@ import { tieneModulo } from "../../lib/modulos";
 import ElegirOtCarga from "../ElegirOtCarga";
 import RetirarMaterial from "../RetirarMaterial";
 import EscanearPiezas from "../EscanearPiezas";
+import PiezasOtOperario from "../PiezasOtOperario";
 import ChecklistVehiculo from "../ChecklistVehiculo";
 import MiMantenimiento, { useMiMantenimiento } from "../MiMantenimiento";
 import MiCaja, { useMiCaja, detalleMiCaja } from "../MiCaja";
@@ -55,6 +56,9 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
   const [elegirCarga, setElegirCarga] = useState(false);
   const [retirar, setRetirar] = useState(false);
   const [escanearPiezas, setEscanearPiezas] = useState(false);
+  // 🧩 Piezas de una OT (26/11): elegir la OT y mirar cuántas piezas van escaneadas
+  const [elegirPiezas, setElegirPiezas] = useState(false);
+  const [piezasDe, setPiezasDe] = useState(null);
   // 📄 PDF de las OT (carpeta de Drive): sin carpeta conectada no hay botón
   const conProyectos = !demo && tieneModulo(empresa, "proyectos");
   const pdfsOt = usePdfsOt(conProyectos);
@@ -172,6 +176,7 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
           <BotonAccion icono="🚚" titulo="Mis viajes" detalle={detalleMisViajes(viajes.viajes, hoyArg())} destacado={viajes.viajes.some((v) => v.estado === "en_camino" || (v.estado === "planificado" && v.fecha <= hoyArg()))} onClick={() => setVerViajes(true)} />
         )}
         {conTareas && !demo && <BotonAccion icono="🧩" titulo="Escanear piezas" detalle="Marcá por qué etapa pasó cada pieza" destacado onClick={() => setEscanearPiezas(true)} />}
+        {conTareas && !demo && <BotonAccion icono="📋" titulo="Piezas de una OT" detalle="Mirá por módulo cuántas piezas van escaneadas" onClick={() => setElegirPiezas(true)} />}
         {conProyectos && pdfsOt && <BotonAccion icono="📄" titulo="Ver PDF de una OT" detalle="Escaneá el QR de la OT, una pieza o un módulo" onClick={() => setVerPdf(true)} />}
         {conStock && <BotonAccion icono="📦" titulo="Retirar material" detalle="Escaneá el QR del artículo y anotá cuánto sacás" onClick={() => setRetirar(true)} />}
         {/* Acopio y carga: el responsable elige la OT sin depender del QR de un rótulo */}
@@ -196,6 +201,12 @@ export default function HomeEmp({ usuario, ctx, empresa, tareaActiva = null, eta
       {/* El instalador trabaja en obra: el plan de la planta no le sirve (auditoría 01/11) */}
       {!demo && !usuario?.es_instalador && tieneModulo(empresa, "proyectos") && <PlanSemana divisionUsuario={usuario?.division} />}
       {escanearPiezas && <EscanearPiezas usuario={usuario} etapas={etapas} tareaActiva={tareaActiva} onClose={() => setEscanearPiezas(false)} />}
+      {elegirPiezas && (
+        <ElegirOtCarga empresaId={usuario.empresa_id || empresa?.id} titulo="¿De qué OT querés ver las piezas?" verbo="Ver las piezas de"
+          textoEscanear="📷 Escanear la OT, una pieza o un módulo" ayudaEscaner="Apuntá a la etiqueta de una pieza o de un módulo, o al QR de la OT"
+          onClose={() => setElegirPiezas(false)} onElegir={(ot) => { setElegirPiezas(false); setPiezasDe(ot); }} />
+      )}
+      {piezasDe && <PiezasOtOperario empresaId={usuario.empresa_id || empresa?.id} ot={piezasDe} onClose={() => setPiezasDe(null)} />}
       {verPlanillas && <MisPlanillas datos={planillas} onClose={() => setVerPlanillas(false)} />}
       {verPdf && <VerPdfOt onClose={() => setVerPdf(false)} />}
       {avisarFalla && <AvisarFalla onClose={() => { setAvisarFalla(false); mant.cargar(); }} />}

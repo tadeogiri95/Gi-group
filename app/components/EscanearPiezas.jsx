@@ -10,7 +10,8 @@
 // El QR de una pieza es el mismo para todas sus unidades: cada escaneo anota
 // la siguiente que falta ("3 de 7 en Corte").
 // Sin señal, el escaneo se guarda y se manda solo cuando vuelve la conexión.
-// Desde el 04/11, cada pieza escaneada muestra 📄 para abrir el PDF de su OT.
+// Desde el 04/11, cada pieza escaneada muestra 📄 para abrir el PDF de su OT,
+// y desde el 26/11 📋 para ver las piezas de la OT con cuántas van escaneadas.
 // codigoInicial: el QR leído con la cámara del celular (link ?qr=, ver
 // QrAbierto.jsx); queda esperando que el operario elija la etapa y confirme.
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -23,8 +24,9 @@ import { useOts } from "../hooks/useOts";
 import { usePdfsOt } from "../hooks/usePdfsOt";
 import { indicePdfs } from "../lib/pdfOt";
 import { LinkPdfOt } from "./PdfOt";
+import PiezasOtOperario, { CLAVE_ETAPA_PIEZAS } from "./PiezasOtOperario";
 
-const CLAVE_ETAPA = "gypi_etapa_piezas";
+const CLAVE_ETAPA = CLAVE_ETAPA_PIEZAS;
 // Sin leerlo este rato, el QR salió de cuadro y el próximo escaneo cuenta
 const FUERA_DE_CUADRO_MS = 1000;
 const MAX_RESULTADOS = 30;
@@ -55,6 +57,8 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
   const [resultados, setResultados] = useState([]);
   const [numero, setNumero] = useState("");
   const [leido, setLeido] = useState(codigoInicial);
+  // 26/11: 📋 en cada pieza escaneada abre las piezas de su OT con el avance
+  const [verOt, setVerOt] = useState(null);
   const vistos = useRef(new Map());
   const contador = useRef(0);
 
@@ -177,6 +181,10 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
                     {r.detalle && <div className="text-[12px] mt-0.5 opacity-90">{r.detalle}</div>}
                   </div>
                   {r.ot && <LinkPdfOt ot={r.ot} indice={indicePdf} />}
+                  {r.ot && (
+                    <button onClick={() => setVerOt(r.ot)} aria-label={`Ver las piezas de la OT ${r.ot}`}
+                      className="min-w-[44px] min-h-[44px] bg-transparent border-none text-[18px] cursor-pointer">📋</button>
+                  )}
                   {r.otra && (
                     <button onClick={() => { vistos.current.delete(`${etapa}|${r.otra}`); anotar(r.otra); }}
                       className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold cursor-pointer text-current underline">{r.lados ? "+1 lado" : "+1 otra"}</button>
@@ -190,6 +198,7 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
           </ul>
         )}
       </div>
+      {verOt && <PiezasOtOperario empresaId={usuario?.empresa_id} ot={verOt} onClose={() => setVerOt(null)} />}
     </Modal>
   );
 }
