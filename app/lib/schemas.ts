@@ -319,6 +319,13 @@ export const piezasBody = z.discriminatedUnion("accion", [
       etapas: etapasPieza,
       // Lados con canto (L1A…L2B con E y COLOR, 25/11); null = la planilla no los trae
       lados: z.number().int().min(0).max(4).nullable().optional(),
+      // Canto de cada lado (26/11, migración 210): espesor, color y largo en mm
+      cantos: z.array(z.object({
+        l: z.enum(["l1a", "l1b", "l2a", "l2b"]),
+        e: z.number().positive().max(10),
+        c: z.string().trim().min(1).max(60),
+        mm: z.number().positive().max(99999),
+      }).strict()).max(4).nullable().optional(),
     }).strict()).min(1).max(1000)
       .refine((l) => l.reduce((n, r) => n + r.cantidad, 0) <= 3000, { message: "Una OT puede tener hasta 3000 piezas" })
       .refine((l) => new Set(l.map((r) => r.nombre)).size === l.length, { message: "Hay renglones con el mismo nombre" }),
@@ -362,6 +369,22 @@ export const MAX_RENGLONES_MOVIMIENTO = 200;
 const skuMovimiento = z.string().trim().min(1).max(60).regex(/^[\w.-]+$/, "Código de artículo inválido");
 const fechaMovimiento = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "La fecha no es válida").nullable().optional().transform((v) => v || null);
 const cantidadMovimiento = z.number().finite().refine((n) => n !== 0 && Math.abs(n) < 1e10, { message: "Cantidad inválida" });
+// Canto usado (26/11, migración 210): asentar en el MRP el canto de los
+// escaneos, o elegir qué artículo es un tipo de canto
+const claveCanto = z.string().trim().min(3).max(100).regex(/^\d+(\.\d+)?\|[^|]{1,60}\|(\d+(\.\d+)?)?$/, "Tipo de canto inválido");
+export const cantoUsadoBody = z.discriminatedUnion("accion", [
+  z.object({
+    accion: z.literal("asentar"),
+    ot: otSuelto,
+    renglones: z.array(z.object({
+      clave: claveCanto,
+      sku: skuMovimiento,
+      metros: z.number().finite().positive().max(100000),
+    }).strict()).min(1).max(50),
+  }).strict(),
+  z.object({ accion: z.literal("elegir"), clave: claveCanto, sku: skuMovimiento }).strict(),
+]);
+
 export const movimientoStockBody = z.discriminatedUnion("accion", [
   z.object({
     accion: z.literal("registrar"),

@@ -47,7 +47,7 @@ test("botones — Proyectos: Órdenes de trabajo y Reportes; Inventario: Stock y
   assert.deepEqual(labels("proyectos"), ["Órdenes de trabajo", "Reportes"]);
   // 17/11: Movimientos con lugar propio; Inventario (valorizado) solo para la oficina
   assert.deepEqual(labels("inventario"), ["Stock", "Movimientos", "Compras"]);
-  assert.deepEqual(opcionesBoton("inventario", PLANTA, { rol: "gerencial" }).map((o) => o.label), ["Stock", "Inventario valorizado", "Movimientos", "Compras"]);
+  assert.deepEqual(opcionesBoton("inventario", PLANTA, { rol: "gerencial" }).map((o) => o.label), ["Stock", "Inventario valorizado", "Movimientos", "Canto usado", "Compras"]);
   assert.deepEqual(opcionesBoton("inventario", PLANTA, { rol: "operativo" }).map((o) => o.label), ["Stock", "Movimientos", "Compras"]);
   assert.deepEqual(labels("mantenimiento"), ["Flota vehicular", "Maquinaria"]);
   // Los enlaces viejos a Planta van al botón nuevo

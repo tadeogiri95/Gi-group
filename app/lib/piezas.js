@@ -177,6 +177,34 @@ function columnasLados(cols) {
 const contarLados = (celdas, lados) => lados.filter((l) => tieneValor(celdas[l.e]) && tieneValor(celdas[l.color])).length;
 
 /**
+ * Consumo de canto (26/11, Tadeo): qué canto lleva cada lado, en el orden
+ * L1 A, L1 B, L2 A, L2 B. [{ l, e, c, mm }]: l = el lado, e = el espesor
+ * ("0.45-" → 0.45), c = el color ("GRAFITO"), mm = el largo del lado (L1 para
+ * L1 A y L1 B, L2 para L2 A y L2 B). Un lado sin espesor que se entienda o sin
+ * largo no va (no se puede medir).
+ */
+function cantosDeRenglon(celdas, lados, l1, l2) {
+  const out = [];
+  for (const l of lados) {
+    if (!tieneValor(celdas[l.e]) || !tieneValor(celdas[l.color])) continue;
+    const e = espesorCanto(celdas[l.e]);
+    const mm = l.lado.startsWith("l1") ? l1 : l2;
+    const c = String(celdas[l.color] ?? "").replace(/\s+/g, " ").trim().toUpperCase().slice(0, 60);
+    if (e == null || !mm || !c) continue;
+    out.push({ l: l.lado, e, c, mm });
+  }
+  return out;
+}
+
+/** Espesor del canto como lo escribe Técnica: "0.45-", "0,45", "2-" → 0.45, 2; null si no se entiende. */
+export function espesorCanto(texto) {
+  const m = String(texto ?? "").replace(",", ".").match(/\d+(\.\d+)?/);
+  if (!m) return null;
+  const n = Number(m[0]);
+  return n > 0 && n < 10 ? Math.round(n * 100) / 100 : null;
+}
+
+/**
  * Columnas de la planilla que corresponden a los nombres que la empresa
  * escribió para una etapa. Una columna cuenta si su título, o el del grupo
  * de arriba, es uno de esos nombres (o empieza así, para nombres de 4 letras
@@ -203,7 +231,8 @@ function columnasDeRegla(cols, columnas) {
  *   - Etapa con los lados del panel entre sus columnas (L1A…L2B, la de
  *     canto): las piezas con algún lado con canto (E y COLOR distintos de 0).
  * Cada renglón trae lados: cuántos lados con canto tiene (null si lo pegado
- * no tiene las columnas de los lados).
+ * no tiene las columnas de los lados), y cantos: el espesor, color y largo de
+ * cada uno (consumo de canto, 26/11).
  * Se puede corregir a mano por renglón.
  * @param {string} texto
  * @param {object[]} reglas
@@ -267,16 +296,19 @@ export function leerPiezas(texto, reglas = []) {
       nombre = nuevo;
     }
     const conCanto = lados.length ? contarLados(celdas, lados) : null;
+    const l1 = col.l1 >= 0 ? leerMedida(celdas[col.l1]) : null;
+    const l2 = col.l2 >= 0 ? leerMedida(celdas[col.l2]) : null;
     const etapas = porRegla.filter((x) => (x.porLados ? conCanto > 0 : !x.indices || algunaCon(celdas, x.indices))).map((x) => x.regla.codigo);
     renglones.push({
       nombre,
       modulo: moduloDe(nombre),
       material: col.material >= 0 ? limpiar(celdas[col.material], LIMITES_PIEZA.material) : null,
-      l1: col.l1 >= 0 ? leerMedida(celdas[col.l1]) : null,
-      l2: col.l2 >= 0 ? leerMedida(celdas[col.l2]) : null,
+      l1,
+      l2,
       cantidad,
       etapas,
       lados: conCanto,
+      cantos: lados.length ? cantosDeRenglon(celdas, lados, l1, l2) : null,
     });
     piezas += cantidad;
   }
@@ -288,7 +320,7 @@ export function expandirPiezas(renglones = []) {
   const out = [];
   renglones.forEach((r, i) => {
     for (let u = 1; u <= r.cantidad; u++) {
-      out.push({ renglon: i, nombre: r.nombre, modulo: r.modulo ?? null, material: r.material ?? null, l1: r.l1 ?? null, l2: r.l2 ?? null, unidad: u, de: r.cantidad, etapas: r.etapas, lados: r.lados ?? null });
+      out.push({ renglon: i, nombre: r.nombre, modulo: r.modulo ?? null, material: r.material ?? null, l1: r.l1 ?? null, l2: r.l2 ?? null, unidad: u, de: r.cantidad, etapas: r.etapas, lados: r.lados ?? null, cantos: r.cantos ?? null });
     }
   });
   return out;

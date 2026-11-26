@@ -216,7 +216,7 @@ async function anular(sesion, id) {
 }
 
 /** Columnas que pasan del movimiento viejo al corregido. */
-const COPIA = ["tipo", "sku", "nombre", "unidad", "division", "cantidad", "ot", "proveedor", "proveedor_id", "comprobante", "precio_unitario", "notas", "empleado_id", "legajo", "empleado_nombre", "fecha", "created_at"];
+const COPIA = ["tipo", "sku", "nombre", "unidad", "division", "cantidad", "ot", "proveedor", "proveedor_id", "comprobante", "precio_unitario", "notas", "empleado_id", "legajo", "empleado_nombre", "fecha", "created_at", "canto"];
 
 async function corregir(sesion, id, cambios) {
   const e = sesion.empresa_id;

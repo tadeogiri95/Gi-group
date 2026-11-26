@@ -125,6 +125,7 @@ export const MIGRACIONES = [
   { n: 207, archivo: "207_logistica_compras.sql", nombre: "Logística: retirar órdenes de compra", tablas: { logistica_paradas: ["orden_compra_id", "recepcion_id", "remito_proveedor"] } },
   { n: 208, archivo: "208_logistica_ubicacion.sql", nombre: "Logística: tablero y ubicación", tablas: { logistica_viajes: ["salida_lat", "llegada_lat", "ubic_lat", "ubic_at"] } },
   { n: 209, archivo: "209_canto_por_lados.sql", nombre: "Canto por lados en el escaneo", tablas: { piezas_ot: ["lados"], lados_pieza: [] } },
+  { n: 210, archivo: "210_consumo_canto.sql", nombre: "Consumo de canto desde los escaneos", tablas: { piezas_ot: ["cantos"], movimientos_stock: ["canto"], canto_articulos: [] } },
 ];
 
 /** Lo que pide una migración, como lista de { tabla, columnas } y funciones. */

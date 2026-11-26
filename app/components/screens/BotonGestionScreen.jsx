@@ -21,6 +21,7 @@ import StockScreen from "../StockScreen";
 import ComprasScreen from "../ComprasScreen";
 import InventarioScreen from "../InventarioScreen";
 import MovimientosScreen, { pedirCarga } from "../MovimientosScreen";
+import CantoUsado from "../CantoUsado";
 import FlotaScreen from "../FlotaScreen";
 import MaquinariaScreen from "../MaquinariaScreen";
 // Logística: Viajes (204) y Lugares y obras (203)
@@ -118,6 +119,7 @@ export default function BotonGestionScreen({ boton, empresa, usuario, onVerPlane
         {!bloqueado && actual.id === "stock" && <StockScreen empresa={empresa} empresaId={empresaId} usuario={usuario} onPlanillas={onPlanillas} onCargar={conMovimientos ? irACargar : null} />}
         {!bloqueado && actual.id === "inventario-valorizado" && <InventarioScreen empresa={empresa} usuario={usuario} onCargar={conMovimientos ? irACargar : null} />}
         {!bloqueado && actual.id === "movimientos" && <MovimientosScreen usuario={usuario} />}
+        {!bloqueado && actual.id === "canto-usado" && <CantoUsado />}
         {!bloqueado && actual.id === "compras" && <ComprasScreen empresaId={empresaId} empresa={empresa} usuario={usuario} />}
         {!bloqueado && actual.id === "flota" && <FlotaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "flota-alertas" ? "alertas" : "vehiculos"} />}
         {!bloqueado && actual.id === "maquinaria" && <MaquinariaScreen empresaId={empresaId} empresa={empresa} usuario={usuario} vistaInicial={seccion === "maquinaria-alertas" ? "alertas" : "maquinas"} />}
