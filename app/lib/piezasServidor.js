@@ -32,13 +32,18 @@ export async function reglasDeEmpresa(e, opts = {}) {
 /** ¿Falta la migración 209 (piezas_ot.lados)? */
 export const falta209 = (err) => /lados/.test(String(err?.message)) && /column|does not exist|could not find|PGRST204|42703/i.test(String(err?.message));
 
+/** ¿Falta la migración 210 (piezas_ot.cantos)? */
+export const falta210 = (err) => /cantos/.test(String(err?.message)) && /column|does not exist|could not find|PGRST204|42703/i.test(String(err?.message));
+
 async function upsertPiezas(filas, opts) {
   try {
     await upsertLotes(filas, opts);
   } catch (err) {
-    // Sin la migración 209 las piezas se guardan igual, sin los lados (cuentan 1)
+    // Sin la migración 210 se guardan sin el canto de cada lado; sin la 209,
+    // también sin los lados (cuentan 1)
+    if (falta210(err)) return upsertPiezas(filas.map(({ cantos, ...resto }) => resto), opts);
     if (!falta209(err)) throw err;
-    await upsertLotes(filas.map(({ lados, ...resto }) => resto), opts);
+    await upsertLotes(filas.map(({ lados, cantos, ...resto }) => resto), opts);
   }
 }
 
@@ -80,6 +85,7 @@ export async function guardarPiezas({ e, ot, renglones, opts = {}, empleadoId = 
     de: p.de,
     etapas: ordenar(p.etapas),
     lados: Number.isInteger(p.lados) ? p.lados : null,
+    cantos: Array.isArray(p.cantos) ? p.cantos : null,
     cargada_at: ahora,
     creado_por: empleadoId,
   })), opts);

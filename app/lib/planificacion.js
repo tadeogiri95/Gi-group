@@ -29,6 +29,8 @@ export const PARAMETROS = [
   { id: "min_armado_gabinete", grupo: "tiempos", label: "Tiempo de armado por gabinete", unidad: "min", ayuda: "Incluye el embalaje.", min: 0, max: 1440 },
   { id: "eficiencia", grupo: "tiempos", label: "Factor de eficiencia", unidad: "%", ayuda: "Qué parte de la jornada se trabaja de verdad. Uno solo para toda la planta.", min: 1, max: 100 },
   { id: "pct_mecanizado", grupo: "relaciones", label: "Placas que se mecanizan", unidad: "% del total de placas", ayuda: "Solo se usa con el cálculo \"% de placas × mecanizados por placa\".", min: 0, max: 100 },
+  // 26/11 (Tadeo): se suma al canto usado de los escaneos al asentarlo en el MRP
+  { id: "pct_desperdicio_canto", grupo: "relaciones", label: "Desperdicio de canto", unidad: "%", ayuda: "Se suma a los metros de canto de los escaneos (Materiales → Canto usado).", min: 0, max: 100, defecto: 5 },
   { id: "maquinas_corte", grupo: "maquinas", label: "Seccionadoras", unidad: "máquinas", min: 1, max: 20, entero: true, defecto: 1 },
   { id: "maquinas_cnc", grupo: "maquinas", label: "CNC", unidad: "máquinas", min: 1, max: 20, entero: true, defecto: 2 },
   { id: "personas_canteadora", grupo: "maquinas", label: "Personas en la canteadora", unidad: "personas", min: 1, max: 2, entero: true, defecto: 2 },
