@@ -204,7 +204,7 @@ export default function FinanzasInformeTesoreria() {
           La plata de hoy en cajas, bancos e inversiones, si los plazos fijos alcanzan para los cheques que se debitan y lo que hay para cobrar. Siempre con los datos de hoy ({dma(r.hoy)}).
         </p>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => { setDatos(null); cargar(); }}>🔄 Actualizar</button>
-        <BotonesExportar nombre="el Informe de tesorería" informe={() => exportarInformeTesoreria(r)} />
+        <BotonesExportar nombre="el Reporte de Tesorería" informe={() => exportarInformeTesoreria(r)} />
       </div>
 
       <dl className="m-0 grid grid-cols-2 sm:grid-cols-5 gap-2">

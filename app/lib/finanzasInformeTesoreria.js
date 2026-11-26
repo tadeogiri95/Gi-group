@@ -294,7 +294,7 @@ ${resto ? `<tr><td colspan="4" class="dim">… y ${resto} cheques más (en el Ex
 
 /** { titulo, html, hojas, bloques } para los botones 📄 PDF y 📊 Excel. */
 export function exportarInformeTesoreria(r, { empresa = "" } = {}) {
-  const titulo = `Informe de tesorería al ${dma(r.hoy)}`;
+  const titulo = `Reporte de Tesorería al ${dma(r.hoy)}`;
   const filasCalce = (xs) => xs.map((t) => [t.etiqueta, N(t.cheques), N(t.plazos), N(t.diferencia), NB(t.acumulado)]);
   const cabCalce = (c) => [B(c), B("Cheques a debitar"), B("Vencen plazos fijos"), B("Diferencia"), B("Acumulado")];
   return {

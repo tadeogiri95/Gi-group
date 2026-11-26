@@ -3,9 +3,10 @@
 //
 //   GET ?solo=config → solo la configuración (el % de materiales, 30 % por
 //       defecto; uno solo para toda Finanzas desde el 19/11).
-//   GET ?hasta=AAAA-MM[&division=X] → los 12 meses que terminan en ese mes
-//       (por defecto, el mes en curso), ya calculados; con division, lo de esa
-//       división y su % de lo compartido. Trae el resumen por división.
+//   GET ?hasta=AAAA-MM[&desde=AAAA-MM][&division=X] → los meses de desde a
+//       hasta (26/11; sin desde, los 12 que terminan en hasta; por defecto, el
+//       mes en curso; como mucho MESES_MAX), ya calculados; con division, lo
+//       de esa división y su % de lo compartido. Trae el resumen por división.
 //   POST { accion: "config", materiales_pct?, ponderador? } → el % de las
 //       entregas con que se estima el costo de materiales (0 = no estimar) y
 //       el % de lo compartido que va a cada división (suman 100).
@@ -43,7 +44,7 @@ import { materialesRealesDeOts } from "../../../lib/costoRealServidor";
 import { entregasEstimadas, MOTIVOS_NO_ESTIMADA } from "../../../lib/finanzasEntregasEstimadas";
 import { entregasDelPlan, detalleEntregas } from "../../../lib/finanzasEntregasPlan";
 import { plazosSinInteres } from "../../../lib/finanzasPlazosFijosServidor";
-import { CLAVE_RESULTADOS, configResultados, estadoResultados, finDeMes, mesesHasta, resumenDivisiones, validarPonderador } from "../../../lib/finanzasResultados";
+import { CLAVE_RESULTADOS, configResultados, estadoResultados, finDeMes, mesesEntre, resumenDivisiones, validarPonderador } from "../../../lib/finanzasResultados";
 
 export const maxDuration = 60;
 
@@ -98,7 +99,10 @@ export async function GET(request) {
   if (q.get("solo") === "config") return NextResponse.json({ config: await leerConfig(e) });
   const pedido = q.get("hasta");
   const hasta = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(pedido || "")) ? pedido : hoyAr().slice(0, 7);
-  const meses = mesesHasta(hasta);
+  const pedidoDesde = q.get("desde");
+  const meses = mesesEntre(pedidoDesde, hasta);
+  // El "desde" que de verdad se usa (si vino mal o muy largo, son 12 meses)
+  const desde = meses[0];
   try {
     const [cuentas, ops, proyectos, config, centros] = await Promise.all([
       leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre,rubro,linea_eerr,atribucion&order=codigo.asc`),
@@ -115,7 +119,7 @@ export async function GET(request) {
     ]);
     // Costo real de materiales de cada OT entregada (auditoría 12/11, parte 4), si el Dueño lo eligió
     const materialesOt = config.materiales_real ? await materialesDeEntregas(e, ops || [], cuentas || [], [...estimadas, ...plan.entregas].map((x) => x.proyecto_id)) : null;
-    const base = { ops: ops || [], cuentas: cuentas || [], proyectos: proyectos || [], centros: centros || [], hasta, materialesPct: config.materiales_pct, ponderador: config.ponderador, materialesOt, entregasEstimadas: estimadas, entregasPlan: plan.entregas };
+    const base = { ops: ops || [], cuentas: cuentas || [], proyectos: proyectos || [], centros: centros || [], hasta, desde, materialesPct: config.materiales_pct, ponderador: config.ponderador, materialesOt, entregasEstimadas: estimadas, entregasPlan: plan.entregas };
     const pedida = q.get("division") || "";
     const division = Object.keys(config.ponderador).includes(pedida) ? pedida : "";
     const estado = estadoResultados({ ...base, division });
@@ -130,7 +134,7 @@ export async function GET(request) {
     const plazos_sin_interes = await plazosSinInteres(sesion).catch(() => null);
     // Cada entrega de la ventana, con su origen (24/11)
     const entregas_detalle = await entregasDelMes(sesion, e, cuentas || [], meses, hasta, proyectos || [], plan.entregas, estimadas);
-    return NextResponse.json({ hasta, config, division, divisiones, por_division, estimadas_ot, no_estimadas_ot, entregas_detalle, plazos_sin_interes, ...estado });
+    return NextResponse.json({ hasta, desde, config, division, divisiones, por_division, estimadas_ot, no_estimadas_ot, entregas_detalle, plazos_sin_interes, ...estado });
   } catch (err) {
     if (falta179(err)) return NextResponse.json({ error: FALTA_179, falta_migracion: 179 }, { status: 409 });
     return errorFinanzas(err, "resultados GET");

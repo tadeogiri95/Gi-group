@@ -72,9 +72,9 @@ test("reporte mensual — resultados, flujo, fondos, valores y cuentas", () => {
   const r = reporteFinanciero({ ...base, tipo: "mes", fecha: "2026-10-15" });
   assert.equal(r.titulo, "Octubre 2026");
   assert.equal(r.para_revisar, 1);
-  // Resultados: solo la entrega es ingreso; la venta va aparte
+  // Resultados: solo la entrega es ingreso; la venta no entra (26/11: ni se muestra)
   assert.equal(r.resumen.entregas, 300000);
-  assert.equal(r.resultados.find((f) => f.id === "VTA").total, 200000);
+  assert.equal(r.resultados.find((f) => f.id === "VTA"), undefined);
   assert.equal(r.resultados.find((f) => f.id === "COM").total, 5000, "logística en comercialización");
   assert.equal(r.resumen.resultado, 235000);
   // Flujo: apertura de septiembre, el cobro y los pagos de octubre
@@ -90,7 +90,7 @@ test("reporte mensual — resultados, flujo, fondos, valores y cuentas", () => {
   assert.equal(r.cuentas_a_pagar.total, 80000);
   assert.deepEqual([r.resumen.a_cobrar, r.resumen.a_pagar], [340000, 105000]);
   const html = htmlReporte(r, { empresa: "Gi <Test>" });
-  assert.match(html, /Reporte financiero mensual · Gi &lt;Test&gt;/);
+  assert.match(html, /Informe Financiero Consolidado mensual · Gi &lt;Test&gt;/);
   for (const t of ["1. Resultados", "2. Flujo de caja", "3. Posición de fondos", "4. Valores a cobrar y a pagar", "5. Cuentas a cobrar y a pagar", "Hotel Norte", "Maderas SA", "Combustibles y lubricantes"]) assert.ok(html.includes(t), t);
 });
 
@@ -159,7 +159,7 @@ test("reporte a color con gráficos — barras, columnas y colores que salen al 
   const b = svgBarras([{ nombre: "A <b>", valor: 100, color: "#000" }, { nombre: "B", valor: -50, color: "#111" }]);
   assert.ok(b.includes("A &lt;b&gt;"), "escapa los nombres");
   assert.match(b, /<line /, "con negativos, la línea del cero");
-  assert.match(htmlReporte(reporteFinanciero({ ...base, tipo: "rango", fecha: "2026-10-01", hasta: "2026-10-10" })), /<h1>Reporte financiero<\/h1>/);
+  assert.match(htmlReporte(reporteFinanciero({ ...base, tipo: "rango", fecha: "2026-10-01", hasta: "2026-10-10" })), /<h1>Informe Financiero Consolidado<\/h1>/);
 });
 
 const token = async (rol) => (await signAccessToken({ empleadoId: EMP, empresaId: E, legajo: 7, rol })).token;
@@ -207,11 +207,11 @@ test("Reporte financiero — elegir período, generar y ver", async () => {
   fireEvent.change(screen.getByLabelText("Fecha del período"), { target: { value: "2026-10-07" } });
   assert.ok(screen.getByText("Semana del 05/10/2026 al 11/10/2026"));
   fireEvent.click(screen.getByRole("button", { name: /Generar reporte/ }));
-  await waitFor(() => assert.ok(screen.getByTitle("Reporte financiero")));
+  await waitFor(() => assert.ok(screen.getByTitle("Informe Financiero Consolidado")));
   assert.match(pedidos[0], /tipo=semana&fecha=2026-10-07/);
   assert.ok(screen.getByRole("button", { name: /Descargar PDF a color/ }));
   assert.ok(screen.getByRole("button", { name: /Imprimir/ }));
-  assert.match(screen.getByTitle("Reporte financiero").getAttribute("srcdoc"), /Posición de fondos/);
+  assert.match(screen.getByTitle("Informe Financiero Consolidado").getAttribute("srcdoc"), /Posición de fondos/);
 });
 
 test("Reporte financiero — ◀ ▶ pasan de mes y Entre fechas pide desde y hasta", async () => {
@@ -234,7 +234,7 @@ test("Reporte financiero — ◀ ▶ pasan de mes y Entre fechas pide desde y ha
   fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-10-31" } });
   assert.ok(screen.getByText("Del 01/09/2026 al 31/10/2026"));
   fireEvent.click(screen.getByRole("button", { name: /Generar reporte/ }));
-  await waitFor(() => assert.ok(screen.getByTitle("Reporte financiero")));
+  await waitFor(() => assert.ok(screen.getByTitle("Informe Financiero Consolidado")));
   assert.match(pedidos[0], /tipo=rango&fecha=2026-09-01&hasta=2026-10-31/);
 });
 

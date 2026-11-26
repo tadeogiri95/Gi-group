@@ -33,10 +33,20 @@ test("Estado de Resultados: por mes, con secciones, % y total; el Excel abre", (
   const html = inf.html();
   assert.match(html, /OT 7001 \(estimado\)/);
   assert.match(html, /class="n rojo">-50</);
+  assert.match(html, /class="n verde">200</, "26/11: lo que suma, en verde");
   assert.match(html, /40 %/);
-  const [hoja] = inf.hojas();
-  assert.deepEqual(hoja.filas[3].length, 4, "concepto, 2 meses y total");
-  assert.equal(hoja.filas[4][3].v, 300);
+  // 26/11: primero la vista resumida (sin los renglones) y después la completa, cada una en su hoja
+  assert.equal(inf.paginaPorBloque, ".pagina");
+  const [resumida, completa] = html.split('<section class="pagina">').slice(1);
+  assert.match(resumida, /Vista resumida/);
+  assert.doesNotMatch(resumida, /OT 7001/);
+  assert.match(completa, /Vista completa[\s\S]*OT 7001/);
+  const [hoja, hojaCompleta] = inf.hojas();
+  assert.deepEqual([hoja.nombre, hojaCompleta.nombre], ["Resumido", "Completo"]);
+  assert.deepEqual(hoja.filas[4].length, 4, "concepto, 2 meses y total");
+  assert.equal(hoja.filas[5][3].v, 300);
+  assert.equal(hoja.filas.length, 8, "título, subtítulo, nota, vacío, encabezado y 3 filas");
+  assert.equal(hojaCompleta.filas.length, 9);
   assert.ok(armarXlsx(inf.hojas()).length > 500);
 });
 
@@ -89,4 +99,11 @@ test("cada pantalla tiene su 📄 PDF y 📊 Excel", () => {
   assert.match(leer("FinanzasPatrimonio.jsx"), /informePatrimonio\(datos\?\.situacion/);
   assert.match(leer("FinanzasCheques.jsx"), /informeCheques\(\{ calendario, cheques, hoy, quien \}\)/);
   assert.match(leer("FinanzasCuentasPagarCobrar.jsx"), /informeCuentas\(r, ladoId\)/);
+});
+
+test("26/11 — PDF del Estado de Resultados: una hoja por bloque, la primera con la cabecera", async () => {
+  const { cortesPorBloque } = await import("../app/lib/pdfDeHtml.js");
+  assert.deepEqual(cortesPorBloque([120, 900], 2500), [0, 900], "la vista completa arranca hoja nueva aunque sea larga");
+  assert.deepEqual(cortesPorBloque([120], 600), [0]);
+  assert.deepEqual(cortesPorBloque([], 600), [0]);
 });

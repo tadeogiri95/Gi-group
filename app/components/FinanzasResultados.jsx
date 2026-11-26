@@ -1,20 +1,24 @@
 'use client';
-// app/components/FinanzasResultados.jsx — Finanzas → 📊 Resultados (parte
-// F6a; migración 179; /api/finanzas/resultados; reglas en
+// app/components/FinanzasResultados.jsx — Finanzas → 📊 Estado de Resultados
+// (parte F6a; migración 179; /api/finanzas/resultados; reglas en
 // app/lib/finanzasResultados.js).
 //
-// El estado de resultados devengado de 12 meses, ordenado según NIIF (gastos
+// El estado de resultados devengado, mes por mes, del lapso que elija el
+// Dueño con Desde/Hasta (26/11; arranca con los últimos 12 meses), ordenado según NIIF (gastos
 // por función): ingresos por entregas, costo de ventas, ganancia bruta,
 // comercialización, administración, otros, resultado operativo, financieros,
 // impuesto a las ganancias y resultado del período. Cada sección se abre y se
 // cierra; el costo de materiales se estima con un % de las entregas mientras
 // no haya costo real. Con el ponderador (⚙ Compartidos) se ve cada división:
 // lo suyo entero y su % de lo compartido.
+// Colores (26/11): lo que suma al resultado en verde y lo que resta en rojo,
+// sin signo (los intereses ganados salen en positivo y verde); los
+// resultados llevan su signo.
 // Solo el rol Dueño (la pantalla ni aparece para los demás).
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../lib/supabase";
 import { hoyAr } from "../lib/finanzasOperaciones";
-import { nombreMes, claveDivision } from "../lib/finanzasResultados";
+import { nombreMes, claveDivision, efectoDe, importeVisible, mesesHasta, mesesEntre, MESES_MAX } from "../lib/finanzasResultados";
 import { textoPctEstimado } from "../lib/finanzasOtClientes";
 import ConfigMateriales from "./FinanzasPctMateriales";
 import BotonesExportar from "./FinanzasExportar";
@@ -78,7 +82,7 @@ function ConfigPonderador({ divisiones, valor, onCerrar, onGuardado }) {
 function PorDivision({ filas }) {
   return (
     <section aria-label="Por división" className="mb-3">
-      <h3 className="m-0 mb-1 text-[14px] font-bold text-gypi-text">Por división, 12 meses (con su parte de lo compartido)</h3>
+      <h3 className="m-0 mb-1 text-[14px] font-bold text-gypi-text">Por división, todo el lapso elegido (con su parte de lo compartido)</h3>
       <div className="overflow-x-auto border border-gypi-border rounded-lg">
         <table className="w-full border-collapse text-[13px]" aria-label="Resumen por división">
           <thead>
@@ -94,7 +98,7 @@ function PorDivision({ filas }) {
                 <td className="px-2 py-1 text-right font-mono whitespace-nowrap">{miles(f.ingresos)}</td>
                 <td className="px-2 py-1 text-right font-mono whitespace-nowrap">{miles(f.cmv)}</td>
                 <td className="px-2 py-1 text-right font-mono whitespace-nowrap">{miles(f.gastos + f.financiero + f.impuestos)}</td>
-                <td className={`px-2 py-1 text-right font-mono whitespace-nowrap ${f.resultado < 0 ? "text-gypi-red" : ""}`}>{miles(f.resultado)}</td>
+                <td className={`px-2 py-1 text-right font-mono whitespace-nowrap ${f.resultado < 0 ? "text-gypi-red" : f.resultado > 0 ? "text-gypi-green-ink" : ""}`}>{miles(f.resultado)}</td>
                 <td className="px-2 py-1 text-right font-mono">{Math.abs(f.ingresos) >= 0.01 ? pct(Math.round((f.resultado / f.ingresos) * 1000) / 10) : ""}</td>
               </tr>
             ))}
@@ -207,8 +211,12 @@ export function DetalleEntregas({ filas, meses, mes, onMes, division }) {
   );
 }
 
+/** Verde si suma al resultado, rojo si resta (26/11). */
+const COLOR_EFECTO = { suma: "text-gypi-green-ink", resta: "text-gypi-red" };
+
 export default function FinanzasResultados() {
   const [hasta, setHasta] = useState(hoyAr().slice(0, 7));
+  const [desde, setDesde] = useState(() => mesesHasta(hoyAr().slice(0, 7))[0]);
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState(null);
   const [cargando, setCargando] = useState(false);
@@ -221,7 +229,7 @@ export default function FinanzasResultados() {
   const cargar = useCallback(async () => {
     setCargando(true);
     try {
-      const res = await apiFetch(`/api/finanzas/resultados?hasta=${hasta}${division ? `&division=${encodeURIComponent(division)}` : ""}`);
+      const res = await apiFetch(`/api/finanzas/resultados?desde=${desde}&hasta=${hasta}${division ? `&division=${encodeURIComponent(division)}` : ""}`);
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "No se pudo armar el estado de resultados");
       setDatos(d);
@@ -231,7 +239,7 @@ export default function FinanzasResultados() {
     } finally {
       setCargando(false);
     }
-  }, [hasta, division]);
+  }, [desde, hasta, division]);
   useEffect(() => { cargar(); }, [cargar]);
 
   const abrirCerrar = (id) => setCerradas((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -239,21 +247,30 @@ export default function FinanzasResultados() {
   if (error) return <p role="alert" className="m-[18px] text-[14px] text-gypi-red">⚠ {error}</p>;
   if (!datos) return <div className="flex-1 flex items-center justify-center py-10"><Spinner /></div>;
   const repartidas = Object.keys(datos.config?.ponderador || {});
+  // Si Desde/Hasta quedó al revés o es muy largo, el servidor muestra 12 meses: se avisa
+  const pedidos = mesesEntre(desde, hasta);
+  const ajustado = desde > hasta || pedidos.length !== datos.meses.length;
   const visibles = datos.filas.filter((f) => f.tipo === "seccion" || f.tipo === "resultado" || f.tipo === "pct" || !cerradas.has(f.seccion));
 
   return (
     <div className="flex-1 overflow-y-auto px-[18px] pb-6">
       <div className="flex flex-wrap items-end gap-2 mb-2">
         <label className="flex flex-col gap-1 text-[13px] font-semibold text-gypi-text">
-          Hasta el mes
-          <input type="month" className="g-input" aria-label="Hasta el mes" value={hasta} onChange={(e) => e.target.value && setHasta(e.target.value)} />
+          Desde
+          <input type="month" className="g-input" aria-label="Desde el mes" value={desde} max={hasta} onChange={(e) => e.target.value && setDesde(e.target.value)} />
         </label>
-        <p className="m-0 text-[13px] text-gypi-dim flex-1 min-w-[200px]">Devengado, 12 meses, en pesos y sin IVA, ordenado según NIIF (gastos por función). Ingresos = entregas de las OT (precio del Plan, el mes en que se finaliza la OT; las que no tienen precio van aparte, en celeste, con valor estimado): se compara lo producido contra los costos. Tocá una sección para abrirla o cerrarla.</p>
+        <label className="flex flex-col gap-1 text-[13px] font-semibold text-gypi-text">
+          Hasta
+          <input type="month" className="g-input" aria-label="Hasta el mes" value={hasta} min={desde} onChange={(e) => e.target.value && setHasta(e.target.value)} />
+        </label>
+        <p className="m-0 text-[13px] text-gypi-dim flex-1 min-w-[200px]">Devengado, mes por mes, en pesos y sin IVA, ordenado según NIIF (gastos por función). Ingresos = entregas de las OT (precio del Plan, el mes en que se finaliza la OT; las que no tienen precio van aparte, en celeste, con valor estimado): se compara lo producido contra los costos. <span className="text-gypi-green-ink font-semibold">Verde</span> = suma al resultado, <span className="text-gypi-red font-semibold">rojo</span> = resta. Tocá una sección para abrirla o cerrarla.</p>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setConfig(true)}>⚙ Materiales ({datos.config?.materiales_real ? "costo real" : pct(datos.config?.materiales_pct)})</button>
         <button type="button" className="g-btn g-btn-secondary" onClick={() => setReparto(true)}>⚙ Compartidos</button>
         <BotonesExportar nombre="el Estado de Resultados" informe={() => informeResultados(datos)} />
         {cargando && <Spinner size={16} />}
       </div>
+
+      {ajustado && <p className="m-0 mb-2 text-[13px] text-gypi-amber-ink">⚠ {desde > hasta ? "\"Desde\" es después de \"Hasta\"" : `Se pueden ver hasta ${MESES_MAX} meses juntos`}: te muestro los 12 meses que terminan en {nombreMes(hasta)}.</p>}
 
       {repartidas.length > 0 && (
         <>
@@ -290,7 +307,8 @@ export default function FinanzasResultados() {
               const aparte = datos.filas.find((x) => x.tipo === "seccion" && x.id === (f.tipo === "seccion" ? f.id : f.seccion))?.aparte;
               const sangria = f.tipo === "linea" ? "pl-6" : f.tipo === "grupo" ? "pl-4" : "pl-2";
               const valor = f.tipo === "pct" ? pct : miles;
-              const negativo = (n) => (f.tipo !== "pct" && n < 0 ? "text-gypi-red" : "");
+              const color = (n) => COLOR_EFECTO[efectoDe(f, n)] || "";
+              const ver = (n) => valor(importeVisible(f, n));
               return (
                 <tr key={f.id} className={`border-t border-gypi-border ${ESTILO[f.tipo]} ${f.entrega_estimada ? "bg-gypi-estimado text-gypi-cyan-ink" : ""} ${aparte ? "italic opacity-80" : ""}`} onClick={f.tipo === "seccion" ? () => abrirCerrar(f.id) : undefined}>
                   <td className={`pr-2 py-1 sticky left-0 ${fondo} ${sangria}`}>
@@ -298,8 +316,8 @@ export default function FinanzasResultados() {
                     {f.tipo === "seccion" ? <button type="button" className="bg-transparent border-none p-0 font-bold text-gypi-text cursor-pointer" aria-expanded={!cerradas.has(f.id)}>{f.nombre}</button> : f.nombre}
                     {f.estimado && <span className={f.entrega_estimada ? "" : "text-gypi-dim"}> {f.entrega_estimada ? "**" : "*"}</span>}
                   </td>
-                  {f.valores.map((v, i) => <td key={i} className={`px-2 py-1 text-right font-mono whitespace-nowrap ${negativo(v)}`}>{valor(v)}</td>)}
-                  <td className={`px-2 py-1 text-right font-mono whitespace-nowrap font-semibold ${negativo(f.total)}`}>{valor(f.total)}</td>
+                  {f.valores.map((v, i) => <td key={i} className={`px-2 py-1 text-right font-mono whitespace-nowrap ${color(v)}`}>{ver(v)}</td>)}
+                  <td className={`px-2 py-1 text-right font-mono whitespace-nowrap font-semibold ${color(f.total)}`}>{ver(f.total)}</td>
                 </tr>
               );
             })}

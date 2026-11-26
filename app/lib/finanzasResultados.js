@@ -1,7 +1,8 @@
 // app/lib/finanzasResultados.js — Finanzas, parte F6a (migración 179): el
 // estado de resultados, como la hoja EERR del libro.
 //
-//   - Base devengada, por mes, 12 meses hasta el mes elegido.
+//   - Base devengada, por mes, 12 meses hasta el mes elegido o, desde el
+//     26/11, el lapso Desde/Hasta que elija el Dueño (hasta MESES_MAX).
 //   - Cada cuenta va al renglón que dice su "clasificacion_eerr" en el plan de
 //     cuentas del libro (fin_cuentas.linea_eerr): ING_* ingresos, CMV_* costo
 //     de ventas, GO_* gastos operativos, FIN_* resultado financiero, IMP_*
@@ -29,12 +30,13 @@
 //     se entrega, Gypi anota su costo real de materiales (Costo de Mercadería
 //     Vendida contra Materias Primas). Ese asiento es el costo de materiales
 //     de la OT: sus entregas ya no van al % ni al costo calculado aparte.
-//   - IMP_IVA (IVA a pagar / a favor) va aparte y no entra en el resultado.
+//   - IMP_IVA (IVA a pagar / a favor) no entra en el resultado (desde el
+//     26/11 tampoco se muestra aparte).
 //   - Ordenado según NIIF (NIC 1, gastos por función), 10/11: el ingreso son
 //     SOLO las entregas (ING_ENT, menos descuentos y notas de crédito), para
 //     comparar lo producido y entregado contra los costos. Las ventas (OT
-//     cargadas en el Plan, todavía sin entregar) se muestran aparte y no
-//     entran. Después: costo de ventas → ganancia bruta → gastos de
+//     cargadas en el Plan, todavía sin entregar) no entran (y desde el
+//     26/11 ni se muestran). Después: costo de ventas → ganancia bruta → gastos de
 //     comercialización (incluye logística, diseño, IIBB y comercio e
 //     industria) → gastos de administración (incluye los demás impuestos y
 //     tasas) → otros ingresos y gastos (alquileres, multas) → resultado
@@ -57,6 +59,8 @@ export const ORIGEN_CONSUMO_OT = "consumo_ot";
  * resultados, cuenta de clientes por OT, entregas estimadas y reporte. */
 export const MATERIALES_PCT = 30;
 export const MESES_VENTANA = 12;
+/** Lo más largo que se puede pedir con Desde/Hasta (26/11). */
+export const MESES_MAX = 36;
 
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const MES = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -91,8 +95,9 @@ export const SECCIONES_NIIF = [
   { id: "OTR", nombre: "Otros ingresos y gastos", ingreso: true },
   { id: "FIN", nombre: "Resultados financieros (costo neto)" },
   { id: "GAN", nombre: "Impuesto a las ganancias" },
-  { id: "VTA", nombre: "Ventas del período (OT cargadas, sin entregar: no entran, el ingreso es la entrega)", ingreso: true, aparte: true },
-  { id: "IVA", nombre: "Impuestos de traslado (IVA, no entra en el resultado)", aparte: true },
+  // 26/11 (pedido de Tadeo): sin los cuadros de "Ventas del período" ni de
+  // "Impuestos de traslado"; niifDe sigue devolviendo VTA e IVA y esas
+  // cuentas no entran en ningún renglón
 ];
 
 /** De la sección y el grupo del libro a la sección NIIF. */
@@ -134,6 +139,40 @@ export function mesesHasta(hasta, n = MESES_VENTANA) {
   }
   return meses;
 }
+
+/**
+ * Los meses de "desde" a "hasta" (26/11, pedido de Tadeo: elegir el lapso).
+ * Sin "desde", o si viene al revés o pasa de MESES_MAX, los 12 que terminan
+ * en "hasta".
+ */
+export function mesesEntre(desde, hasta) {
+  if (!MES.test(String(hasta || ""))) return [];
+  if (!MES.test(String(desde || "")) || desde > hasta) return mesesHasta(hasta);
+  const [a1, m1] = desde.split("-").map(Number);
+  const [a2, m2] = hasta.split("-").map(Number);
+  const n = (a2 - a1) * 12 + (m2 - m1) + 1;
+  return n > MESES_MAX ? mesesHasta(hasta) : mesesHasta(hasta, n);
+}
+
+/**
+ * Para los colores (26/11, pedido de Tadeo): "suma" si el importe mejora el
+ * resultado (ingresos, intereses ganados, un resultado positivo), "resta" si
+ * lo empeora (costos, gastos, impuestos, pérdida), "" si es cero o un %.
+ * @param {{ tipo: string, id?: string, seccion?: string }} f  una fila de estadoResultados
+ */
+export function efectoDe(f, v) {
+  const n = Number(v) || 0;
+  if (f.tipo === "pct" || Math.abs(n) < 0.5) return "";
+  if (f.tipo === "resultado") return n > 0 ? "suma" : "resta";
+  const sec = SECCIONES_NIIF.find((x) => x.id === (f.tipo === "seccion" ? f.id : f.seccion));
+  return (sec?.ingreso ? n > 0 : n < 0) ? "suma" : "resta";
+}
+
+/**
+ * Cómo se muestra el importe: sin signo (el color dice si suma o resta),
+ * salvo los resultados, que van con su signo (pérdida en negativo).
+ */
+export const importeVisible = (f, v) => (v == null || f.tipo === "pct" || f.tipo === "resultado" ? v : Math.abs(Number(v) || 0));
 
 /** "2026-10" → "Oct 26". */
 export const nombreMes = (mes) => (MES.test(String(mes || "")) ? `${MESES[Number(mes.slice(5)) - 1]} ${mes.slice(2, 4)}` : String(mes || ""));
@@ -203,8 +242,8 @@ const esDeResultado = (c) => /resultado/i.test(String(c.rubro || "")) || /^0[45]
 export const ENTREGAS_PLAN = "Entregas a precio del Plan";
 export const ENTREGAS_ESTIMADAS = "Entregas estimadas por materiales";
 
-export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centros = [], hasta, materialesPct = MATERIALES_PCT, ponderador = {}, division = "", materialesOt = null, entregasEstimadas = [], entregasPlan = [] }) {
-  const meses = mesesHasta(hasta);
+export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centros = [], hasta, desde = "", materialesPct = MATERIALES_PCT, ponderador = {}, division = "", materialesOt = null, entregasEstimadas = [], entregasPlan = [] }) {
+  const meses = mesesEntre(desde, hasta);
   const idx = new Map(meses.map((m, i) => [m, i]));
   const porCodigo = new Map(cuentas.map((c) => [c.codigo, c]));
   const divisionOt = new Map(proyectos.map((p) => [Number(p.id), String(p.division || "").trim()]));
@@ -247,6 +286,8 @@ export function estadoResultados({ ops = [], cuentas = [], proyectos = [], centr
     }
     const niif = niifDe(ubic.seccion.id, ubic.grupo);
     const secNiif = SECCIONES_NIIF.find((x) => x.id === niif);
+    // Ventas sin entregar e IVA: no tienen cuadro (26/11)
+    if (!secNiif) return;
     const div = ubic.seccion.ingreso && op.proyecto_id ? divisionOt.get(Number(op.proyecto_id)) || "" : "";
     // Entregas (24/11, pedido de Tadeo: nombres claros): la entrega que Gypi
     // anota al terminar la OT va con las del PRECIO del Plan

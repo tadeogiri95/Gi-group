@@ -90,13 +90,13 @@ export const BOTONES_GESTION = {
       { id: "fin-inversiones", label: "Inversiones", modulo: "finanzas", soloDueno: true },
       { id: "fin-personas", label: "Agenda", modulo: "finanzas", soloDueno: true },
       // Informes (14/11, etapa 6: situación patrimonial; 13/11: el mayor de cada cuenta)
-      { id: "fin-resultados", label: "Resultados", modulo: "finanzas", soloDueno: true },
+      { id: "fin-resultados", label: "Estado de Resultados", modulo: "finanzas", soloDueno: true },
       { id: "fin-patrimonio", label: "Situación patrimonial", modulo: "finanzas", soloDueno: true },
       { id: "fin-flujo", label: "Flujo de caja", modulo: "finanzas", soloDueno: true },
       { id: "fin-cxp", label: "Cuentas a cobrar y pagar", modulo: "finanzas", soloDueno: true },
-      { id: "fin-reporte", label: "Reporte financiero", modulo: "finanzas", soloDueno: true },
+      { id: "fin-reporte", label: "Informe Financiero Consolidado", modulo: "finanzas", soloDueno: true },
       // 19/11: fondos, inversiones, calce de cheques y plazos fijos, cheques a cobrar
-      { id: "fin-informe-tesoreria", label: "Informe de tesorería", modulo: "finanzas", soloDueno: true },
+      { id: "fin-informe-tesoreria", label: "Reporte de Tesorería", modulo: "finanzas", soloDueno: true },
       { id: "fin-mayor", label: "Mayor de cuentas", modulo: "finanzas", soloDueno: true },
       // Cierre y ajustes (14/11, etapa 7: Gypi es el libro oficial; lo cargado a mano en el libro de Google)
       { id: "fin-devengamiento", label: "Devengamiento", modulo: "finanzas", soloDueno: true },

@@ -41,7 +41,7 @@ test("Finanzas en la computadora: subtítulos por tema", () => {
 test("Finanzas en el celular: sin pestañas en su Inicio; afuera, Inicio y las del mismo tema", () => {
   const ops = opcionesBoton("finanzas", empresa, dueno);
   assert.deepEqual(pestanasCelular("finanzas", ops, "fin-inicio"), []);
-  assert.deepEqual(pestanasCelular("finanzas", ops, "fin-flujo").map((o) => o.label), ["Inicio", "Resultados", "Situación patrimonial", "Flujo de caja", "Cuentas a cobrar y pagar", "Reporte financiero", "Informe de tesorería", "Mayor de cuentas"]);
+  assert.deepEqual(pestanasCelular("finanzas", ops, "fin-flujo").map((o) => o.label), ["Inicio", "Estado de Resultados", "Situación patrimonial", "Flujo de caja", "Cuentas a cobrar y pagar", "Informe Financiero Consolidado", "Reporte de Tesorería", "Mayor de cuentas"]);
   // Las que no están en el menú muestran las pestañas de la pantalla de donde se abren
   assert.equal(pestanasCelular("finanzas", ops, "fin-cuenta-ot").find((o) => o.id === "fin-cuenta-ot")?.label, "Cuenta por OT");
   const prod = opcionesBoton("proyectos", empresa, dueno);

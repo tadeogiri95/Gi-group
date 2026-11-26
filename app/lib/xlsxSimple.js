@@ -7,8 +7,9 @@ import { zipSync, strToU8 } from "fflate";
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Estilos (índice en cellXfs): 0 normal, 1 negrita, 2 número, 3 número en negrita, 4 fecha, 5 título. */
-export const ESTILO = { normal: 0, negrita: 1, numero: 2, numeroNegrita: 3, fecha: 4, titulo: 5 };
+/** Estilos (índice en cellXfs): 0 normal, 1 negrita, 2 número, 3 número en negrita, 4 fecha, 5 título;
+ * 6-9 números en verde o rojo (Estado de Resultados, 26/11: lo que suma en verde, lo que resta en rojo). */
+export const ESTILO = { normal: 0, negrita: 1, numero: 2, numeroNegrita: 3, fecha: 4, titulo: 5, numeroVerde: 6, numeroRojo: 7, numeroVerdeNegrita: 8, numeroRojoNegrita: 9 };
 
 const esc = (s) => String(s)
   // Caracteres que XML no acepta
@@ -58,17 +59,21 @@ function hojaXml({ filas = [], anchos = [] }) {
 const ESTILOS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
 <numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0.00"/><numFmt numFmtId="165" formatCode="dd/mm/yyyy"/></numFmts>
-<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><name val="Calibri"/></font></fonts>
+<fonts count="7"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><name val="Calibri"/></font><font><sz val="11"/><color rgb="FF15803D"/><name val="Calibri"/></font><font><sz val="11"/><color rgb="FFC62828"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FF15803D"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFC62828"/><name val="Calibri"/></font></fonts>
 <fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>
 <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="6">
+<cellXfs count="10">
 <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
 <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
 <xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
 <xf numFmtId="164" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>
 <xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
 <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="164" fontId="3" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>
+<xf numFmtId="164" fontId="4" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>
+<xf numFmtId="164" fontId="5" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>
+<xf numFmtId="164" fontId="6" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>
 </cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;
