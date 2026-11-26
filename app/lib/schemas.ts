@@ -437,6 +437,12 @@ export const movimientoStockBody = z.discriminatedUnion("accion", [
   }).strict(),
 ]);
 
+// ── /api/stock/articulos PATCH (211): la foto del artículo, para el rótulo ──
+export const fotoArticuloBody = z.object({
+  sku: z.string().trim().regex(/^[\w.-]{1,60}$/, "SKU inválido"),
+  foto_url: z.string().trim().url().max(500).refine((u) => u.startsWith("https://"), "La foto tiene que ser https").nullable(),
+}).strict();
+
 // ── /api/stock/articulos (124): artículo nuevo con los campos de ARTICULOS ──
 const listaTablas = (max: number) => z.string().trim().min(1, "Falta completar").max(max);
 const numeroOpcional = (min: number, max: number) => z.number().finite().min(min).max(max).nullable().optional().transform((v) => v ?? null);

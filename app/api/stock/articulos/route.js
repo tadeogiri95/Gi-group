@@ -7,14 +7,16 @@
 //        ARTICULOS. Gypi le arma un SKU provisorio como la fórmula de la
 //        planilla y queda en el stock para usarlo en el momento; el script de
 //        la planilla lo anota al final de ARTICULOS (/api/stock/planilla).
+// PATCH → dueños y administradores ponen, cambian o sacan la foto del
+//        artículo (211), la que sale en el rótulo con QR.
 // Con RLS_RUTAS=on va con el pase del usuario ({ sesion }).
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
 import { validateBody, safeErrorMessage } from "../../../lib/validate";
-import { articuloNuevoBody } from "../../../lib/schemas";
+import { articuloNuevoBody, fotoArticuloBody } from "../../../lib/schemas";
 import { ROLES_GESTION } from "../../../lib/dataPolicy";
-import { sbGet, sbGetAll, sbPost } from "../../../lib/sbHelpers";
+import { sbGet, sbGetAll, sbPatch, sbPost } from "../../../lib/sbHelpers";
 import { broadcastRefresh } from "../../../lib/broadcast";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { requireModuloSesion } from "../../../lib/accesosServidor";
@@ -138,6 +140,37 @@ export async function POST(request) {
     }
   } catch (err) {
     logger.error("[stock/articulos] POST error", err);
+    return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
+  }
+}
+
+export async function PATCH(request) {
+  try {
+    const sesion = await validarToken(request);
+    if (!sesion?.empresa_id) return respuestaNoAutorizado();
+    if (!ROLES_GESTION.has(sesion.rol)) {
+      return NextResponse.json({ error: "La foto del artículo la cargan los dueños y administradores" }, { status: 403 });
+    }
+    const raw = await request.json().catch(() => null);
+    const parsed = validateBody(fotoArticuloBody, raw);
+    if (parsed.response) return parsed.response;
+    const sinModulo = await requireModuloSesion(sesion, "stock");
+    if (sinModulo) return sinModulo;
+    const e = sesion.empresa_id;
+    const { sku, foto_url } = parsed.data;
+    try {
+      const filas = await sbPatch(`articulos_stock?empresa_id=eq.${e}&sku=eq.${encodeURIComponent(sku)}`, { foto_url }, { sesion });
+      if (!filas?.length) return NextResponse.json({ error: "No encontré ese artículo" }, { status: 404 });
+      broadcastRefresh(e, "articulos_stock");
+      return NextResponse.json({ ok: true, foto_url: filas[0].foto_url ?? null });
+    } catch (err) {
+      if (/foto_url/.test(String(err?.message))) {
+        return NextResponse.json({ error: "Para la foto del artículo falta correr la migración 211 en Supabase." }, { status: 409 });
+      }
+      throw err;
+    }
+  } catch (err) {
+    logger.error("[stock/articulos] PATCH error", err);
     return NextResponse.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }

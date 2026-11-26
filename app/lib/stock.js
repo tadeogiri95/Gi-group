@@ -271,9 +271,16 @@ export const MAX_ETIQUETAS_ARTICULO = 300;
 const ESCAPES = new Map([["&", "&amp;"], ["<", "&lt;"], [">", "&gt;"], ['"', "&quot;"], ["'", "&#39;"]]);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ESCAPES.get(c));
 
+/** ¿Entra la foto del artículo en el rótulo? En la de 50 × 30 no hay lugar. */
+export const rotuloConFoto = (tamano) => Math.min(tamano.ancho, tamano.alto) >= 45;
+const fotoValida = (u) => typeof u === "string" && /^https:\/\//i.test(u) && u.length <= 500;
+
 /**
- * Página con una etiqueta por artículo, del tamaño del rollo de la impresora
- * de etiquetas (una por página): nombre, SKU, unidad y división, y el QR.
+ * Página con un rótulo por artículo, del tamaño del rollo de la impresora
+ * de etiquetas (uno por página): la foto del artículo si tiene (211), el
+ * nombre normalizado, SKU, unidad y división, y el QR. Escaneando el QR se
+ * abre la ficha para retirarlo del stock (parte 14).
+ * En los rótulos altos (62 × 100, 100 × 150) va todo uno abajo del otro.
  * linkDe y titulo sirven para otras etiquetas con el mismo formato (las de
  * las máquinas, Mantenimiento parte 35: sku = código, ?maquina=).
  * @param {{ empresa: string, articulos: object[], origen: string, slug: string, tamano: { ancho: number, alto: number }, linkDe?: (a: object) => string, titulo?: string }} datos
@@ -281,11 +288,19 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ESCAPES.get(c));
 export async function htmlEtiquetasArticulos({ empresa, articulos, origen, slug, tamano, linkDe = (a) => linkArticulo(origen, slug, a.sku), titulo = "Etiquetas de artículos" }) {
   const lista = articulos.slice(0, MAX_ETIQUETAS_ARTICULO);
   const qrs = await Promise.all(lista.map((a) => svgQR(linkDe(a))));
-  const qrMm = Math.min(tamano.alto - 8, tamano.ancho * 0.42);
+  const alto = tamano.alto >= tamano.ancho * 1.3;
+  const conFoto = rotuloConFoto(tamano) && lista.some((a) => fotoValida(a.foto_url));
+  // Ancho: foto | texto | QR. Alto: foto, texto y QR uno abajo del otro.
+  const qrMm = alto
+    ? Math.min(tamano.ancho - 8, (tamano.alto - 8) * (conFoto ? 0.36 : 0.55))
+    : Math.min(tamano.alto - 8, tamano.ancho * (conFoto ? 0.3 : 0.42));
+  const fotoMm = alto ? Math.min(tamano.ancho - 8, (tamano.alto - 8) * 0.34) : Math.min(tamano.alto - 8, tamano.ancho * 0.28);
   const items = lista.map((a, i) => {
     const detalle = [a.unidad, a.division].filter(Boolean).join(" · ");
+    const foto = conFoto && fotoValida(a.foto_url) ? `<div class="foto"><img src="${esc(a.foto_url)}" alt=""></div>` : "";
     return `
   <div class="etiqueta">
+    ${foto}
     <div class="texto">
       <div class="empresa">${esc(empresa)}</div>
       <div class="nombre">${esc(a.nombre || a.sku)}</div>
@@ -300,14 +315,27 @@ export async function htmlEtiquetasArticulos({ empresa, articulos, origen, slug,
   @page { size: ${tamano.ancho}mm ${tamano.alto}mm; margin: 0; }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, sans-serif; color: #000; }
-  .etiqueta { width: ${tamano.ancho}mm; height: ${tamano.alto}mm; padding: 3mm; display: flex; gap: 3mm; align-items: center; overflow: hidden; page-break-after: always; break-after: page; }
-  .texto { flex: 1; min-width: 0; }
+  .etiqueta { width: ${tamano.ancho}mm; height: ${tamano.alto}mm; padding: 3mm; display: flex; gap: 3mm; align-items: center; overflow: hidden; page-break-after: always; break-after: page;${alto ? " flex-direction: column; justify-content: center; text-align: center;" : ""} }
+  .texto { ${alto ? "width: 100%;" : "flex: 1;"} min-width: 0; }
   .empresa { font-size: 7pt; text-transform: uppercase; letter-spacing: .04em; }
   .nombre { font-size: 11pt; font-weight: 800; line-height: 1.15; max-height: 3.5em; overflow: hidden; }
   .sku { font-size: 10pt; font-family: ui-monospace, monospace; margin-top: 1mm; }
   .detalle { font-size: 8pt; margin-top: .5mm; }
+  .foto { width: ${fotoMm}mm; height: ${fotoMm}mm; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .foto img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+  .qr { flex-shrink: 0; }
   .qr svg { width: ${qrMm}mm; height: ${qrMm}mm; display: block; }
 </style></head><body>${items}</body></html>`;
+}
+
+/** Espera que carguen las fotos del rótulo (como mucho 8 s) antes de imprimir. */
+function esperarFotos(doc, maxMs = 8000) {
+  const pendientes = [...doc.images].filter((img) => !img.complete);
+  if (!pendientes.length) return Promise.resolve();
+  return Promise.race([
+    Promise.all(pendientes.map((img) => new Promise((ok) => { img.onload = ok; img.onerror = ok; }))),
+    new Promise((ok) => setTimeout(ok, maxMs)),
+  ]);
 }
 
 /** Abre las etiquetas en una pestaña nueva con el diálogo de impresión. */
@@ -317,6 +345,7 @@ export async function imprimirEtiquetasArticulos(datos) {
   ventana.document.write(await htmlEtiquetasArticulos(datos));
   ventana.document.close();
   ventana.focus();
+  await esperarFotos(ventana.document);
   setTimeout(() => ventana.print(), 300);
 }
 
