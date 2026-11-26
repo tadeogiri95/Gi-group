@@ -95,7 +95,7 @@ test("cheques a cobrar: solo los de terceros en cartera, por semana de acreditac
 
 test("PDF y Excel: las 4 secciones y el Excel abre", () => {
   const inf = exportarInformeTesoreria(r, { empresa: "Gi Group" });
-  assert.equal(inf.titulo, "Informe de tesorería al 19/11/2026");
+  assert.equal(inf.titulo, "Reporte de Tesorería al 19/11/2026");
   const h = inf.html();
   for (const t of ["Panorama de hoy", "1. Posición de fondos e inversiones", "2. Calce de cheques a pagar y plazos fijos", "Por día · próximos 15 días", "3. Cheques a cobrar"]) assert.ok(h.includes(t), t);
   assert.equal((h.match(/class="pagina"/g) || []).length, 4, "4 páginas fijas (20/11)");

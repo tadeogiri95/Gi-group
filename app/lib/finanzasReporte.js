@@ -391,7 +391,7 @@ export function htmlReporte(r, { empresa = "" } = {}) {
   const serie = r.serie || [];
   const totalEntro = centavos(serie.reduce((t, x) => t + x.entro, 0));
   const totalSalio = centavos(serie.reduce((t, x) => t + x.salio, 0));
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Reporte financiero · ${esc(r.titulo)}</title>
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe Financiero Consolidado · ${esc(r.titulo)}</title>
 <style>
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a;margin:24px;font-size:12px;background:#fff}
@@ -417,7 +417,7 @@ export function htmlReporte(r, { empresa = "" } = {}) {
   @media print{body{margin:10mm}h2{break-after:avoid}table{break-inside:auto}tr{break-inside:avoid}.graf{break-inside:avoid}}
   @media (max-width:700px){.kpis,.dos{grid-template-columns:1fr 1fr}}
 </style></head><body>
-<div class="cabecera"><h1>Reporte financiero${TITULO_TIPO[r.tipo] ?? ""}${empresa ? ` · ${esc(empresa)}` : ""}</h1>
+<div class="cabecera"><h1>Informe Financiero Consolidado${TITULO_TIPO[r.tipo] ?? ""}${empresa ? ` · ${esc(empresa)}` : ""}</h1>
 <p>${esc(r.titulo)} (del ${esc(dma(r.desde))} al ${esc(dma(r.hasta))}). En pesos y sin IVA salvo que diga dólares.</p></div>
 ${r.para_revisar ? `<p class="aviso">⚠ Hay ${r.para_revisar} operaciones para revisar en el período que no cuentan. Confirmalas en Movimientos.</p>` : ""}
 <div class="kpis">
@@ -473,7 +473,7 @@ ${r.valores.a_cobrar.cantidad || r.valores.a_pagar.cantidad ? svgBarras([
 
 /** Baja el reporte en PDF a color (sin pasar por imprimir). */
 export function descargarPdfReporte(r, opciones) {
-  const nombre = `Reporte financiero - ${String(r.titulo || "").replace(/[\\/:*?"<>|]+/g, "-")}.pdf`;
+  const nombre = `Informe Financiero Consolidado - ${String(r.titulo || "").replace(/[\\/:*?"<>|]+/g, "-")}.pdf`;
   return descargarPdfDeHtml(htmlReporte(r, opciones), { archivo: nombre });
 }
 

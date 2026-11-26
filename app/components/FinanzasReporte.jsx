@@ -105,7 +105,7 @@ export default function FinanzasReporte() {
             <button type="button" className="g-btn g-btn-primary" disabled={bajando} onClick={pdf}>{bajando ? "Armando el PDF…" : "📄 Descargar PDF a color"}</button>
             <button type="button" className="g-btn g-btn-secondary" onClick={imprimir}>🖨 Imprimir</button>
           </div>
-          <iframe title="Reporte financiero" srcDoc={htmlReporte(reporte, { empresa: reporte.empresa })} className="w-full min-h-[75vh] border border-gypi-border rounded-lg bg-white" />
+          <iframe title="Informe Financiero Consolidado" srcDoc={htmlReporte(reporte, { empresa: reporte.empresa })} className="w-full min-h-[75vh] border border-gypi-border rounded-lg bg-white" />
         </>
       )}
     </div>

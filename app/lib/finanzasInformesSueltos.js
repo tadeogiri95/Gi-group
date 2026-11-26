@@ -7,8 +7,9 @@
 //   ⚖️ Situación patrimonial, 🏦 Flujo de cheques (calendarioCheques y la
 //   lista de cheques vivos). Cuentas a cobrar y a pagar están en
 //   finanzasCuentasPagarCobrar.js (informeCuentas).
-import { nombreMes } from "./finanzasResultados";
+import { efectoDe, importeVisible, nombreMes } from "./finanzasResultados";
 import { $, B, F, N, NB, T, dma, esc, hojaInforme } from "./finanzasInformes";
+import { ESTILO } from "./xlsxSimple";
 
 const miles = (n) => Math.round(Number(n) || 0).toLocaleString("es-AR");
 const pctTxt = (n) => (n == null ? "" : `${String(n).replace(".", ",")} %`);
@@ -42,17 +43,70 @@ function hojaMensual(nombre, titulo, subtitulo, { meses, filas }) {
 
 const deMes = (meses) => (meses.length ? `${nombreMes(meses[0])} a ${nombreMes(meses[meses.length - 1])}` : "");
 
-/** 📊 Estado de Resultados, con lo que se ve en la pantalla (respuesta de /api/finanzas/resultados). */
+/** Las filas del cuadro resumido: secciones, resultados y sus % (26/11). */
+const RESUMIDO = new Set(["seccion", "resultado", "pct"]);
+
+/** El cuadro del Estado de Resultados con los colores de la pantalla (26/11): verde suma, rojo resta. */
+function tablaResultados({ meses, filas }) {
+  const celda = (f, v) => {
+    if (v == null) return "";
+    if (f.tipo === "pct") return esc(pctTxt(v));
+    const ver = importeVisible(f, v);
+    return Math.abs(ver) >= 0.5 ? miles(ver) : "–";
+  };
+  const clase = (f, v) => ({ suma: " verde", resta: " rojo" })[efectoDe(f, v)] || "";
+  return `<table><thead><tr><th>Concepto</th>${meses.map((m) => `<th class="n">${esc(nombreMes(m))}</th>`).join("")}<th class="n">Total</th></tr></thead><tbody>
+${filas.map((f) => `<tr class="${CLASE[f.tipo] ?? "sub"}"><td>${esc(f.nombre)}</td>${f.valores.map((v) => `<td class="n${clase(f, v)}">${celda(f, v)}</td>`).join("")}<td class="n${clase(f, f.total)}"><b>${celda(f, f.total)}</b></td></tr>`).join("\n")}
+</tbody></table>`;
+}
+
+function hojaResultados(nombre, titulo, subtitulo, { meses, filas }) {
+  const fuerte = (f) => f.tipo === "seccion" || f.tipo === "resultado";
+  const val = (f, v) => {
+    if (v == null) return "";
+    if (f.tipo === "pct") return `${String(v).replace(".", ",")} %`;
+    const efecto = efectoDe(f, v);
+    const estilo = efecto === "suma" ? (fuerte(f) ? ESTILO.numeroVerdeNegrita : ESTILO.numeroVerde)
+      : efecto === "resta" ? (fuerte(f) ? ESTILO.numeroRojoNegrita : ESTILO.numeroRojo)
+        : fuerte(f) ? ESTILO.numeroNegrita : ESTILO.numero;
+    return { v: Math.round((Number(importeVisible(f, v)) || 0) * 100) / 100, estilo };
+  };
+  return {
+    nombre,
+    anchos: [44, ...meses.map(() => 14), 16],
+    filas: [
+      [T(titulo)], [subtitulo], ["Verde: suma al resultado · Rojo: resta"], [],
+      [B("Concepto"), ...meses.map((m) => B(nombreMes(m))), B("Total")],
+      ...filas.map((f) => [fuerte(f) ? B(f.nombre) : `${f.tipo === "linea" || f.tipo === "pct" ? "    " : "  "}${f.nombre}`, ...f.valores.map((v) => val(f, v)), val(f, f.total)]),
+    ],
+  };
+}
+
+/**
+ * 📊 Estado de Resultados, con lo que se ve en la pantalla (respuesta de
+ * /api/finanzas/resultados), del lapso elegido con Desde/Hasta. 26/11
+ * (pedido de Tadeo): el PDF trae primero el cuadro resumido y después el
+ * completo, cada uno entero en su propia hoja (si no entra en una A4, la
+ * hoja se alarga en vez de cortarlo); el Excel, una hoja de cada uno.
+ */
 export function informeResultados(d, { empresa = "" } = {}) {
   const titulo = `Estado de Resultados${d.division ? ` · ${d.division}` : ""}`;
   const subtitulo = `${deMes(d.meses || [])} · devengado, en pesos y sin IVA`;
-  const filas = (d.filas || []).map((f) => ({ tipo: f.tipo, nombre: `${f.nombre}${f.entrega_estimada ? " (estimado)" : ""}`, valores: f.valores || [], total: f.total }));
-  const t = { meses: d.meses || [], filas };
+  const filas = (d.filas || []).map((f) => ({ tipo: f.tipo, id: f.id, seccion: f.seccion, nombre: `${f.nombre}${f.entrega_estimada ? " (estimado)" : ""}`, valores: f.valores || [], total: f.total }));
+  const completo = { meses: d.meses || [], filas };
+  const resumido = { meses: d.meses || [], filas: filas.filter((f) => RESUMIDO.has(f.tipo)) };
+  const nota = '<p class="dim">Verde: suma al resultado · Rojo: resta. Los resultados van con su signo (negativo = pérdida).</p>';
   return {
     titulo: `${titulo} - ${deMes(d.meses || [])}`,
     apaisado: true,
-    html: () => hojaInforme({ titulo, subtitulo, empresa, cuerpo: `<section>${tablaMensual(t)}</section>${d.materiales_estimados ? '<p class="dim">* Materiales estimados: no hay costo real cargado.</p>' : ""}` }),
-    hojas: () => hojaMensual("Resultados", titulo, subtitulo, t),
+    paginaPorBloque: ".pagina",
+    html: () => hojaInforme({
+      titulo, subtitulo, empresa,
+      // El concepto no se aprieta: si hay muchos meses, el PDF achica todo para que entre de costado
+      cuerpo: `<style>.pagina th:first-child,.pagina td:first-child{min-width:240px}.pagina td.rojo{color:#c62828}.pagina td.verde{color:#15803d}</style><section class="pagina"><h2>Vista resumida</h2>${tablaResultados(resumido)}${nota}</section>`
+        + `<section class="pagina"><h2>Vista completa</h2>${tablaResultados(completo)}${d.materiales_estimados ? '<p class="dim">* Materiales estimados: no hay costo real cargado.</p>' : ""}</section>`,
+    }),
+    hojas: () => [hojaResultados("Resumido", titulo, subtitulo, resumido), hojaResultados("Completo", titulo, subtitulo, completo)],
   };
 }
 

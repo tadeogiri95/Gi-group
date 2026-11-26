@@ -6,7 +6,7 @@ import { test, before, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
-import { estadoResultados, mesesHasta, nombreMes, finDeMes, importeResultado, seccionDe, configResultados, validarPonderador, resumenDivisiones, divisionDeOp, claveDivision } from "../app/lib/finanzasResultados.js";
+import { estadoResultados, mesesHasta, mesesEntre, efectoDe, importeVisible, MESES_MAX, nombreMes, finDeMes, importeResultado, seccionDe, configResultados, validarPonderador, resumenDivisiones, divisionDeOp, claveDivision } from "../app/lib/finanzasResultados.js";
 import { cuentasDeHoja, limpiarFila } from "../app/lib/finanzas.js";
 import { planEntregasPlan } from "../app/lib/finanzasEntregasPlan.js";
 
@@ -68,7 +68,7 @@ test("meses, nombres y neto en pesos", () => {
   assert.deepEqual(configResultados({ materiales_pct: 0, ponderador: { MUEBLES: 80, ALUMINIO: 20 } }), { materiales_pct: 0, ponderador: { MUEBLES: 80, ALUMINIO: 20 } });
 });
 
-test("estado de resultados — renglones, materiales estimados, IVA aparte, resultados y %", () => {
+test("estado de resultados — renglones, materiales estimados, sin IVA, resultados y %", () => {
   const r = estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: PROYECTOS, hasta: "2026-10", materialesPct: 40 });
   const fila = (id) => r.filas.find((f) => f.id === id);
   const oct = (id) => fila(id).valores[11];
@@ -91,7 +91,7 @@ test("estado de resultados — renglones, materiales estimados, IVA aparte, resu
   assert.equal(oct("GAN"), 0);
   assert.equal(oct("RDO_NETO"), 193000);
   assert.ok(r.hay_entregas);
-  assert.equal(oct("IVA"), 50000, "IVA aparte");
+  assert.equal(fila("IVA"), undefined, "26/11: sin el cuadro de impuestos de traslado (el IVA no entra)");
   assert.equal(r.para_revisar, 1);
   assert.deepEqual(r.sin_linea, [{ codigo: "04.02.01.001.006", nombre: "Comisiones Tarjetas", total: 700 }]);
   assert.equal(fila("FIN").total, 5000, "lo de hace más de 12 meses no entra");
@@ -102,7 +102,7 @@ test("estado de resultados — renglones, materiales estimados, IVA aparte, resu
   assert.equal(estadoResultados({ ops: OPS, cuentas: CUENTAS.map(({ linea_eerr: _l, ...c }) => c), hasta: "2026-10" }).clasificado, false);
 });
 
-test("NIIF — solo las entregas son ingreso; ventas aparte; gastos por función", () => {
+test("NIIF — solo las entregas son ingreso; sin cuadro de ventas; gastos por función", () => {
   const cuentas = [
     ...CUENTAS,
     { codigo: "04.01.01.001.001", nombre: "Ventas Generales", rubro: "RESULTADO", linea_eerr: "ING_VTA" },
@@ -124,15 +124,14 @@ test("NIIF — solo las entregas son ingreso; ventas aparte; gastos por función
   const r = estadoResultados({ ops, cuentas, hasta: "2026-10", materialesPct: 0 });
   const oct = (id) => r.filas.find((f) => f.id === id).valores[11];
   assert.equal(oct("ING"), 500000, "solo la entrega");
-  assert.equal(oct("VTA"), 300000, "lo vendido sin entregar, aparte");
-  assert.ok(r.filas.find((f) => f.id === "VTA").aparte);
+  assert.equal(r.filas.find((f) => f.id === "VTA"), undefined, "26/11: sin el cuadro de ventas del período");
   assert.equal(oct("COM"), 45000, "logística e ingresos brutos");
   assert.equal(oct("OTR"), 19000, "alquiler menos multa");
   assert.equal(oct("EBIT"), 474000);
   assert.equal(oct("GAN"), 40000);
   assert.equal(oct("RDO_NETO"), 434000);
   const orden = r.filas.filter((f) => ["seccion", "resultado"].includes(f.tipo)).map((f) => f.id);
-  assert.deepEqual(orden, ["ING", "CMV", "UTIL_BRU", "COM", "ADM", "OTR", "EBIT", "FIN", "RAI", "GAN", "RDO_NETO", "VTA"]);
+  assert.deepEqual(orden, ["ING", "CMV", "UTIL_BRU", "COM", "ADM", "OTR", "EBIT", "FIN", "RAI", "GAN", "RDO_NETO"]);
   assert.ok(r.filas.some((f) => f.nombre === "Impuestos: ingresos brutos"));
 });
 
@@ -508,4 +507,33 @@ test("Resultados — tocando un mes se ve el detalle de sus entregas", async () 
   fireEvent.click(screen.getByRole("button", { name: "Ver las entregas de Sep 26" }));
   assert.ok(await screen.findByText("M-6990"));
   assert.equal(screen.queryByText("A-4371"), null);
+});
+
+test("26/11 — Desde/Hasta: los meses del lapso elegido, mes por mes", () => {
+  assert.deepEqual(mesesEntre("2026-01", "2026-03"), ["2026-01", "2026-02", "2026-03"]);
+  assert.deepEqual(mesesEntre("2026-05", "2026-05"), ["2026-05"]);
+  assert.deepEqual(mesesEntre("2025-11", "2026-02"), ["2025-11", "2025-12", "2026-01", "2026-02"]);
+  assert.equal(mesesEntre("", "2026-10").length, 12, "sin desde, 12 meses");
+  assert.equal(mesesEntre("2026-11", "2026-10").length, 12, "al revés, 12 meses");
+  assert.equal(mesesEntre("2023-01", "2026-10").length, 12, `más de ${MESES_MAX} meses, 12`);
+  assert.equal(mesesEntre("2023-11", "2026-10").length, MESES_MAX);
+  const r = estadoResultados({ ops: OPS, cuentas: CUENTAS, proyectos: PROYECTOS, desde: "2026-09", hasta: "2026-10", materialesPct: 40 });
+  assert.deepEqual(r.meses, ["2026-09", "2026-10"]);
+  const ing = r.filas.find((f) => f.id === "ING");
+  assert.deepEqual(ing.valores, [-10000, 1000000]);
+  assert.equal(ing.total, 990000);
+});
+
+test("26/11 — colores: lo que suma en verde, lo que resta en rojo; intereses ganados en positivo", () => {
+  const ing = { tipo: "seccion", id: "ING" };
+  const linFin = { tipo: "linea", seccion: "FIN" };
+  assert.equal(efectoDe(ing, 1000), "suma");
+  assert.equal(efectoDe({ tipo: "linea", seccion: "ING" }, -500), "resta", "un descuento resta");
+  assert.equal(efectoDe({ tipo: "seccion", id: "CMV" }, 300), "resta");
+  assert.equal(efectoDe(linFin, -8000), "suma", "intereses ganados (negativos en el costo financiero) suman");
+  assert.equal(importeVisible(linFin, -8000), 8000, "y se ven en positivo");
+  assert.equal(efectoDe({ tipo: "resultado" }, -5), "resta");
+  assert.equal(importeVisible({ tipo: "resultado" }, -5), -5, "el resultado va con su signo");
+  assert.equal(efectoDe({ tipo: "pct" }, 40), "");
+  assert.equal(efectoDe(ing, 0), "");
 });
