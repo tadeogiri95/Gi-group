@@ -6,7 +6,8 @@
 // donde arma los bultos e imprime los rótulos él mismo.
 // También se elige escaneando el QR de la OT de la planilla (o de un rótulo).
 // Retirar material (Stock, parte 14) usa la misma lista con su título y la
-// opción "Sin OT".
+// opción "Sin OT". 🧩 Piezas de una OT (26/11) también: se elige por la
+// lista o escaneando la etiqueta de una pieza o de un módulo.
 import { useEffect, useMemo, useState } from "react";
 import { sbGetAll } from "../lib/supabase";
 import { ordenarPorOt } from "../hooks/useActividad";
@@ -26,7 +27,7 @@ export function filtrarOts(lista, texto) {
   return lista.filter((p) => [p.ot, p.cliente, p.obra, p.proyecto, p.descripcion].some((c) => normalizar(c).includes(q)));
 }
 
-export default function ElegirOtCarga({ empresaId, onElegir, onClose, titulo = "¿Qué OT vas a cargar?", verbo = "Cargar", onSinOt = null }) {
+export default function ElegirOtCarga({ empresaId, onElegir, onClose, titulo = "¿Qué OT vas a cargar?", verbo = "Cargar", onSinOt = null, textoEscanear = "📷 Escanear el QR de la OT", ayudaEscaner = "Apuntá al QR de la OT en la planilla" }) {
   const [ots, setOts] = useState(null);
   const [error, setError] = useState(null);
   const [texto, setTexto] = useState("");
@@ -60,9 +61,9 @@ export default function ElegirOtCarga({ empresaId, onElegir, onClose, titulo = "
         {escanerDisponible() && ots !== null && (
           <div className="mb-3">
             <button onClick={() => { setEscaneando(!escaneando); setAviso(null); }} aria-pressed={escaneando} className="g-btn g-btn-secondary w-full">
-              {escaneando ? "Cerrar la cámara" : "📷 Escanear el QR de la OT"}
+              {escaneando ? "Cerrar la cámara" : textoEscanear}
             </button>
-            {escaneando && <div className="mt-2"><EscanerCodigo onCodigo={alEscanear} ayuda="Apuntá al QR de la OT en la planilla" /></div>}
+            {escaneando && <div className="mt-2"><EscanerCodigo onCodigo={alEscanear} ayuda={ayudaEscaner} /></div>}
             {aviso && <div role="alert" className="text-[12px] text-gypi-red">{aviso}</div>}
           </div>
         )}

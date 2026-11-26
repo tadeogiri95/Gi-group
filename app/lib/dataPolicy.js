@@ -58,6 +58,7 @@ export const POLICY = {
   avance_etapas:                { GET: "all" },   // se escribe por /api/avance (OP parte 5)
   no_conformidades:             { GET: "all" },   // se escribe por /api/no-conformidades (OP parte 6)
   pasos_pieza:                  { GET: "all" },   // se escribe por /api/piezas/paso (OP parte 18)
+  lados_pieza:                  { GET: "all" },   // canto por lados (209); se escribe por /api/piezas/paso
   piezas_ot:                    { GET: "all" },   // se escribe por /api/piezas (OP parte 17)
   precios_ot:                   { GET: "gestion" }, // precio de cada OT (142); lo escribe la sincronización
   precios_articulos:            { GET: "gestion" }, // precios con fecha (164); los copia la sincronización de Stock
