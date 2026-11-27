@@ -22,6 +22,7 @@ import { ROLES_GESTION } from "../../../lib/dataPolicy";
 import { reglasPieza } from "../../../lib/piezas";
 import { CLAVE_PLANIFICACION, normalizarParametros } from "../../../lib/planificacion";
 import { cantoUsado, pendientesCanto, elegirArticuloCanto, textoCanto, PCT_DESPERDICIO_DEFECTO } from "../../../lib/cantoConsumo";
+import { falta214 } from "../../../lib/cantoLados";
 import { fechaDelMovimiento } from "../../../lib/movimientosStock";
 import { logger } from "../../../lib/logger";
 
@@ -75,8 +76,10 @@ export async function GET(request) {
     let lados;
     let pasos;
     try {
+      // Con la 214 cada escaneo dice qué lado se pegó; sin ella, solo cuántos
+      const ladosDe = (campos) => leer(sesion, `lados_pieza?empresa_id=eq.${e}&etapa=in.(${codigos})${filtroOt}&select=${campos}&order=id.asc`);
       [lados, pasos] = await Promise.all([
-        leer(sesion, `lados_pieza?empresa_id=eq.${e}&etapa=in.(${codigos})${filtroOt}&select=pieza_id&order=id.asc`),
+        ladosDe("pieza_id,lado").catch((err) => (falta214(err) ? ladosDe("pieza_id") : Promise.reject(err))),
         leer(sesion, `pasos_pieza?empresa_id=eq.${e}&etapa=in.(${codigos})${filtroOt}&select=pieza_id&order=id.asc`),
       ]);
     } catch (err) {
@@ -84,7 +87,11 @@ export async function GET(request) {
       throw err;
     }
     const escaneos = new Map();
-    for (const l of lados) escaneos.set(Number(l.pieza_id), (escaneos.get(Number(l.pieza_id)) || 0) + 1);
+    for (const l of lados) {
+      const id = Number(l.pieza_id);
+      if (!escaneos.has(id)) escaneos.set(id, []);
+      escaneos.get(id).push({ lado: l.lado || null });
+    }
     const completas = new Set(pasos.map((p) => Number(p.pieza_id)));
     const ids = [...new Set([...escaneos.keys(), ...completas])];
 

@@ -357,6 +357,8 @@ export const pasoPiezaBody = z.discriminatedUnion("accion", [
     // Desde la cola sin señal (colaOffline): id de la operación y cuándo se escaneó
     op_id: z.string().uuid().optional(),
     momento: z.string().datetime({ offset: true }).optional(),
+    // Canto por espesor y color (27/11, 214): el canto que el operario tiene en la máquina ("2|GRAFITO")
+    canto: z.string().trim().max(80).regex(/^\d+(\.\d+)?\|[^|]{1,60}$/, "Canto inválido").nullable().optional(),
   }).strict(),
   z.object({ accion: z.literal("deshacer"), pieza_id: z.number().int().positive(), etapa: etapaPieza }).strict(),
   // Deshacer el escaneo de una etiqueta de módulo: todas sus piezas en esa etapa

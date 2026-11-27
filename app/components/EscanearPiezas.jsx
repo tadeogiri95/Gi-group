@@ -18,8 +18,13 @@
 //   - la cámara solo toma la etiqueta del recuadro del medio, y de a una;
 //   - arriba dice la OT en curso (la de la tarea en curso, o la de la primera
 //     pieza escaneada); una etiqueta de otra OT no se anota sola: pregunta.
+// Desde el 27/11 (Tadeo: canto de 0,45, 1 o 2 mm en la misma pieza): en la
+// etapa de canto se elige el canto que está en la máquina ("2 mm GRAFITO",
+// queda guardado en el celular) y cada escaneo es un lado de ese canto. Si la
+// pieza no tiene lados pendientes de ese canto, o lleva varios y no se
+// eligió, una tarjeta amarilla pregunta cuál se pegó.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiFetch } from "../lib/supabase";
+import { apiFetch, sbGetAll } from "../lib/supabase";
 import { enviarOEncolar } from "../lib/colaOffline";
 import Modal from "./ui/Modal";
 import EscanerCodigo, { escanerDisponible } from "./EscanerCodigo";
@@ -29,6 +34,7 @@ import { usePdfsOt } from "../hooks/usePdfsOt";
 import { indicePdfs } from "../lib/pdfOt";
 import { LinkPdfOt } from "./PdfOt";
 import PiezasOtOperario, { CLAVE_ETAPA_PIEZAS } from "./PiezasOtOperario";
+import { tiposDe, textoTipoCanto } from "../lib/cantoLados";
 
 const CLAVE_ETAPA = CLAVE_ETAPA_PIEZAS;
 // Sin leerlo este rato, el QR salió de cuadro y el próximo escaneo cuenta
@@ -36,6 +42,12 @@ const FUERA_DE_CUADRO_MS = 1000;
 const MAX_RESULTADOS = 30;
 // El aviso "una etiqueta por vez" se va solo después de este rato
 const AVISO_VARIOS_MS = 2500;
+// El canto que está en la máquina (27/11)
+export const CLAVE_CANTO_MAQUINA = "gypi_canto_maquina";
+
+function cantoGuardado() {
+  try { return localStorage.getItem(CLAVE_CANTO_MAQUINA) || null; } catch { return null; }
+}
 
 const TONOS = {
   verde: "bg-gypi-green/10 text-gypi-green",
@@ -68,6 +80,11 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
   // 27/11: la OT que se está trabajando; una etiqueta de otra OT pregunta antes de anotarse
   const [otEnCurso, setOtEnCurso] = useState(() => (tareaActiva?.codigo_proyecto ? otCanonica(tareaActiva.codigo_proyecto) : null));
   const [varios, setVarios] = useState(false);
+  // 27/11: canto en la máquina y los cantos que lleva la OT en curso
+  const [canto, setCanto] = useState(cantoGuardado);
+  const [cantosOt, setCantosOt] = useState({ ot: null, tipos: [] });
+  const tiposOt = useMemo(() => (cantosOt.ot === otEnCurso ? cantosOt.tipos : []), [cantosOt, otEnCurso]);
+  const porLados = Boolean(botones.find((b) => b.codigo === etapa)?.porLados);
   const vistos = useRef(new Map());
   const contador = useRef(0);
   const timerVarios = useRef(null);
@@ -83,9 +100,41 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
     try { localStorage.setItem(CLAVE_ETAPA, String(etapa)); } catch { /* sin almacenamiento */ }
   }, [etapa]);
 
+  useEffect(() => {
+    try {
+      if (canto) localStorage.setItem(CLAVE_CANTO_MAQUINA, canto);
+      else localStorage.removeItem(CLAVE_CANTO_MAQUINA);
+    } catch { /* sin almacenamiento */ }
+  }, [canto]);
+
+  // Los cantos de la OT en curso, para los botones (de la planilla pegada)
+  useEffect(() => {
+    if (!porLados || !otEnCurso) return undefined;
+    let vivo = true;
+    sbGetAll(`piezas_ot?ot=eq.${encodeURIComponent(otEnCurso)}&select=cantos`, { maxFilas: 5000 })
+      .then((r) => {
+        if (!vivo) return;
+        const tipos = tiposDe((r.data || []).flatMap((p) => (Array.isArray(p.cantos) ? p.cantos : [])));
+        setCantosOt((prev) => ({ ot: otEnCurso, tipos: [...new Set([...tipos, ...(prev.ot === otEnCurso ? prev.tipos : [])])] }));
+      })
+      .catch(() => { /* sin los botones de la OT: quedan los que traen los escaneos */ });
+    return () => { vivo = false; };
+  }, [porLados, otEnCurso]);
+
+  // Los cantos que traen los escaneos se suman a los botones (de la OT de la pieza)
+  const sumarTipos = (tipos, ot) => {
+    if (!tipos?.length) return;
+    const deOt = ot ? otCanonica(ot) : otEnCurso;
+    setCantosOt((prev) => {
+      const base = prev.ot === deOt ? prev.tipos : [];
+      return tipos.every((t) => base.includes(t)) && prev.ot === deOt ? prev : { ot: deOt, tipos: [...new Set([...base, ...tipos])] };
+    });
+  };
+  const botonesCanto = useMemo(() => (canto && !tiposOt.includes(canto) ? [...tiposOt, canto] : tiposOt), [tiposOt, canto]);
+
   const agregar = (r) => setResultados((prev) => [{ ...r, key: ++contador.current }, ...prev].slice(0, MAX_RESULTADOS));
 
-  const anotar = async (codigo, { forzar = false } = {}) => {
+  const anotar = async (codigo, { forzar = false, canto: cantoElegido = null } = {}) => {
     const texto = String(codigo || "").trim();
     if (!texto || !etapa) return;
     // La cámara lee el QR ~3 veces por segundo mientras está a la vista: se
@@ -109,13 +158,32 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
     try {
       const r = await enviarOEncolar({
         empleadoId: usuario?.id, tipo: "paso_pieza", url: "/api/piezas/paso",
-        body: { accion: "escanear", codigo: texto, etapa },
+        body: { accion: "escanear", codigo: texto, etapa, ...(porLados && (cantoElegido || canto) ? { canto: cantoElegido || canto } : {}) },
       });
       if (r.encolado) {
         agregar({ tono: "pendiente", texto: "Sin señal: la pieza quedó guardada y se manda sola cuando vuelva la conexión.", detalle: null });
         return;
       }
       const data = r.data || {};
+      // 27/11: la pieza no tiene lados pendientes del canto elegido, o lleva varios: ¿cuál se pegó?
+      if (data.elegirCanto) {
+        const ec = data.elegirCanto;
+        const p = data.pieza || {};
+        sumarTipos(ec.opciones, p.ot);
+        if (!ec.opciones?.length) {
+          agregar({ tono: "amarillo", texto: `${p.nombre || "La pieza"} ya tiene todos sus lados con canto.`, detalle: null });
+          return;
+        }
+        setResultados((prev) => [{
+          tono: "amarillo", elegir: { codigo: texto, opciones: ec.opciones }, key: ++contador.current, ot: p.ot || null,
+          texto: ec.elegido
+            ? `${p.nombre}${p.de > 1 ? ` (${p.de} unidades)` : ""} no tiene lados pendientes de canto ${textoTipoCanto(ec.elegido)}. ¿Qué canto pegaste?`
+            : `${p.nombre} lleva más de un canto. ¿Cuál pegaste?`,
+          detalle: "Tocá el canto y se anota. Si fue sin querer, tocá No anotar.",
+        }, ...prev].slice(0, MAX_RESULTADOS));
+        return;
+      }
+      if (data.lados?.tipos) sumarTipos(data.lados.tipos, data.pieza?.ot);
       const m = mensajeEscaneo({ ...data, ok: r.status === 200 && data.ok }, nombres, porOt);
       const ok = m.tono !== "rojo" && !data.ya;
       const deshacer = !ok ? null
@@ -152,6 +220,13 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
     if (item.otNueva) setOtEnCurso(item.otNueva);
     vistos.current.delete(`${etapa}|${item.confirmar}`);
     anotar(item.confirmar, { forzar: true });
+  };
+  // "Anotar como 0,45 mm": queda como el canto de la máquina
+  const elegirCanto = (item, tipo) => {
+    setResultados((prev) => prev.filter((x) => x.key !== item.key));
+    setCanto(tipo);
+    vistos.current.delete(`${etapa}|${item.elegir.codigo}`);
+    anotar(item.elegir.codigo, { forzar: true, canto: tipo });
   };
   const descartar = (item) => setResultados((prev) => prev.filter((x) => x.key !== item.key));
 
@@ -195,6 +270,28 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
                 <button onClick={() => setOtEnCurso(null)} className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold cursor-pointer text-gypi-dim underline">Cambiar</button>
               )}
             </div>
+            {porLados && (
+              <div className="mb-2">
+                <div className="text-[13px] font-bold text-gypi-dim mb-1.5" id="canto-maquina">¿Qué canto tenés en la máquina?</div>
+                {botonesCanto.length ? (
+                  <div className="flex flex-wrap gap-1.5" role="group" aria-labelledby="canto-maquina">
+                    {botonesCanto.map((t) => (
+                      <button key={t} onClick={() => setCanto(canto === t ? null : t)} aria-pressed={canto === t}
+                        className={`min-h-[44px] px-3 rounded-lg border text-[14px] font-bold cursor-pointer ${canto === t ? "bg-gypi-amber/15 border-gypi-amber text-gypi-amber-ink" : "bg-gypi-surface border-gypi-border text-gypi-dim"}`}>
+                        {textoTipoCanto(t)}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-[13px] text-gypi-dim">Escaneá la primera pieza: si lleva un solo canto no hace falta elegir; si lleva varios, te pregunto cuál pegaste.</div>
+                )}
+                {botonesCanto.length > 0 && (
+                  <div className="text-[12px] text-gypi-dim mt-1">
+                    {canto ? `Cada escaneo es un lado con canto ${textoTipoCanto(canto)}. Tocalo de nuevo para no elegir ninguno.` : "Sin elegir: si la pieza lleva varios cantos, te pregunto cuál pegaste."}
+                  </div>
+                )}
+              </div>
+            )}
             {escanerDisponible() ? (
               <div className="mb-2">
                 <EscanerCodigo onCodigo={anotar} mira onVarios={avisarVarios}
@@ -242,6 +339,14 @@ export default function EscanearPiezas({ usuario, etapas = [], tareaActiva = nul
                   {r.otra && (
                     <button onClick={() => { vistos.current.delete(`${etapa}|${r.otra}`); anotar(r.otra, { forzar: true }); }}
                       className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold cursor-pointer text-current underline">{r.lados ? "+1 lado" : "+1 otra"}</button>
+                  )}
+                  {r.elegir && (
+                    <div className="flex flex-col items-end">
+                      {r.elegir.opciones.map((t) => (
+                        <button key={t} onClick={() => elegirCanto(r, t)} className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold cursor-pointer text-current underline text-right">Anotar {textoTipoCanto(t)}</button>
+                      ))}
+                      <button onClick={() => descartar(r)} className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold cursor-pointer text-current underline">No anotar</button>
+                    </div>
                   )}
                   {r.confirmar && (
                     <>
