@@ -18,7 +18,8 @@ import {
   AVISO_DEMORA_GOOGLE, CLAVE_STOCK_CSV, MAX_ETIQUETAS_ARTICULO, cantidadTexto, divisionesDe, filtrarArticulos, imprimirEtiquetasArticulos, syncAtrasada,
 } from "../lib/stock";
 import FichaArticulo, { Semaforo, guardarFotoArticulo } from "./FichaArticulo";
-import { fotoBase64, subirImagen } from "../lib/foto";
+import { subirImagen } from "../lib/foto";
+import RecortarFoto from "./RecortarFoto";
 import { BotonesCargar } from "./MovimientosStock";
 import ArticuloNuevo from "./ArticuloNuevo";
 import { textoFechaPrecio, textoPrecio, ultimosPrecios, veePrecios } from "../lib/preciosArticulos";
@@ -33,16 +34,18 @@ function leerTamano() {
   try { return localStorage.getItem(CLAVE_TAMANO) || TAMANOS_ARTICULO[0].id; } catch { return TAMANOS_ARTICULO[0].id; }
 }
 
-/** Botón 📷 del renglón: saca o elige la foto del artículo y la guarda (27/11). */
+/** Botón 📷 del renglón: saca o elige la foto del artículo, la recorta y la guarda (27/11). */
 function FotoRenglon({ articulo, onFoto }) {
   const toast = useToast();
   const [subiendo, setSubiendo] = useState(false);
+  const [archivo, setArchivo] = useState(null);
   const nombre = articulo.nombre || articulo.sku;
-  const elegir = async (file) => {
-    if (!file) return;
+  // Recortada en cuadrado, como sale en el rótulo (27/11, Tadeo)
+  const guardar = async (imagen) => {
+    setArchivo(null);
     setSubiendo(true);
     try {
-      const url = await subirImagen(await fotoBase64(file));
+      const url = await subirImagen(imagen);
       onFoto(articulo.sku, await guardarFotoArticulo(articulo.sku, url));
       toast.show(`📷 Foto guardada: ${nombre}`, GREEN);
     } catch (e) {
@@ -52,13 +55,16 @@ function FotoRenglon({ articulo, onFoto }) {
   };
   const label = articulo.foto_url ? `Cambiar la foto de ${nombre}` : `Poner la foto de ${nombre}`;
   return (
-    <label title={label}
-      className={`w-11 h-11 shrink-0 flex items-center justify-center rounded-[8px] border border-gypi-border cursor-pointer overflow-hidden ${articulo.foto_url ? "" : "border-dashed bg-gypi-surf-hi text-[20px]"}`}>
-      {subiendo ? <span className="text-[12px] text-gypi-dim">…</span>
-        : articulo.foto_url ? <img src={articulo.foto_url} alt="" loading="lazy" className="w-full h-full object-cover" /> : "📷"}
-      <input type="file" accept="image/*" capture="environment" className="hidden" aria-label={label} disabled={subiendo}
-        onChange={(e) => { elegir(e.target.files?.[0]); e.target.value = ""; }} />
-    </label>
+    <>
+      <label title={label}
+        className={`w-11 h-11 shrink-0 flex items-center justify-center rounded-[8px] border border-gypi-border cursor-pointer overflow-hidden ${articulo.foto_url ? "" : "border-dashed bg-gypi-surf-hi text-[20px]"}`}>
+        {subiendo ? <span className="text-[12px] text-gypi-dim">…</span>
+          : articulo.foto_url ? <img src={articulo.foto_url} alt="" loading="lazy" className="w-full h-full object-cover" /> : "📷"}
+        <input type="file" accept="image/*" capture="environment" className="hidden" aria-label={label} disabled={subiendo}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) setArchivo(f); e.target.value = ""; }} />
+      </label>
+      {archivo && <RecortarFoto fuente={archivo} onListo={guardar} onCancelar={() => setArchivo(null)} />}
+    </>
   );
 }
 

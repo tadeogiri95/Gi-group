@@ -11,6 +11,9 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { sb, apiFetch } from "../lib/supabase";
 import BotonFoto from "./BotonFoto";
+import RecortarFoto from "./RecortarFoto";
+import { Button } from "./ui";
+import { subirImagen } from "../lib/foto";
 import { cantidadTexto, nivelSemaforo } from "../lib/stock";
 import { useEscape } from "../hooks/useEscape";
 import { ORIGENES_PRECIO, historialPrecios, textoFechaPrecio, textoPrecio, ultimosPrecios, veePrecios } from "../lib/preciosArticulos";
@@ -107,6 +110,7 @@ export async function guardarFotoArticulo(sku, foto_url) {
 export function FotoArticulo({ sku, nombre, foto, puedeEditar, onCambio }) {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
+  const [recortando, setRecortando] = useState(false);
   if (!foto && !puedeEditar) return null;
   const guardar = async (foto_url) => {
     setGuardando(true);
@@ -127,7 +131,9 @@ export function FotoArticulo({ sku, nombre, foto, puedeEditar, onCambio }) {
       )}
       {puedeEditar && (
         <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-          <BotonFoto label={foto ? "📷 Cambiar la foto" : "📷 Foto del artículo"} disabled={guardando} onFoto={guardar} />
+          <BotonFoto label={foto ? "📷 Cambiar la foto" : "📷 Foto del artículo"} disabled={guardando} onFoto={guardar} recortar />
+          {/* 27/11 (Tadeo): recortar la que ya está, para que el artículo se vea bien en el rótulo */}
+          {foto && <Button variant="secondary" disabled={guardando} onClick={() => setRecortando(true)}>✂️ Recortar la foto</Button>}
           {foto && (
             <button onClick={() => guardar(null)} disabled={guardando}
               className="min-h-[36px] p-0 bg-transparent border-none text-[13px] font-semibold text-gypi-red cursor-pointer text-left">Sacar la foto</button>
@@ -137,6 +143,8 @@ export function FotoArticulo({ sku, nombre, foto, puedeEditar, onCambio }) {
           {error && <div role="alert" className="text-[12px] text-gypi-red">{error}</div>}
         </div>
       )}
+      {recortando && <RecortarFoto fuente={foto} onCancelar={() => setRecortando(false)}
+        onListo={async (imagen) => { await guardar(await subirImagen(imagen)); setRecortando(false); }} />}
     </section>
   );
 }
