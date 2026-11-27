@@ -8,9 +8,10 @@
 // domingo) se compara con las 4 anteriores.
 //
 // Cinco bloques:
-//   1. Entregas   OT entregadas en su semana (acta firmada, o cerrada con la
-//                 producción hecha) contra su fecha objetivo; OT que según el
-//                 plan vivo van a llegar tarde; OT en pausa y por qué.
+//   1. Entregas   dos "a tiempo" (27/11): producción terminada contra la
+//                 fecha límite de producción, y OT instaladas (acta firmada)
+//                 contra su fecha objetivo; OT que según el plan vivo van a
+//                 llegar tarde; OT en pausa y por qué.
 //   2. Plan       cumplimiento del plan semanal (el mismo cálculo del informe
 //                 de producción) y carga de la planta: horas del plan
 //                 confirmado de cada proceso contra lo que ese proceso puede
@@ -45,6 +46,7 @@ import { textoMotivoRetrabajo } from "./retrabajo";
 import { nombreDefecto } from "./calidad";
 import { tramosParada, indicadoresMaquinaria } from "./fallasMaquinaria";
 import { datosOt } from "./nombreOt";
+import { limiteProduccion } from "./planInstalacion";
 
 /** Semanas que se comparan: la elegida y las 4 anteriores. */
 export const SEMANAS_PANEL = 5;
@@ -94,27 +96,56 @@ export function finProduccionDe(t) {
   return procesos.reduce((m, q) => (!m || Date.parse(q.fin) > Date.parse(m) ? q.fin : m), null);
 }
 
-/**
- * OT entregadas en la semana contra su fecha objetivo. Entregada = acta
- * firmada, o cerrada con la producción hecha (el fin de la OT del tablero).
- * Las que no tienen fecha objetivo cuentan como entregadas pero no entran en el %.
- */
-export function entregasDeSemana(porOt, s) {
-  const filas = [];
-  for (const t of porOt.values()) {
-    const dia = diaDe(t.fin);
-    if (!enSemana(dia, s)) continue;
-    const objetivo = t.proyecto?.fecha_objetivo ? String(t.proyecto.fecha_objetivo).slice(0, 10) : null;
-    const diasTarde = objetivo && dia > objetivo ? diasEntre(objetivo, dia) : 0;
-    filas.push({ ot: t.ot, ...datosOt(t.proyecto), dia, objetivo, aTiempo: objetivo ? diasTarde === 0 : null, diasTarde, horas: t.horas });
-  }
+/** Resumen de "a tiempo" de una lista de filas { aTiempo: true|false|null, diasTarde }. */
+function aTiempoDe(filas) {
   const conFecha = filas.filter((f) => f.aTiempo != null);
   const aTiempo = conFecha.filter((f) => f.aTiempo).length;
   return {
-    entregadas: filas.length, conFecha: conFecha.length, aTiempo, pct: pct(aTiempo, conFecha.length),
+    cantidad: filas.length, conFecha: conFecha.length, aTiempo, pct: pct(aTiempo, conFecha.length),
     tarde: filas.filter((f) => f.aTiempo === false).sort((a, b) => b.diasTarde - a.diasTarde),
     sinFecha: filas.length - conFecha.length,
-    leadTime: promedio(filas.map((f) => f.horas).filter((h) => h != null)),
+  };
+}
+
+/**
+ * Entregas de la semana, separadas en dos (Tadeo, 27/11):
+ *  - produccion: OT que terminaron su último proceso de fábrica en la semana,
+ *    contra la fecha límite de producción (la de Planificación: la entrega
+ *    menos los días de instalación, limiteProduccion). Cuentan todas, también
+ *    las que se cierran sin acta (por ejemplo, retiran en fábrica).
+ *  - instaladas: OT con acta firmada en la semana, contra su fecha objetivo.
+ * entregadas y leadTime siguen siendo de la OT completa (acta firmada, o
+ * cerrada con la producción hecha), como antes.
+ * Las que no tienen fecha objetivo no entran en los %.
+ * @param {Map<string, object>} porOt tarjetas del tablero de etapas
+ * @param {{ desde: string, hasta: string }} s
+ * @param {{ params?: object|null, feriados?: Set<string>|null, modulos?: Map<string, Set<string>>|null }} [o]
+ */
+export function entregasDeSemana(porOt, s, { params = null, feriados = null, modulos = null } = {}) {
+  const ots = [], produccion = [], instaladas = [];
+  for (const t of porOt.values()) {
+    const objetivo = t.proyecto?.fecha_objetivo ? String(t.proyecto.fecha_objetivo).slice(0, 10) : null;
+    const tarde = (dia, meta) => (meta && dia > meta ? diasEntre(meta, dia) : 0);
+    const finOt = diaDe(t.fin);
+    if (enSemana(finOt, s)) ots.push(t.horas);
+    const finProd = diaDe(finProduccionDe(t));
+    if (enSemana(finProd, s)) {
+      const lim = limiteProduccion(t.proyecto, params, { modulosEtiquetas: modulos?.get(String(t.ot)) || null, feriados });
+      const limite = lim?.limite || null;
+      const diasTarde = tarde(finProd, limite);
+      produccion.push({ ot: t.ot, ...datosOt(t.proyecto), dia: finProd, objetivo: limite, aTiempo: limite ? diasTarde === 0 : null, diasTarde });
+    }
+    const acta = diaDe(t.instalacion?.fin);
+    if (enSemana(acta, s)) {
+      const diasTarde = tarde(acta, objetivo);
+      instaladas.push({ ot: t.ot, ...datosOt(t.proyecto), dia: acta, objetivo, aTiempo: objetivo ? diasTarde === 0 : null, diasTarde });
+    }
+  }
+  return {
+    entregadas: ots.length,
+    leadTime: promedio(ots.filter((h) => h != null)),
+    produccion: aTiempoDe(produccion),
+    instaladas: aTiempoDe(instaladas),
   };
 }
 
@@ -358,7 +389,7 @@ export function armarPanel(d) {
   const { base, pasos = [], manual = [], cargas = [], bultos = [], reportes = [], actas = [], precios = null, estimadas = new Set(),
     noConformidades = [], defectos = null, pendientes = [],
     maquinas = [], tareasMaquinas = [], registrosMaquinas = [], fallas = [], solicitudes = [], fecha, hoy, ahora = new Date() } = d;
-  const { vivo, vigentes, planes = null, etapasCodigo, cfgValor, proyectos = [], divisiones = [], empleados = [], piezas = [], avance = [], retrabajos = [], pausas = [] } = base;
+  const { vivo, vigentes, planes = null, modulos = null, etapasCodigo, cfgValor, proyectos = [], divisiones = [], empleados = [], piezas = [], avance = [], retrabajos = [], pausas = [] } = base;
   const semanas = semanasPanel(fecha);
   const params = normalizarParametros(cfgValor);
   const feriados = feriadosDe(params);
@@ -391,7 +422,7 @@ export function armarPanel(d) {
     return {
       ...s,
       futura: s.desde > hoy,
-      entregas: entregasDeSemana(tablero.porOt, s),
+      entregas: entregasDeSemana(tablero.porOt, s, { params, feriados, modulos }),
       plan: { cumplimiento: informe.resumen.cumplimiento, procesosPlanificados: informe.resumen.procesosPlanificados, procesosCumplidos: informe.resumen.procesosCumplidos, carga: cargaDeSemana(items, s, capacidad, params) },
       produccion,
       calidad: calidadDeSemana({ s, retrabajos, producidas: produccion.otsLista, noConformidades, defectos, pendientes }),

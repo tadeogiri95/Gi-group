@@ -157,12 +157,16 @@ export default function PanelProduccion() {
       {panel && s && (
         <>
           <Bloque titulo="1. Entregas" nota="Lo que ve el cliente: si llegamos a la fecha que le prometimos.">
-            <Indicador id="entregas" titulo="Entregas a tiempo" valor={pctTxt(s.entregas.pct)} tono={semaforo(s.entregas.pct, METAS.entregas)}
-              detalle={s.entregas.entregadas ? `${s.entregas.aTiempo} de ${s.entregas.conFecha} OT con fecha${s.entregas.sinFecha ? ` · ${s.entregas.sinFecha} sin fecha objetivo` : ""}` : "Ninguna OT se entregó esta semana"}
-              meta={METAS.entregas.texto} serie={serieDe(semanas, (x) => x.entregas.pct)}
-              ayuda="OT entregadas en la semana (acta firmada, o cerrada con toda la producción hecha) que llegaron hasta su fecha objetivo (la SEMANA del Plan de trabajo o la fecha de entrega). Las OT sin fecha objetivo no entran en el porcentaje." />
+            <Indicador id="produccion-a-tiempo" titulo="Producción a tiempo" valor={pctTxt(s.entregas.produccion.pct)} tono={semaforo(s.entregas.produccion.pct, METAS.entregas)}
+              detalle={s.entregas.produccion.cantidad ? `${s.entregas.produccion.aTiempo} de ${s.entregas.produccion.conFecha} OT con fecha${s.entregas.produccion.sinFecha ? ` · ${s.entregas.produccion.sinFecha} sin fecha objetivo` : ""}` : "Ninguna OT terminó la producción esta semana"}
+              meta={METAS.entregas.texto} serie={serieDe(semanas, (x) => x.entregas.produccion.pct)}
+              ayuda="OT que terminaron su último proceso de fábrica en la semana, contra su fecha límite de producción: la fecha objetivo menos los días de instalación (la misma de Planificación). Cuentan también las que se cierran sin acta, por ejemplo si el cliente retira en fábrica. Las OT sin fecha objetivo no entran en el porcentaje." />
+            <Indicador id="entregas" titulo="Entregas instaladas a tiempo" valor={pctTxt(s.entregas.instaladas.pct)} tono={semaforo(s.entregas.instaladas.pct, METAS.entregas)}
+              detalle={s.entregas.instaladas.cantidad ? `${s.entregas.instaladas.aTiempo} de ${s.entregas.instaladas.conFecha} OT con fecha${s.entregas.instaladas.sinFecha ? ` · ${s.entregas.instaladas.sinFecha} sin fecha objetivo` : ""}` : "Ninguna OT se instaló esta semana"}
+              meta={METAS.entregas.texto} serie={serieDe(semanas, (x) => x.entregas.instaladas.pct)}
+              ayuda="OT con acta firmada en la semana (entregadas e instaladas) que llegaron hasta su fecha objetivo (la SEMANA del Plan de trabajo o la fecha de entrega). Las OT sin fecha objetivo no entran en el porcentaje." />
             <Indicador id="entregadas" titulo="OT entregadas" valor={num(s.entregas.entregadas, 0)}
-              detalle={s.entregas.tarde.length ? `${s.entregas.tarde.length} tarde` : null} serie={serieDe(semanas, (x) => x.entregas.entregadas, (v) => num(v, 0))}
+              serie={serieDe(semanas, (x) => x.entregas.entregadas, (v) => num(v, 0))}
               ayuda="OT con acta firmada en la semana, o cerradas en la planilla con toda la producción hecha." />
             <Indicador id="atrasadas" titulo="OT que van tarde según el plan" valor={num(panel.ahora.atrasadas.cantidad, 0)}
               tono={panel.ahora.atrasadas.cantidad ? (panel.ahora.atrasadas.cantidad / Math.max(1, panel.ahora.atrasadas.abiertas) > 0.25 ? "mal" : "atencion") : "bien"}
@@ -288,7 +292,9 @@ export default function PanelProduccion() {
                   </tbody>
                 </table>
               </div>
-              <Lista titulo="Entregadas tarde esta semana" vacio="Ninguna." filas={s.entregas.tarde}
+              <Lista titulo="Producción terminada tarde esta semana" vacio="Ninguna." filas={s.entregas.produccion.tarde}
+                render={(f) => <><NombreOt proyecto={f} /> · <b>{f.diasTarde} {f.diasTarde === 1 ? "día" : "días"} tarde</b> (límite {corta(f.objetivo)})</>} />
+              <Lista titulo="Instaladas tarde esta semana" vacio="Ninguna." filas={s.entregas.instaladas.tarde}
                 render={(f) => <><NombreOt proyecto={f} /> · <b>{f.diasTarde} {f.diasTarde === 1 ? "día" : "días"} tarde</b> (meta {corta(f.objetivo)})</>} />
               <Lista titulo="Van tarde según el plan (hoy)" vacio="Ninguna." filas={panel.ahora.atrasadas.ots.slice(0, 10)}
                 render={(f) => <><NombreOt proyecto={f} /> · <b>{f.diasTarde} {f.diasTarde === 1 ? "día" : "días"}</b></>} />
