@@ -775,11 +775,13 @@ test("piezasConManual — manda el escaneo; el % manual cuenta solo en los proce
   ];
   const filas = piezasConManual(escaneo, proyectos);
   const de = (ot, etapa) => filas.filter((f) => f.ot === ot && f.etapa === etapa).map((f) => [f.total, f.pasaron, !!f.manual]);
-  assert.deepEqual(de("7100", 1), [[40, 10, false]], "Corte tiene escaneo: no cambia aunque diga 100% a mano");
+  assert.deepEqual(de("7100", 1), [[40, 40, true]], "Corte con escaneo completado a mano (100): pisa al escaneo (27/11)");
   assert.deepEqual(de("7100", 2), [[40, 20, true]], "Canteado sin escaneo: 50% con el total de piezas de la OT");
   assert.deepEqual(de("7100", 4), [[40, 10, true]]);
   assert.deepEqual(de("7200", 1), [[100, 30, true]], "OT sin piezas: sobre 100");
   assert.deepEqual(de("7300", 1), [], "apagado no cuenta");
+  assert.deepEqual(piezasConManual(escaneo, [{ ot: "7100", avance_manual: { activo: true, etapas: { 1: 60 } } }]).filter((f) => f.etapa === 1).map((f) => [f.pasaron, !!f.manual]),
+    [[10, false]], "con escaneo, un % manual menor a 100 no cuenta: manda el escaneo");
   assert.equal(piezasConManual(escaneo, []), escaneo);
   assert.ok(tieneEscaneo(escaneo, "7100", 1));
   assert.ok(!tieneEscaneo(filas, "7100", 2));
@@ -843,6 +845,42 @@ test("✍ Checkeo manual — se activa, carga el % de los procesos sin escaneo y
   assert.equal(patch.body.avance_manual.activo, true);
   assert.equal(patch.body.avance_manual.por, "Tadeo");
   assert.equal(guardados.length, 1);
+});
+
+// Completar a mano con escaneo empezado (Tadeo, 27/11)
+test("✍ Checkeo manual — Completar a mano un proceso con escaneo empezado: 100 % y la etapa terminada", async () => {
+  const pedidos = [];
+  global.fetch = async (url, opts) => {
+    const body = opts?.body ? JSON.parse(opts.body) : {};
+    pedidos.push({ url: String(url), body });
+    return new Response(JSON.stringify({ ok: true, data: null }), { status: 200 });
+  };
+  const guardados = [];
+  conSesion("gerencial", <AvanceManualOt proyecto={{ id: 7, ot: "7100", division: "MUEBLES" }} etapas={ETAPAS} divisiones={DIVISIONES}
+    piezas={[{ ot: "7100", etapa: 1, total: 40, pasaron: 30 }, { ot: "7100", etapa: 2, total: 40, pasaron: 40 }]} onGuardado={(v) => guardados.push(v)} />);
+  const sec = screen.getByRole("region", { name: "Checkeo manual de la OT 7100" });
+  fireEvent.click(within(sec).getByLabelText("Usar checkeo manual en esta OT"));
+  assert.equal(within(sec).queryByLabelText(/^Completar a mano Canteado/), null, "Canteado ya terminó por escaneo");
+  fireEvent.click(within(sec).getByLabelText("Completar a mano Corte / Seccionado en la OT 7100"));
+  fireEvent.click(within(sec).getByText("Guardar avance"));
+  await within(sec).findByText("✅ Avance guardado");
+  const patch = pedidos.find((p) => p.body.method === "PATCH");
+  assert.deepEqual(patch.body.body.avance_manual.etapas, { 1: 100 });
+  const avance = pedidos.filter((p) => p.url.includes("/api/avance")).map((p) => p.body);
+  assert.deepEqual(avance, [{ accion: "terminar", ot: "7100", etapa: 1 }]);
+  assert.equal(guardados.length, 1);
+  cleanup();
+  // Ya completada: se ve tildada; al destildar vuelve a seguir el escaneo
+  pedidos.length = 0;
+  conSesion("gerencial", <AvanceManualOt proyecto={{ id: 7, ot: "7100", division: "MUEBLES", avance_manual: { activo: true, etapas: { 1: 100 } } }} etapas={ETAPAS} divisiones={DIVISIONES}
+    piezas={[{ ot: "7100", etapa: 1, total: 40, pasaron: 30 }]} />);
+  const caja = screen.getByLabelText("Completar a mano Corte / Seccionado en la OT 7100");
+  assert.equal(caja.checked, true);
+  fireEvent.click(caja);
+  fireEvent.click(screen.getByText("Guardar avance"));
+  await screen.findByText("✅ Avance guardado");
+  assert.deepEqual(pedidos.find((p) => p.body.method === "PATCH").body.body.avance_manual.etapas, {});
+  assert.deepEqual(pedidos.filter((p) => p.url.includes("/api/avance")).map((p) => p.body.accion), ["reabrir"]);
 });
 
 test("✍ Checkeo manual — sin la migración 141 avisa; quien no es gestión solo lo ve", async () => {
