@@ -67,8 +67,9 @@ export async function cargarPlanVivo(empresaId, { sesion, hoy = hoyArg() } = {})
   // Producción espera que termine Técnica, como en el Gantt (parte 49)
   const pausadas = otsEnPausa(pausas.data);
   const planDT = planDeEmpresa({ proyectos: proyectos.data, divisiones: divisiones.data, cfgValor, personal: personal.data, hoy, pausadas, ajustes: ajustes.data });
+  const modulos = modulosPorOt(mods.data);
   const vivo = planVivo(vigentes, {
-    proyectos: abiertas, modulos: modulosPorOt(mods.data), etapasCodigo,
+    proyectos: abiertas, modulos, etapasCodigo,
     avance: avance.data, piezas: conManual,
     terminadas: new Set(proyectos.data.filter((p) => p.terminado_planilla).map((p) => String(p.ot))), hoy,
     params: normalizarParametros(cfgValor), horasSemana: horasSemanaDeGrilla(emp.data, divisiones.data, cfgValor),
@@ -78,7 +79,7 @@ export async function cargarPlanVivo(empresaId, { sesion, hoy = hoyArg() } = {})
   });
   for (const [ot] of vivo) if (!abiertas.has(ot)) vivo.delete(ot);
   // planes: todos los confirmados con sus días (el Panel toma de cada semana el plan que valía, 24/11)
-  return { vivo, vigentes, planes: conItems, etapasCodigo, abiertas, cfgValor, proyectos: proyectos.data, divisiones: divisiones.data,
+  return { vivo, vigentes, planes: conItems, etapasCodigo, abiertas, cfgValor, proyectos: proyectos.data, divisiones: divisiones.data, modulos,
     empleados: emp.data, piezas: piezas.data, avance: avance.data, retrabajos: retrabajos.data, pausas: pausas.data };
 }
 

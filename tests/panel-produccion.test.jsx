@@ -12,6 +12,7 @@ import {
   calidadDeSemana, maquinasDeSemana, enProceso, atrasadasPlan, pausadasAhora, armarPanel, itemsDelHistorial, aLaVezPorEtapa,
 } from "../app/lib/panelProduccion.js";
 import { opcionesBoton } from "../app/lib/menuGestion.js";
+import { normalizarParametros } from "../app/lib/planificacion.js";
 
 afterEach(() => cleanup());
 
@@ -47,21 +48,28 @@ const tarjeta = (ot, { fin = null, procesos = [], horas = null, produccion = nul
   ot, fin, procesos, horas, produccion, proyecto: { ot, cliente: `Cliente ${ot}`, fecha_objetivo: objetivo },
 });
 
-test("entregas — a tiempo contra la fecha objetivo; las que no tienen fecha no entran en el %", () => {
+test("entregas — producción a tiempo contra la fecha límite y entregas instaladas contra la fecha objetivo (27/11)", () => {
+  const params = normalizarParametros(null);
+  const pr = (...fines) => fines.map((fin) => ({ etapa: "corte", fin }));
+  const conInst = (t, acta, dias = 2) => ({ ...t, instalacion: acta ? { fin: acta } : null, proyecto: { ...t.proyecto, dias_instalacion: dias } });
   const porOt = new Map([
-    ["1", tarjeta("1", { fin: arg("11-18"), objetivo: "2026-11-21", horas: 40 })],
-    ["2", tarjeta("2", { fin: arg("11-20"), objetivo: "2026-11-17", horas: 60 })],
-    ["3", tarjeta("3", { fin: arg("11-19"), horas: 50 })],
-    ["4", tarjeta("4", { fin: arg("11-10"), objetivo: "2026-11-21" })], // otra semana
+    // Entrega viernes 20/11 con 2 días de instalación: la fábrica tiene hasta el miércoles 18
+    ["1", conInst(tarjeta("1", { procesos: pr(arg("11-16"), arg("11-18")), objetivo: "2026-11-20" }), null)],
+    ["2", conInst(tarjeta("2", { procesos: pr(arg("11-19")), objetivo: "2026-11-20", fin: arg("11-21"), horas: 60 }), arg("11-21"))],
+    ["3", tarjeta("3", { procesos: pr(arg("11-17")), fin: arg("11-17"), horas: 40 })], // cerrada sin acta y sin fecha
+    ["4", conInst(tarjeta("4", { procesos: pr(arg("11-10")), objetivo: "2026-11-20", fin: arg("11-19"), horas: 50 }), arg("11-19"))],
+    ["5", tarjeta("5", { procesos: [{ etapa: "corte", fin: arg("11-18") }, { etapa: "armado", fin: null }], objetivo: "2026-11-20" })],
   ]);
-  const e = entregasDeSemana(porOt, SEMANA);
-  assert.equal(e.entregadas, 3);
-  assert.equal(e.conFecha, 2);
-  assert.equal(e.aTiempo, 1);
-  assert.equal(e.pct, 50);
-  assert.equal(e.sinFecha, 1);
-  assert.deepEqual(e.tarde.map((f) => [f.ot, f.diasTarde]), [["2", 3]]);
+  const e = entregasDeSemana(porOt, SEMANA, { params });
+  assert.deepEqual([e.produccion.cantidad, e.produccion.conFecha, e.produccion.aTiempo, e.produccion.pct, e.produccion.sinFecha], [3, 2, 1, 50, 1]);
+  assert.deepEqual(e.produccion.tarde.map((f) => [f.ot, f.diasTarde, f.objetivo]), [["2", 1, "2026-11-18"]]);
+  assert.deepEqual([e.instaladas.cantidad, e.instaladas.conFecha, e.instaladas.aTiempo, e.instaladas.pct, e.instaladas.sinFecha], [2, 2, 1, 50, 0]);
+  assert.deepEqual(e.instaladas.tarde.map((f) => [f.ot, f.diasTarde, f.objetivo]), [["2", 1, "2026-11-20"]]);
+  assert.equal(e.entregadas, 3, "OT completas: con acta o cerradas con la producción hecha");
   assert.equal(e.leadTime, 50);
+  // Sin días de instalación la fecha límite es la misma fecha objetivo
+  const sinDias = entregasDeSemana(new Map([["2", tarjeta("2", { procesos: pr(arg("11-19")), objetivo: "2026-11-20" })]]), SEMANA, { params });
+  assert.equal(sinDias.produccion.pct, 100);
 });
 
 test("producción — OT con todos los procesos al 100 % en la semana, piezas escaneadas y $", () => {
@@ -216,7 +224,8 @@ test("armarPanel — junta todo con el tablero de etapas y el informe de la sema
   const s = panel.semanas[4];
   assert.equal(panel.semanas.length, 5);
   assert.equal(s.entregas.entregadas, 1);
-  assert.equal(s.entregas.pct, 100);
+  assert.equal(s.entregas.instaladas.pct, 100);
+  assert.equal(s.entregas.produccion.pct, 100, "la 100 terminó la producción el 17/11, antes de su fecha");
   assert.equal(s.produccion.ots, 1);
   assert.equal(s.produccion.valor, 5000);
   assert.equal(s.produccion.piezas, 2);
@@ -270,7 +279,9 @@ test("armarPanel — la carga usa el plan de cada día, la gente de la división
 test("pantalla — bloques con semáforo y detalle, desde /api/reportes/panel", async () => {
   const semana = (desde, extra = {}) => ({
     desde, hasta: desde, futura: false,
-    entregas: { entregadas: 4, conFecha: 4, aTiempo: 3, pct: 75, tarde: [{ ot: "7100", cliente: "Ana", diasTarde: 2, objetivo: "2026-11-18" }], sinFecha: 0, leadTime: 80 },
+    entregas: { entregadas: 4, leadTime: 80,
+      produccion: { cantidad: 5, conFecha: 5, aTiempo: 5, pct: 100, tarde: [], sinFecha: 0 },
+      instaladas: { cantidad: 4, conFecha: 4, aTiempo: 3, pct: 75, tarde: [{ ot: "7100", cliente: "Ana", diasTarde: 2, objetivo: "2026-11-18" }], sinFecha: 0 } },
     plan: { cumplimiento: 92, procesosPlanificados: 10, procesosCumplidos: 9, carga: { horas: 300, disponibles: 400, pct: 98, cuello: { etapa: "corte", nombre: "Corte", pct: 98, horas: 100, disponibles: 102, que: "1 seccionadora" }, gente: { horas: 300, disponibles: 400, pct: 75, personas: 10 },
       porEtapa: [{ etapa: "corte", nombre: "Corte", horas: 100, disponibles: 102, pct: 98, aLaVez: 1, que: "1 seccionadora" }, { etapa: "armado", nombre: "Armado", horas: 200, disponibles: null, pct: null }] } },
     produccion: { ots: 5, piezas: 900, valor: 1000000, otsLista: [], leadTime: 40 },
@@ -296,6 +307,9 @@ test("pantalla — bloques con semáforo y detalle, desde /api/reportes/panel", 
   assert.match(pedido, /\/api\/reportes\/panel\?fecha=\d{4}-\d{2}-\d{2}/);
   const tono = (id) => document.querySelector(`[data-indicador="${id}"]`).dataset.tono;
   assert.equal(tono("entregas"), "atencion");
+  assert.equal(tono("produccion-a-tiempo"), "bien");
+  assert.match(document.querySelector('[data-indicador="entregas"]').textContent, /Entregas instaladas a tiempo/);
+  assert.match(document.querySelector('[data-indicador="produccion-a-tiempo"]').textContent, /Producción a tiempo.*5 de 5 OT con fecha/);
   assert.equal(tono("cumplimiento"), "bien");
   assert.equal(tono("sin-retrabajo"), "mal");
   assert.equal(document.querySelector('[data-indicador="ausentismo"]'), null, "sin ausentismo");
