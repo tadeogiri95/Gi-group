@@ -16,6 +16,7 @@ import { proveedorDeLista } from "../lib/elegirDeLista";
 import RemitosFoto from "./RemitosFoto";
 import { useTecladoLista, CLASE_MARCADA } from "../hooks/useTecladoLista";
 import MovimientoCorregir, { HistorialMovimiento, historialMovimiento } from "./MovimientoCorregir";
+import ConsumoOt from "./ConsumoOt";
 import { renglonTanda, heredado, leerTandaPegada, renglonesParaGuardar, leerBorrador, guardarBorrador, borrarBorrador, MAX_TANDA } from "../lib/tandaMovimientos";
 
 const CUANTOS = 100;
@@ -111,6 +112,8 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
   const [avisoPegado, setAvisoPegado] = useState(null);
   const [recuperado, setRecuperado] = useState(() => !!(form && form.renglones.length));
   const [guardados, setGuardados] = useState(null);
+  // 27/11: 📋 Traer lo que necesita una OT (sus herrajes y accesorios, en tanda)
+  const [deUnaOt, setDeUnaOt] = useState(false);
 
   /** Abre el formulario de ese tipo; si había una tanda a medio cargar, la recupera. */
   const abrir = useCallback((tipo) => {
@@ -258,6 +261,10 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
 
   return (
     <div>
+      {deUnaOt && (
+        <ConsumoOt empresaId={usuario?.empresa_id} usuario={usuario}
+          onGuardado={cargar} onClose={() => setDeUnaOt(false)} />
+      )}
       {faltaMigracion && (
         <div role="alert" className="p-3 mb-3 rounded-[10px] bg-gypi-red/10 text-gypi-red text-[14px]">Para los movimientos falta correr la migración 107 en Supabase.</div>
       )}
@@ -301,6 +308,12 @@ export default function MovimientosStock({ usuario, articulos = [], onArticuloNu
             </div>
           )}
 
+          {form.tipo === "consumo" && (
+            <button onClick={() => setDeUnaOt(true)} className="g-btn g-btn-secondary w-full mb-1">📋 Traer lo que necesita una OT</button>
+          )}
+          {form.tipo === "consumo" && (
+            <div className="text-[12px] text-gypi-dim mb-3">Elegís la OT y aparecen sus herrajes y accesorios para consumirlos todos juntos.</div>
+          )}
           {esVarios(form.tipo) && form.tipo !== "ingreso" && (
             <>
               <label className="g-label" htmlFor="mov-ot-todos">OT para todos (opcional)</label>

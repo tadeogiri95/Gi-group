@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { sb } from "../lib/supabase";
 import { cantidadTexto, materialOt } from "../lib/stock";
+import { necesidadVigente } from "../lib/consumoOt";
 
 const MAX_VISIBLES = 60;
 
@@ -19,10 +20,13 @@ export default function MaterialOt({ ot, empresaId }) {
     (async () => {
       const o = encodeURIComponent(ot);
       // Sin las migraciones 107 o 108 no hay tabla: el detalle sigue sin esto
-      const [necesidades, movimientos] = await Promise.all([
+      const [necesidadesMrp, cambios, movimientos] = await Promise.all([
         sb.get(`necesidades_stock?empresa_id=eq.${empresaId}&ot=eq.${o}&select=sku,nombre,cantidad,fecha`).catch(() => []),
+        // 27/11 (213): la necesidad cambiada desde Gypi manda sobre la de la planilla
+        sb.get(`necesidades_cambios?empresa_id=eq.${empresaId}&ot=eq.${o}&select=id,sku,nombre,cantidad,created_at`).catch(() => []),
         sb.get(`movimientos_stock?empresa_id=eq.${empresaId}&ot=eq.${o}&anulado=eq.false&tipo=in.(consumo,devolucion)&select=sku,nombre,unidad,cantidad,tipo,anulado`).catch(() => []),
       ]);
+      const necesidades = [...necesidadVigente(necesidadesMrp || [], cambios || [])].map(([sku, v]) => ({ sku, nombre: v.nombre, cantidad: v.cantidad }));
       const skus = [...new Set([...(necesidades || []), ...(movimientos || [])].map((r) => r.sku))].slice(0, 300);
       const articulos = skus.length
         // Comillas codificadas (%22): los SKU llevan puntos y /api/data no acepta comillas
@@ -72,7 +76,7 @@ export default function MaterialOt({ ot, empresaId }) {
           Ver los {material.filas.length}
         </button>
       )}
-      <div className="text-xs text-gypi-dim mt-1">Lo necesario sale de la planilla MRP. Lo retirado es lo cargado en Gypi (retiros menos devoluciones); lo anotado a mano en la planilla no aparece acá.</div>
+      <div className="text-xs text-gypi-dim mt-1">Lo necesario sale de la planilla MRP (o del cambio hecho en Gypi). Lo retirado es lo cargado en Gypi (retiros menos devoluciones); lo anotado a mano en la planilla no aparece acá.</div>
     </section>
   );
 }
