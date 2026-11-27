@@ -26,6 +26,10 @@ export function estadoOtLista(p, { enCurso = null, porcentaje = null, pausa = nu
   if (p?.estado === "cerrado") return { texto: "Cerrada", tono: "muted" };
   if (p?.terminado_planilla) return { texto: "Terminada en planilla", tono: "muted" };
   if (pausa) return { texto: "⏸ En pausa", tono: "muted" };
+  // Todas sus etapas terminadas (con escaneo o completadas a mano, 27/11)
+  // aunque falte la firma: ya no se muestra "En curso"
+  const todasTerminadas = !!enCurso?.celdas?.length && enCurso.celdas.every((c) => ["terminada", "aprobada", "no_aplica"].includes(c.estado));
+  if (todasTerminadas) return { texto: "Producción terminada", tono: "green" };
   if (enCurso) {
     const etapa = etapaEnCurso(enCurso);
     return { texto: etapa ? `En curso · ${etapa}` : "En curso", tono: "amber" };

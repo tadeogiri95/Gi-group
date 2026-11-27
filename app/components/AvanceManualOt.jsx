@@ -4,10 +4,14 @@
 // gestión carga a mano cuánto va cada uno. Se usa en el detalle de la OT y en
 // Proyectos → Planificación. Lo guardado lo leen la carga de la planta, el
 // Gantt y el % de las OT (app/lib/avanceManual.js).
+// Completar a mano (Tadeo, 27/11): en un proceso con escaneo empezado,
+// gestión puede tildar "Completar a mano" (p. ej. el mueble se fue sin
+// escanear): queda al 100 % y la etapa se marca terminada (/api/avance), así
+// deja de figurar en curso en la Lista, el Trello y el Gantt.
 import { useContext, useState } from "react";
-import { sb } from "../lib/supabase";
+import { sb, apiFetch } from "../lib/supabase";
 import { AuthContext } from "../context/AuthContext";
-import { normalizarAvanceManual, etapasDeOt, tieneEscaneo } from "../lib/avanceManual";
+import { normalizarAvanceManual, etapasDeOt, tieneEscaneo, pctEscaneo, valorEtapasManual } from "../lib/avanceManual";
 import { esGestion } from "../lib/cargaInicio";
 import { fechaCorta } from "../lib/ot";
 
@@ -28,9 +32,16 @@ export default function AvanceManualOt({ proyecto, etapas = [], divisiones = [],
   const [guardando, setGuardando] = useState(false);
   const procesos = etapasDeOt(proyecto, etapas, divisiones);
   const ot = proyecto?.ot;
-  const escaneo = (codigo) => {
-    const f = (piezas || []).find((x) => String(x.ot) === String(ot) && Number(x.etapa) === Number(codigo) && !x.manual);
-    return f && Number(f.total) > 0 ? Math.round((Math.min(Number(f.pasaron) || 0, Number(f.total)) / Number(f.total)) * 100) : null;
+  const escaneo = (codigo) => pctEscaneo(piezas, ot, codigo);
+  // Procesos con escaneo que ya estaban completados a mano (100 guardado)
+  const completadosAntes = guardado.activo
+    ? procesos.filter((e) => tieneEscaneo(piezas, ot, e.codigo) && guardado.etapas[String(e.codigo)] >= 100).map((e) => String(e.codigo))
+    : [];
+  const [completar, setCompletar] = useState(() => new Set(completadosAntes));
+  const tildar = (codigo, si) => {
+    const n = new Set(completar);
+    if (si) n.add(String(codigo)); else n.delete(String(codigo));
+    setCompletar(n);
   };
   const error = (txt) => {
     if (!String(txt ?? "").trim()) return null;
@@ -46,11 +57,7 @@ export default function AvanceManualOt({ proyecto, etapas = [], divisiones = [],
     if (hayError) return;
     setGuardando(true);
     setEstado(null);
-    const etapasValor = {};
-    for (const e of procesos) {
-      const t = String(textos[e.codigo] ?? "").trim();
-      if (t && !tieneEscaneo(piezas, ot, e.codigo)) etapasValor[String(e.codigo)] = Math.round(Number(t.replace(",", ".")));
-    }
+    const etapasValor = valorEtapasManual(procesos, textos, completar, piezas, ot);
     const valor = { activo, etapas: etapasValor, por: usuario?.apodo || usuario?.nombre || null, at: new Date().toISOString() };
     try {
       await sb.patch(`proyectos?id=eq.${proyecto.id}`, { avance_manual: valor });
@@ -61,8 +68,22 @@ export default function AvanceManualOt({ proyecto, etapas = [], divisiones = [],
           .map(([c, n]) => ({ ot: String(ot), etapa: Number(c), pct: n }));
         for (const c of cambios) await sb.post("avance_manual_historial", c).catch(() => null);
       }
+      // La etapa completada a mano queda terminada (falta la firma, como con el
+      // último escaneo); la que se destildó vuelve a seguir el escaneo.
+      const ahora = activo ? procesos.filter((e) => tieneEscaneo(piezas, ot, e.codigo) && completar.has(String(e.codigo))).map((e) => String(e.codigo)) : [];
+      const nuevos = ahora.filter((c) => !completadosAntes.includes(c));
+      const sacados = completadosAntes.filter((c) => !ahora.includes(c));
+      let fallo = false;
+      for (const [accion, lista] of [["terminar", nuevos], ["reabrir", sacados]]) {
+        for (const c of lista) {
+          const r = await apiFetch("/api/avance", { method: "POST", body: JSON.stringify({ accion, ot: String(ot), etapa: Number(c) }) }).catch(() => null);
+          if (!r?.ok) fallo = true;
+        }
+      }
       onGuardado?.(valor);
-      setEstado(activo ? "✅ Avance guardado" : "✅ Checkeo manual apagado: queda solo el escaneo");
+      setEstado(fallo
+        ? "⚠️ Avance guardado, pero no se pudo marcar la etapa como terminada. Probá de nuevo."
+        : activo ? "✅ Avance guardado" : "✅ Checkeo manual apagado: queda solo el escaneo");
     } catch (e) {
       setEstado(/avance_manual/.test(String(e.message)) ? AVISO_MIGRACION : `No se pudo guardar: ${e.message}`);
     } finally {
@@ -74,7 +95,7 @@ export default function AvanceManualOt({ proyecto, etapas = [], divisiones = [],
     <section className="mb-4" aria-label={`Checkeo manual de la OT ${ot}`}>
       <div className="g-label mb-1.5">✍ Checkeo manual de OT</div>
       <div className="text-xs text-gypi-dim mb-2">
-        Manda el escaneo de piezas. En los procesos sin escaneo podés cargar a mano cuánto van; se usa en la planificación, el Gantt y el % de la OT.
+        Manda el escaneo de piezas. En los procesos sin escaneo podés cargar a mano cuánto van; se usa en la planificación, el Gantt y el % de la OT. Si un proceso con escaneo no se va a poder terminar escaneando, tildá «Completar a mano».
       </div>
       {puedeEditar && (
         <label className="flex items-center gap-2.5 cursor-pointer mb-2">
@@ -85,7 +106,7 @@ export default function AvanceManualOt({ proyecto, etapas = [], divisiones = [],
       {activo && (
         <ul className="list-none m-0 p-0 flex flex-col gap-1.5">
           {procesos.map((e) => {
-            const pctEscaneo = escaneo(e.codigo);
+            const pctEsc = escaneo(e.codigo);
             const conEscaneo = tieneEscaneo(piezas, ot, e.codigo);
             const id = `avance-${proyecto.id}-${e.codigo}`;
             return (
@@ -93,7 +114,19 @@ export default function AvanceManualOt({ proyecto, etapas = [], divisiones = [],
                 {e.icon && <span className="text-lg">{e.icon}</span>}
                 <label htmlFor={id} className="flex-1 min-w-0 text-[13px] font-bold truncate">{e.nombre}</label>
                 {conEscaneo ? (
-                  <span className="text-xs text-gypi-dim text-right">🧩 {pctEscaneo}% por escaneo<br />manda el escaneo</span>
+                  <span className="flex flex-col items-end gap-1 text-right">
+                    <span className="text-xs text-gypi-dim">🧩 {pctEsc}% por escaneo{completar.has(String(e.codigo)) ? "" : <><br />manda el escaneo</>}</span>
+                    {puedeEditar && (pctEsc < 100 || completar.has(String(e.codigo))) ? (
+                      <label className="flex items-center gap-1.5 cursor-pointer text-[13px] font-bold">
+                        <input type="checkbox" className="w-4 h-4" checked={completar.has(String(e.codigo))}
+                          aria-label={`Completar a mano ${e.nombre} en la OT ${ot}`}
+                          onChange={(ev) => tildar(e.codigo, ev.target.checked)} />
+                        ✔ Completar a mano
+                      </label>
+                    ) : !puedeEditar && completadosAntes.includes(String(e.codigo)) ? (
+                      <span className="text-[13px] font-bold">✔ Completada a mano</span>
+                    ) : null}
+                  </span>
                 ) : puedeEditar ? (
                   <span className="flex items-center gap-1">
                     <input id={id} className="g-input w-[72px] text-right" inputMode="numeric" value={textos[e.codigo] ?? ""} placeholder="—"

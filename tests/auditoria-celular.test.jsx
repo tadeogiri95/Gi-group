@@ -117,6 +117,9 @@ test("lista de OT — estado con la etapa en curso, avance y entrega (auditoría
   assert.equal(etapaEnCurso({ celdas: [{ estado: "aprobada", etapa: { nombre: "Corte" } }, { estado: "pendiente", etapa: { nombre: "Armado" } }] }), "Armado");
   assert.deepEqual(estadoOtLista({ estado: "activo" }, { enCurso: fila, porcentaje: 40 }), { texto: "En curso · Canteado", tono: "amber" });
   assert.deepEqual(estadoOtLista({ estado: "activo" }, { porcentaje: 100 }), { texto: "Producción terminada", tono: "green" });
+  // Todas las etapas terminadas (escaneo o completadas a mano, 27/11), aunque falte la firma
+  const terminadas = { celdas: [{ estado: "terminada", etapa: { nombre: "Corte" } }, { estado: "aprobada", etapa: { nombre: "Armado" } }] };
+  assert.deepEqual(estadoOtLista({ estado: "activo" }, { enCurso: terminadas, porcentaje: 90 }), { texto: "Producción terminada", tono: "green" });
   assert.deepEqual(estadoOtLista({ estado: "activo" }, {}), { texto: "Sin empezar", tono: "muted" });
   assert.equal(estadoOtLista({ estado: "cerrado" }).texto, "Cerrada");
   assert.equal(estadoOtLista({ estado: "activo", terminado_planilla: true }).texto, "Terminada en planilla");
