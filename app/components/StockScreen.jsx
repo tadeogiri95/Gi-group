@@ -8,7 +8,7 @@
 // (➕ Artículo nuevo, 124); el script de la planilla los anota en ARTICULOS.
 // 27/11 (Tadeo): se ven todos los artículos (de a 100), la foto se pone desde
 // el renglón (📷) con filtros Sin foto / Con foto, y los rótulos se imprimen
-// también en hoja A4 de a ocho, eligiendo los que tienen foto, de a 300.
+// también en hoja A4 de a ocho (y de a seis o cuatro), eligiendo los que tienen foto, de a 300.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { Chip } from "./ui";

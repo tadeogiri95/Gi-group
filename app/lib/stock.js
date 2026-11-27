@@ -283,8 +283,8 @@ const fotoValida = (u) => typeof u === "string" && /^https:\/\//i.test(u) && u.l
  * nombre normalizado, SKU, unidad y división, y el QR. Escaneando el QR se
  * abre la ficha para retirarlo del stock (parte 14).
  * En los rótulos altos (62 × 100, 100 × 150) va todo uno abajo del otro.
- * En la hoja A4 (tamano.hoja, 27/11) van de a ocho por hoja (2 × 4), con
- * línea de corte, para imprimir en una impresora común.
+ * En la hoja A4 (tamano.hoja, 27/11) van de a ocho (2 × 4), seis (2 × 3) o
+ * cuatro (2 × 2) por hoja, con línea de corte, para una impresora común.
  * linkDe y titulo sirven para otras etiquetas con el mismo formato (las de
  * las máquinas, Mantenimiento parte 35: sku = código, ?maquina=).
  * @param {{ empresa: string, articulos: object[], origen: string, slug: string, tamano: { ancho: number, alto: number }, linkDe?: (a: object) => string, titulo?: string }} datos
@@ -295,17 +295,22 @@ export async function htmlEtiquetasArticulos({ empresa, articulos, origen, slug,
   const porHoja = tamano.porHoja || 8;
   const qrs = await Promise.all(lista.map((a) => svgQR(linkDe(a))));
   const alto = tamano.alto >= tamano.ancho * 1.3;
+  // Casi cuadrado (el de a seis por hoja A4): foto y QR arriba, grandes, y el texto abajo a lo ancho
+  const cuadrado = !alto && tamano.alto >= tamano.ancho * 0.85;
   const conFoto = rotuloConFoto(tamano) && lista.some((a) => fotoValida(a.foto_url));
   // Ancho: foto | texto | QR. Alto: foto, texto y QR uno abajo del otro.
-  const qrMm = alto
-    ? Math.min(tamano.ancho - 8, (tamano.alto - 8) * (conFoto ? 0.36 : 0.55))
-    : Math.min(tamano.alto - 8, tamano.ancho * (conFoto ? 0.3 : 0.42));
-  const fotoMm = alto ? Math.min(tamano.ancho - 8, (tamano.alto - 8) * 0.34) : Math.min(tamano.alto - 8, tamano.ancho * 0.28);
+  const mitad = Math.min((tamano.ancho - 13) / 2, (tamano.alto - 10) * 0.55);
+  const qrMm = cuadrado
+    ? (conFoto ? mitad : Math.min(tamano.ancho - 10, (tamano.alto - 10) * 0.6))
+    : alto
+      ? Math.min(tamano.ancho - 8, (tamano.alto - 8) * (conFoto ? 0.36 : 0.55))
+      : Math.min(tamano.alto - 8, tamano.ancho * (conFoto ? 0.3 : 0.42));
+  const fotoMm = cuadrado ? mitad : alto ? Math.min(tamano.ancho - 8, (tamano.alto - 8) * 0.34) : Math.min(tamano.alto - 8, tamano.ancho * 0.28);
   const items = lista.map((a, i) => {
     const detalle = [a.unidad, a.division].filter(Boolean).join(" · ");
     const foto = conFoto && fotoValida(a.foto_url) ? `<div class="foto"><img src="${esc(a.foto_url)}" alt=""></div>` : "";
     return `
-  <div class="etiqueta">
+  <div class="etiqueta"${cuadrado && !foto ? ' data-sin-foto' : ""}>
     ${foto}
     <div class="texto">
       <div class="empresa">${esc(empresa)}</div>
@@ -316,12 +321,14 @@ export async function htmlEtiquetasArticulos({ empresa, articulos, origen, slug,
     <div class="qr">${qrs[i]}</div>
   </div>`;
   });
-  // En hoja A4: de a ocho por hoja (2 columnas × 4 filas, vertical)
+  // En hoja A4: de a ocho, seis o cuatro por hoja (2 columnas, vertical)
   const cuerpo = enHoja
     ? Array.from({ length: Math.ceil(items.length / porHoja) }, (_, i) => `<div class="hoja">${items.slice(i * porHoja, (i + 1) * porHoja).join("")}</div>`).join("")
     : items.join("");
   const columnas = Math.max(1, Math.round(210 / tamano.ancho));
   const filas = Math.max(1, Math.ceil(porHoja / columnas));
+  // Más grande el rótulo, más grande la letra (de a seis y de a cuatro)
+  const letraHoja = tamano.alto >= 140 ? 16 : tamano.alto >= 95 ? 14 : 12;
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(titulo)}</title>
 <style>
   @page { size: ${enHoja ? "A4 portrait" : `${tamano.ancho}mm ${tamano.alto}mm`}; margin: 0; }
@@ -334,13 +341,17 @@ export async function htmlEtiquetasArticulos({ empresa, articulos, origen, slug,
   .sku { font-size: 10pt; font-family: ui-monospace, monospace; margin-top: 1mm; }
   .detalle { font-size: 8pt; margin-top: .5mm; }
   .foto { width: ${fotoMm}mm; height: ${fotoMm}mm; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-  .foto img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+  .foto img { width: 100%; height: 100%; object-fit: contain; display: block; }
   .qr { flex-shrink: 0; }
-  .qr svg { width: ${qrMm}mm; height: ${qrMm}mm; display: block; }${enHoja ? `
+  .qr svg { width: ${qrMm}mm; height: ${qrMm}mm; display: block; }${cuadrado ? `
+  .etiqueta { display: grid; grid-template-columns: 1fr 1fr; grid-template-areas: "foto qr" "texto texto"; justify-items: center; align-content: center; text-align: center; }
+  .foto { grid-area: foto; } .qr { grid-area: qr; } .texto { grid-area: texto; width: 100%; }
+  [data-sin-foto] .qr { grid-column: 1 / -1; }` : ""}${enHoja ? `
   .hoja { width: 210mm; height: 297mm; display: grid; grid-template-columns: repeat(${columnas}, ${tamano.ancho}mm); grid-template-rows: repeat(${filas}, ${tamano.alto}mm); overflow: hidden; }
   .hoja:not(:last-child) { page-break-after: always; break-after: page; }
   .hoja .etiqueta { padding: 5mm; outline: .2mm dashed #999; outline-offset: -.1mm; page-break-after: auto; break-after: auto; }
-  .hoja .nombre { font-size: 12pt; }` : ""}
+  .hoja .nombre { font-size: ${letraHoja}pt; }
+  .hoja .sku { font-size: ${letraHoja - 2}pt; }` : ""}
 </style></head><body>${cuerpo}</body></html>`;
 }
 
