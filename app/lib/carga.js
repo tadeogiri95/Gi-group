@@ -30,6 +30,15 @@ export const TAMANOS_ETIQUETA = [
 /** Etiqueta de un cuarto de hoja A4 (148,5 × 105 mm): cuatro por hoja, en impresora común. */
 export const CUARTO_A4 = { id: "a4-cuarto", ancho: 148.5, alto: 105, hoja: "A4", nombre: "1/4 de hoja A4 (4 por hoja)" };
 
+/**
+ * Rótulo de artículo de un octavo de hoja A4 (105 × 74,25 mm): ocho por hoja
+ * (2 × 4, vertical), en impresora común (27/11, pedido de Tadeo).
+ */
+export const OCTAVO_A4 = { id: "a4-octavo", ancho: 105, alto: 74.25, hoja: "A4", porHoja: 8, nombre: "1/8 de hoja A4 (8 por hoja)" };
+
+/** Tamaños para los rótulos de artículos del stock: la hoja A4 de a ocho o el rollo. */
+export const TAMANOS_ARTICULO = [OCTAVO_A4, ...TAMANOS_ETIQUETA];
+
 /** Tamaños para rótulos de bulto y etiquetas de módulo: el rollo o un cuarto de A4. */
 export const TAMANOS_ROTULO = [CUARTO_A4, ...TAMANOS_ETIQUETA];
 

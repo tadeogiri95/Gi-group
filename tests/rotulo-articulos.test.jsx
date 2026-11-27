@@ -10,6 +10,7 @@ import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import { htmlEtiquetasArticulos, rotuloConFoto } from "../app/lib/stock.js";
 import { fotoArticuloBody } from "../app/lib/schemas.ts";
 import { MIGRACIONES } from "../app/lib/esquemaMigraciones.js";
+import { OCTAVO_A4, TAMANOS_ARTICULO } from "../app/lib/carga.js";
 
 before(() => {
   if (!process.env.JWT_SECRET) process.env.JWT_SECRET = "test_secret_de_al_menos_32_caracteres_ok";
@@ -164,4 +165,18 @@ test("migración 211 — columna foto_url, en el chequeo de la base", () => {
   assert.match(sql, /alter table public\.articulos_stock\s+add column if not exists foto_url text/);
   const m = MIGRACIONES.find((x) => x.n === 211);
   assert.deepEqual(m.tablas, { articulos_stock: ["foto_url"] });
+});
+
+test("rótulo — en hoja A4 van de a ocho por hoja (2 × 4), con línea de corte (27/11)", async () => {
+  assert.equal(TAMANOS_ARTICULO[0], OCTAVO_A4);
+  const articulos = Array.from({ length: 10 }, (_, i) => ({ sku: `1.${i}`, nombre: `ART ${i}`, foto_url: i === 0 ? FOTO : null }));
+  const html = await htmlEtiquetasArticulos({ ...BASE, tamano: OCTAVO_A4, articulos });
+  assert.match(html, /size: A4 portrait/);
+  assert.equal((html.match(/class="hoja"/g) || []).length, 2, "10 rótulos = 2 hojas");
+  assert.equal((html.match(/class="etiqueta"/g) || []).length, 10);
+  assert.match(html, /grid-template-columns: repeat\(2, 105mm\); grid-template-rows: repeat\(4, 74.25mm\)/);
+  assert.match(html, /dashed/);
+  assert.equal((html.match(/<img /g) || []).length, 1, "la foto entra en el octavo de A4");
+  const rollo = await htmlEtiquetasArticulos({ ...BASE, tamano: { ancho: 100, alto: 50 }, articulos });
+  assert.ok(!rollo.includes('class="hoja"'), "en el rollo, uno por página como siempre");
 });

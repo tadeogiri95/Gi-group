@@ -332,7 +332,7 @@ test("pantalla Stock — sincronizar y elegir etiquetas de lo filtrado", async (
   await waitFor(() => assert.deepEqual(pedidos, ["sync"]));
   fireEvent.click(screen.getByText("ALUMINIO"));
   fireEvent.click(screen.getByText("Elegir 1 de la lista"));
-  assert.ok(screen.getByText(/1 elegidas/));
+  assert.ok(screen.getByText(/1 elegidos/));
   assert.equal(screen.getByLabelText("Etiqueta de 0277 TABLILLA").checked, true);
 });
 
@@ -354,4 +354,52 @@ test("QR del artículo — la app abre la ficha con ?articulo=SKU y Stock está 
   assert.match(home, /<FichaArticulo sku=\{skuArticulo\}/);
   const menu = readFileSync(new URL("../app/lib/menuGestion.js", import.meta.url), "utf8");
   assert.match(menu, /\{ id: "stock", label: "Stock", modulo: "stock" \}/);
+});
+
+// ─── 27/11 (Tadeo): ver todos los artículos, foto desde el renglón y rótulos de a 300 ───
+
+test("filtrarArticulos — con foto y sin foto", () => {
+  const lista = [{ sku: "1", foto_url: "https://x.test/1.jpg" }, { sku: "2" }, { sku: "3", foto_url: null }];
+  assert.deepEqual(filtrarArticulos(lista, { foto: "con" }).map((a) => a.sku), ["1"]);
+  assert.deepEqual(filtrarArticulos(lista, { foto: "sin" }).map((a) => a.sku).sort(), ["2", "3"]);
+  assert.equal(filtrarArticulos(lista).length, 3);
+});
+
+test("pantalla Stock — filtros de foto, el dueño pone la foto desde el renglón, el operario no", async () => {
+  const conFoto = LISTA.map((a, i) => (i === 0 ? { ...a, foto_url: "https://x.test/f.jpg" } : a));
+  mockPantalla({ articulos: conFoto });
+  render(<StockScreen empresa={{ slug: "gi" }} empresaId={E} usuario={{ rol: "gerencial" }} />);
+  await waitFor(() => assert.ok(screen.getByText("4 artículos")));
+  assert.ok(screen.getByText("📷 Sin foto (3)"));
+  fireEvent.click(screen.getByText("🖼 Con foto (1)"));
+  assert.ok(screen.getByText("1 de 4 artículos"));
+  fireEvent.click(screen.getByText("🖼 Con foto (1)"));
+  fireEvent.click(screen.getByText("📷 Sin foto (3)"));
+  assert.ok(screen.getByText("3 de 4 artículos"));
+  assert.equal(screen.getAllByLabelText(/^Poner la foto de /).length, 3);
+  cleanup();
+  mockPantalla({ articulos: conFoto });
+  render(<StockScreen empresa={{ slug: "gi" }} empresaId={E} usuario={{ rol: "operativo" }} />);
+  await waitFor(() => assert.ok(screen.getByText("4 artículos")));
+  assert.equal(screen.queryAllByLabelText(/^Poner la foto de /).length, 0);
+});
+
+test("pantalla Stock — se ven todos de a 100 y los rótulos se eligen de a 300", async () => {
+  const muchos = Array.from({ length: 650 }, (_, i) => ({ sku: `9.${String(i).padStart(3, "0")}`, nombre: `ART ${i}`, activo: true, foto_url: i < 5 ? "https://x.test/f.jpg" : null }));
+  mockPantalla({ articulos: muchos });
+  render(<StockScreen empresa={{ slug: "gi" }} empresaId={E} usuario={{ rol: "gerencial" }} />);
+  await waitFor(() => assert.ok(screen.getByText(/650 artículos/)));
+  assert.equal(screen.getAllByRole("listitem").length, 100);
+  fireEvent.click(screen.getByText(/Mostrar 100 más/));
+  assert.equal(screen.getAllByRole("listitem").length, 200);
+  fireEvent.click(screen.getByText("Elegir 300 de la lista"));
+  assert.ok(screen.getByText(/300 elegidos/));
+  fireEvent.click(screen.getByText("Elegir los 300 siguientes"));
+  assert.ok(screen.getByText(/300 elegidos/));
+  fireEvent.click(screen.getByText("Elegir los 50 siguientes"));
+  assert.ok(screen.getByText(/50 elegidos/));
+  fireEvent.click(screen.getByText("Elegir los que tienen foto"));
+  assert.ok(screen.getByText(/5 elegidos/));
+  const tamanos = [...screen.getByLabelText("Tamaño de la etiqueta").options].map((o) => o.textContent);
+  assert.equal(tamanos[0], "1/8 de hoja A4 (8 por hoja)");
 });
