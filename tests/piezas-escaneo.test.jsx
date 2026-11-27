@@ -140,7 +140,7 @@ function req(body, t) {
 const PIEZA = { id: 7, ot: "M-7495", nombre: "M.izq-11", unidad: 2, de: 2, etapas: [1, 2, 3] };
 
 let leidas = [];
-function mock({ pieza = PIEZA, pasos = [], total = 51, pasaron = 38, avance = [], paso = null, falla = null, etapas = ETAPAS, sin112 = false, renglon = null, hechos = [], modulo = [], lados = [], ultimo = null } = {}) {
+function mock({ pieza = PIEZA, pasos = [], total = 51, pasaron = 38, avance = [], paso = null, falla = null, etapas = ETAPAS, sin112 = false, renglon = null, hechos = [], modulo = [], lados = [], ultimo = null, proyecto = { ot: "M-7495" } } = {}) {
   const escrito = [];
   leidas = [];
   global.fetch = createFetchMock([
@@ -154,7 +154,7 @@ function mock({ pieza = PIEZA, pasos = [], total = 51, pasaron = 38, avance = []
         return { status: 200, body: etapas.filter((e) => e.codigo === codigo) };
       },
     },
-    { match: (u) => u.includes("/rest/v1/proyectos?"), respond: () => ({ status: 200, body: [{ ot: "M-7495" }] }) },
+    { match: (u) => u.includes("/rest/v1/proyectos?"), respond: () => ({ status: 200, body: [proyecto] }) },
     {
       match: (u, o) => u.includes("/rest/v1/piezas_ot?") && (!o?.method || o.method === "GET"),
       respond: (u) => {
@@ -621,4 +621,120 @@ test("migración 209 — lados por pieza y escaneo de cada lado, con RLS; el che
   assert.match(sql, /^do \$mig\$$/m);
   const { MIGRACIONES } = await import("../app/lib/esquemaMigraciones.js");
   assert.deepEqual(MIGRACIONES.find((x) => x.n === 209)?.tablas, { piezas_ot: ["lados"], lados_pieza: [] });
+});
+
+// ─── Escaneos de otra OT por error (27/11, Tadeo) ───
+
+test("otra OT — de qué OT es cada código, y si es otra que la que se trabaja", async () => {
+  const { otsDelCodigo, esDeOtraOt, otCanonica } = await import("../app/lib/piezas.js");
+  assert.deepEqual(otsDelCodigo("OT M-7495 - PIEZA - LAT-1"), ["M-7495"]);
+  assert.deepEqual(otsDelCodigo("OT M-7495 - MODULO - M.izq"), ["M-7495"]);
+  assert.deepEqual(otsDelCodigo("M7819-GB2P-11"), ["M-7819"]);
+  assert.deepEqual(otsDelCodigo("M7498-36-GB2P-11"), ["M-7498-36", "M-7498"], "con sub-OT, las dos lecturas");
+  assert.deepEqual(otsDelCodigo("M7541-32"), ["M-7541"], "pieza que se llama con un número");
+  assert.deepEqual(otsDelCodigo("7"), [], "el N° escrito a mano no dice la OT");
+  assert.deepEqual(otsDelCodigo("cualquier cosa"), []);
+  assert.equal(otCanonica("m7819"), "M-7819");
+
+  assert.equal(esDeOtraOt(["M-7900"], "M-7961"), true);
+  assert.equal(esDeOtraOt(["M-7961"], "m7961"), false, "la misma OT escrita distinto");
+  assert.equal(esDeOtraOt(["M-7498-36", "M-7498"], "M-7498"), false, "sub-OT de la que se trabaja");
+  assert.equal(esDeOtraOt(["M-7498"], "M-7498-36"), false);
+  assert.equal(esDeOtraOt(["M-74"], "M-7498"), true, "no confunde un número con el comienzo de otro");
+  assert.equal(esDeOtraOt(["M-7900"], null), false, "sin OT en curso no frena");
+  assert.equal(esDeOtraOt([], "M-7961"), false, "sin saber la OT del código no frena");
+});
+
+test("otra OT — la cámara solo toma el código del recuadro del medio", async () => {
+  const { codigosEnMira } = await import("../app/components/EscanerCodigo.jsx");
+  const caja = (x, y) => ({ x: x - 10, y: y - 10, width: 20, height: 20 });
+  const codigos = [
+    { rawValue: "centro", boundingBox: caja(320, 240) },
+    { rawValue: "borde", boundingBox: caja(30, 240) },
+    { rawValue: "abajo", boundingBox: caja(320, 470) },
+    { rawValue: "sin lugar" },
+  ];
+  assert.deepEqual(codigosEnMira(codigos, 640, 480).map((c) => c.rawValue), ["centro", "sin lugar"]);
+  assert.equal(codigosEnMira(codigos, 0, 0).length, 4, "sin el tamaño del cuadro, todos");
+});
+
+test("otra OT — aviso amarillo si la OT ya está cerrada o terminada en la planilla", async () => {
+  mock({ proyecto: { ot: "M-7495", estado: "cerrado" } });
+  let data = await (await api.POST(req({ accion: "escanear", codigo: "OT M-7495 - PIEZA - 7", etapa: 1 }, await token()))).json();
+  assert.equal(data.ok, true, "se anota igual");
+  assert.equal(data.otCerrada, "cerrada");
+  let m = mensajeEscaneo(data, NOMBRES);
+  assert.equal(m.tono, "amarillo");
+  assert.match(m.detalle, /La OT M-7495 ya está cerrada\. Quedó anotado; si fue sin querer, tocá Deshacer\./);
+
+  mock({ proyecto: { ot: "M-7495", estado: "activo", terminado_planilla: true } });
+  data = await (await api.POST(req({ accion: "escanear", codigo: "OT M-7495 - PIEZA - 7", etapa: 1 }, await token()))).json();
+  assert.equal(data.otCerrada, "terminada");
+  assert.match(mensajeEscaneo(data, NOMBRES).detalle, /figura terminada en la planilla/);
+
+  mock({ proyecto: { ot: "M-7495", estado: "activo" } });
+  data = await (await api.POST(req({ accion: "escanear", codigo: "OT M-7495 - PIEZA - 7", etapa: 1 }, await token()))).json();
+  assert.equal(data.otCerrada, undefined);
+  assert.equal(mensajeEscaneo(data, NOMBRES).tono, "verde");
+});
+
+/** Cámara de mentira: cada cuadro de la cola trae los códigos que "ve". */
+function camaraFalsa(cuadros) {
+  window.BarcodeDetector = class {
+    static async getSupportedFormats() { return ["qr_code"]; }
+    async detect() { return (cuadros.shift() || []).map((rawValue) => ({ rawValue })); }
+  };
+  Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia: async () => ({ getTracks: () => [] }) } });
+}
+
+test("otra OT — con una tarea de la OT M-7961, una etiqueta de la M-7900 pregunta antes de anotarse", async () => {
+  const pedidos = mockPantalla((b) => ({
+    data: { ok: true, ya: false, pieza: { id: 9, ot: "M-7900", nombre: "LAT-1", unidad: 1, de: 1 }, etapa: b.etapa, requerida: true, faltan: [], progreso: null, etapaTerminada: null },
+  }));
+  camaraFalsa([["OT M-7900 - PIEZA - LAT-1"]]);
+  try {
+    render(<EscanearPiezas usuario={USUARIO} etapas={ETAPAS} tareaActiva={{ etapa: 2, codigo_proyecto: "M-7961" }} onClose={() => {}} />);
+    assert.ok(screen.getByText("OT M-7961"));
+    await waitFor(() => assert.ok(screen.getByText("Esta etiqueta es de la OT M-7900 y estás con la M-7961. ¿La anoto igual?")), { timeout: 2000 });
+    assert.equal(pedidos.length, 0, "no se anotó sola");
+    // "No": se descarta sin anotar
+    fireEvent.click(screen.getByText("No"));
+    assert.equal(screen.queryByText(/¿La anoto igual\?/), null);
+    assert.equal(pedidos.length, 0);
+  } finally {
+    delete window.BarcodeDetector;
+  }
+});
+
+test("otra OT — 'Sí, anotar' la anota y pasa a ser la OT en curso; dos etiquetas juntas no se anotan", async () => {
+  const pedidos = mockPantalla((b) => ({
+    data: { ok: true, ya: false, pieza: { id: 9, ot: "M-7900", nombre: "LAT-1", unidad: 1, de: 1 }, etapa: b.etapa, requerida: true, faltan: [], progreso: null, etapaTerminada: null },
+  }));
+  camaraFalsa([["OT M-7900 - PIEZA - LAT-1", "OT M-7961 - PIEZA - TAPA"], [], ["OT M-7900 - PIEZA - LAT-1"]]);
+  try {
+    render(<EscanearPiezas usuario={USUARIO} etapas={ETAPAS} tareaActiva={{ etapa: 2, codigo_proyecto: "M-7961" }} onClose={() => {}} />);
+    await waitFor(() => assert.ok(screen.getByText("Hay más de una etiqueta en el recuadro: apuntá a una sola.")), { timeout: 2000 });
+    await waitFor(() => assert.ok(screen.getByText("Sí, anotar")), { timeout: 2000 });
+    assert.equal(pedidos.length, 0);
+    fireEvent.click(screen.getByText("Sí, anotar"));
+    await waitFor(() => assert.ok(screen.getByText("LAT-1 pasó por Canto.")));
+    assert.equal(pedidos.length, 1);
+    assert.equal(pedidos[0].codigo, "OT M-7900 - PIEZA - LAT-1");
+    assert.ok(screen.getByText("OT M-7900"), "ahora trabaja con la M-7900");
+  } finally {
+    delete window.BarcodeDetector;
+  }
+});
+
+test("otra OT — sin tarea en curso, la primera pieza anotada marca la OT", async () => {
+  mockPantalla((b) => ({
+    data: { ok: true, ya: false, pieza: { id: 7, ot: "M-7495", nombre: "M.izq-11", unidad: 1, de: 1 }, etapa: b.etapa, requerida: true, faltan: [], progreso: null, etapaTerminada: null },
+  }));
+  render(<EscanearPiezas usuario={USUARIO} etapas={ETAPAS} tareaActiva={{ etapa: 1 }} onClose={() => {}} />);
+  assert.ok(screen.getByText("La primera pieza que escanees marca la OT en curso."));
+  fireEvent.change(screen.getByLabelText("Número de la pieza"), { target: { value: "7" } });
+  fireEvent.click(screen.getByText("Anotar"));
+  await waitFor(() => assert.ok(screen.getByText("OT M-7495")));
+  fireEvent.click(screen.getByText("Cambiar"));
+  assert.ok(screen.getByText("La primera pieza que escanees marca la OT en curso."));
 });
