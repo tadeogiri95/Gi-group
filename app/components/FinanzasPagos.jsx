@@ -22,7 +22,7 @@ import { apiFetch } from "../lib/supabase";
 import { hoyAr, numero, plata } from "../lib/finanzasOperaciones";
 import { numeroWhatsapp } from "../lib/compras";
 import {
-  ESTADOS_ORDEN, FORMAS_PAGO, SIN_PAGAR, accionesOrden, adjuntosDe, comprobantesFactura, cuentasParaPagar, fechaCorta, imprimirOrdenPago, mandadaAlCfo, sinRegistrar, sumasPagos, textoForma, textoPlazo, textoWhatsappCfo, vistaPorCfo,
+  ESTADOS_ORDEN, FORMAS_PAGO, SIN_PAGAR, accionesOrden, adjuntosDe, comprobantesFactura, cuentasParaPagar, fechaCorta, imprimirOrdenPago, mandadaAlCfo, sinRegistrar, sumasPagos, textoForma, textoPlazo, textoWhatsappCfo, venceElPlazo, vistaPorCfo,
 } from "../lib/finanzasPagos";
 import { Chip, Modal, SelectBuscable, Spinner } from "./ui";
 import { useToast } from "./ui/Toast";
@@ -122,12 +122,21 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
     // Lo que falta para llegar a lo elegido
     ...(forma !== "cheque_tercero" && aPagar - total > 0 ? { importe: String(Math.round((aPagar - total) * 100) / 100).replace(".", ",") } : {}),
   }]);
-  const cambiar = (i, k) => (e) => setFormas((x) => x.map((f, j) => (j === i ? { ...f, [k]: e.target.value } : f)));
-  // 🏦 Plazo fijo que calza el e-cheq: al tildarlo propone el importe y la fecha del cheque
+  // 27/11: el día que el banco debita el e-cheq (feriados, no laborables y bancarios)
+  const feriados = useMemo(() => new Set(datos.feriados || []), [datos.feriados]);
+  const debitoDe = (fecha) => (fecha ? venceElPlazo(fecha, feriados) : "");
+  const cambiar = (i, k) => (e) => setFormas((x) => x.map((f, j) => {
+    if (j !== i) return f;
+    const nuevo = { ...f, [k]: e.target.value };
+    // Si el plazo fijo vencía el día del débito, se mueve con la fecha del cheque
+    if (k === "fecha_pago" && f.forma === "echeq" && (!f.pf_vence || f.pf_vence === debitoDe(f.fecha_pago))) nuevo.pf_vence = debitoDe(e.target.value);
+    return nuevo;
+  }));
+  // 🏦 Plazo fijo que calza el e-cheq: al tildarlo propone el importe y el día que se debita el cheque
   const tildarPlazo = (i) => (e) => setFormas((x) => x.map((f, j) => (j !== i ? f : {
     ...f, pf: e.target.checked,
     ...(e.target.checked && !f.pf_importe ? { pf_importe: f.importe } : {}),
-    ...(e.target.checked && !f.pf_vence ? { pf_vence: f.fecha_pago } : {}),
+    ...(e.target.checked && !f.pf_vence ? { pf_vence: debitoDe(f.fecha_pago) } : {}),
   })));
   const plazosNuevos = formas.filter((f) => f.forma === "echeq" && f.pf).reduce((s, f) => s + (numero(f.pf_importe) || 0), 0);
   const transferencias = formas.filter((f) => f.forma === "transferencia").reduce((s, f) => s + (numero(f.importe) || 0), 0);
@@ -205,6 +214,7 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
               {f.forma === "echeq" && (
                 <>
                   {campo("Vence el", <input type="date" className="g-input" aria-label="Fecha de pago del e-cheq" value={f.fecha_pago} onChange={cambiar(i, "fecha_pago")} />)}
+                  {f.fecha_pago && <span className="text-[12px] text-gypi-dim self-center" data-testid="debito-echeq">Se debita el {fechaCorta(debitoDe(f.fecha_pago))}</span>}
                   {campo("N° (si ya lo tenés)", <input className="g-input w-[130px]" aria-label="Número del e-cheq" value={f.numero} maxLength={40} onChange={cambiar(i, "numero")} />)}
                 </>
               )}
@@ -217,7 +227,7 @@ export function NuevaOrden({ datos, proveedorId = null, pendientes = [], onCerra
                   {f.pf && (
                     <div className="flex flex-wrap items-end gap-2 pl-6">
                       {campo("Monto a depositar", <input className="g-input w-[150px] text-right font-mono" inputMode="decimal" aria-label="Monto del plazo fijo" placeholder="Importe" value={f.pf_importe} onChange={cambiar(i, "pf_importe")} />)}
-                      {campo("Vence el", <input type="date" className="g-input" aria-label="Vencimiento del plazo fijo" value={f.pf_vence} max={f.fecha_pago || undefined} onChange={cambiar(i, "pf_vence")} />)}
+                      {campo("Vence el", <input type="date" className="g-input" aria-label="Vencimiento del plazo fijo" value={f.pf_vence} max={debitoDe(f.fecha_pago) || undefined} onChange={cambiar(i, "pf_vence")} />)}
                     </div>
                   )}
                 </div>

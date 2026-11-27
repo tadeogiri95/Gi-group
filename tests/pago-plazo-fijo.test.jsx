@@ -7,8 +7,9 @@ import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import {
-  validarOrden, plazoDeForma, sumasPagos, textoPlazo, datosParaCfo, textoWhatsappCfo, htmlOrdenPago, generarPago,
+  validarOrden, venceElPlazo, plazoDeForma, sumasPagos, textoPlazo, datosParaCfo, textoWhatsappCfo, htmlOrdenPago, generarPago,
 } from "../app/lib/finanzasPagos.js";
+import { FERIADOS_BANCARIOS } from "../app/lib/finanzasDiasHabiles.js";
 import { totalesResumen, renglonesResumen, datosResumenParaCfo, textoWhatsappResumen, htmlResumenPago } from "../app/lib/finanzasResumenPago.js";
 
 afterEach(() => cleanup());
@@ -42,13 +43,33 @@ test("validar — el e-cheq guarda el plazo fijo que lo calza; sin monto va sin 
   assert.equal(plazoDeForma(null), null);
 });
 
-test("validar — el plazo fijo no puede vencer después del cheque, y pide monto y fecha", () => {
-  const tarde = validarOrden({ proveedor_id: 5, fecha: "2026-11-20", formas: [{ ...ECHEQ_PF, plazo_fijo: { importe: 1, vencimiento: "2026-12-16" } }] }, CTX);
-  assert.match(tarde.errores[0], /antes o el mismo día que el e-cheq/);
+test("validar — 27/11: el plazo fijo puede vencer hasta el día que se debita el cheque, y pide monto y fecha", () => {
+  // Vence el martes 15/12 → se deposita ese día → se debita el miércoles 16/12
+  assert.deepEqual(validarOrden({ proveedor_id: 5, fecha: "2026-11-20", formas: [{ ...ECHEQ_PF, plazo_fijo: { importe: 1, vencimiento: "2026-12-16" } }] }, CTX).errores, []);
+  const tarde = validarOrden({ proveedor_id: 5, fecha: "2026-11-20", formas: [{ ...ECHEQ_PF, plazo_fijo: { importe: 1, vencimiento: "2026-12-17" } }] }, CTX);
+  assert.match(tarde.errores[0], /a más tardar el 16\/12\/26, el día que se debita el e-cheq/);
   assert.match(validarOrden({ proveedor_id: 5, fecha: "2026-11-20", formas: [{ ...ECHEQ_PF, plazo_fijo: { importe: "0", vencimiento: "2026-12-10" } }] }, CTX).errores[0], /monto del plazo fijo/);
   assert.match(validarOrden({ proveedor_id: 5, fecha: "2026-11-20", formas: [{ ...ECHEQ_PF, plazo_fijo: { importe: 5, vencimiento: "" } }] }, CTX).errores[0], /cuándo vence/);
-  // El mismo día que el cheque está bien
+  // Antes también se puede
   assert.deepEqual(validarOrden({ proveedor_id: 5, fecha: "2026-11-20", formas: [{ ...ECHEQ_PF, plazo_fijo: { importe: 5, vencimiento: "2026-12-15" } }] }, CTX).errores, []);
+  // Con los feriados: vence el viernes 4/12, lunes 7/12 no laborable y martes 8/12 feriado → se debita el 9/12
+  const feriados = FERIADOS_BANCARIOS.map((f) => f.fecha);
+  const viernes = { ...ECHEQ_PF, fecha_pago: "2026-12-04", plazo_fijo: { importe: 5, vencimiento: "2026-12-09" } };
+  assert.deepEqual(validarOrden({ proveedor_id: 5, fecha: "2026-11-27", formas: [viernes] }, { ...CTX, feriados }).errores, []);
+  assert.match(validarOrden({ proveedor_id: 5, fecha: "2026-11-27", formas: [{ ...viernes, plazo_fijo: { importe: 5, vencimiento: "2026-12-10" } }] }, { ...CTX, feriados }).errores[0], /09\/12\/26/);
+});
+
+test("venceElPlazo — las reglas de débito de Tadeo (27/11) con el calendario de feriados", () => {
+  const f = new Set(FERIADOS_BANCARIOS.map((x) => x.fecha));
+  assert.equal(venceElPlazo("2026-12-01", f), "2026-12-02"); // martes → miércoles
+  assert.equal(venceElPlazo("2026-12-11", f), "2026-12-14"); // viernes → lunes
+  assert.equal(venceElPlazo("2026-12-12", f), "2026-12-15"); // sábado → deposita lunes → martes
+  assert.equal(venceElPlazo("2026-12-13", f), "2026-12-15"); // domingo → deposita lunes → martes
+  assert.equal(venceElPlazo("2026-11-23", f), "2026-11-25"); // feriado → deposita el 24 → 25
+  assert.equal(venceElPlazo("2026-11-05", f), "2026-11-09"); // jueves; el 6/11 es Día del Bancario → lunes 9
+  assert.equal(venceElPlazo("2026-11-06", f), "2026-11-10"); // Día del Bancario → deposita lunes 9 → martes 10
+  assert.equal(venceElPlazo("2026-12-24", f), "2026-12-28"); // jueves; viernes 25 Navidad → lunes 28
+  assert.equal(venceElPlazo("2026-12-24", []), "2026-12-25"); // sin feriados solo cuenta fines de semana
 });
 
 test("sumas — a rescatar del FCI = transferencias + plazos fijos; efectivo y cheques aparte; las anuladas no suman", () => {
@@ -108,13 +129,32 @@ test("RescateFci — muestra transferencias, plazos fijos y lo que hay que resca
   assert.ok(container);
 });
 
-test("nueva orden — tildar el plazo fijo propone el importe y la fecha del e-cheq y muestra lo que hay que rescatar", () => {
+test("nueva orden — tildar el plazo fijo propone el importe y el día que se debita el e-cheq y muestra lo que hay que rescatar", () => {
   render(<NuevaOrden datos={{ tesoreria: TESORERIA, proveedores: CTX.proveedores, cheques: [] }} proveedorId={5} onCerrar={() => {}} onGuardada={() => {}} />);
   fireEvent.click(screen.getByRole("button", { name: "+ E-cheq Credicoop" }));
   fireEvent.change(screen.getByLabelText("Importe en E-cheq Credicoop"), { target: { value: "400000" } });
   fireEvent.change(screen.getByLabelText("Fecha de pago del e-cheq"), { target: { value: "2026-12-15" } });
   fireEvent.click(screen.getByLabelText("Agregar el plazo fijo que calza este e-cheq"));
   assert.equal(screen.getByLabelText("Monto del plazo fijo").value, "400000");
-  assert.equal(screen.getByLabelText("Vencimiento del plazo fijo").value, "2026-12-15");
+  assert.equal(screen.getByLabelText("Vencimiento del plazo fijo").value, "2026-12-16");
+  assert.match(screen.getByTestId("debito-echeq").textContent, /Se debita el 16\/12\/26/);
   assert.match(screen.getByRole("region", { name: "A rescatar del FCI" }).textContent, /A rescatar del FCI\$ 400\.000,00/);
+});
+
+test("nueva orden — 27/11: con los feriados, y si cambia la fecha del cheque el plazo fijo se mueve solo", () => {
+  const feriados = FERIADOS_BANCARIOS.map((f) => f.fecha);
+  render(<NuevaOrden datos={{ tesoreria: TESORERIA, proveedores: CTX.proveedores, cheques: [], feriados }} proveedorId={5} onCerrar={() => {}} onGuardada={() => {}} />);
+  fireEvent.click(screen.getByRole("button", { name: "+ E-cheq Credicoop" }));
+  fireEvent.change(screen.getByLabelText("Importe en E-cheq Credicoop"), { target: { value: "400000" } });
+  fireEvent.change(screen.getByLabelText("Fecha de pago del e-cheq"), { target: { value: "2026-12-04" } });
+  fireEvent.click(screen.getByLabelText("Agregar el plazo fijo que calza este e-cheq"));
+  const vence = screen.getByLabelText("Vencimiento del plazo fijo");
+  assert.equal(vence.value, "2026-12-09");
+  assert.equal(vence.max, "2026-12-09");
+  fireEvent.change(screen.getByLabelText("Fecha de pago del e-cheq"), { target: { value: "2026-12-11" } });
+  assert.equal(screen.getByLabelText("Vencimiento del plazo fijo").value, "2026-12-14");
+  // Si el plazo fijo se puso a mano en otra fecha, no se toca
+  fireEvent.change(screen.getByLabelText("Vencimiento del plazo fijo"), { target: { value: "2026-12-10" } });
+  fireEvent.change(screen.getByLabelText("Fecha de pago del e-cheq"), { target: { value: "2026-12-15" } });
+  assert.equal(screen.getByLabelText("Vencimiento del plazo fijo").value, "2026-12-10");
 });

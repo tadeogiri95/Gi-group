@@ -26,11 +26,16 @@
 //     se pregunta cuál. Al anular la orden, el movimiento vuelve a como estaba.
 //   - 20/11 (Tadeo): cada e-cheq puede llevar el plazo fijo NUEVO que lo calza
 //     (monto a depositar y vencimiento, que no puede ser después del cheque).
+//   - 27/11 (Tadeo): el plazo fijo vence el día que el banco DEBITA el e-cheq
+//     (fechaDebito de finanzasDiasHabiles.js: se deposita el día que vence o
+//     el próximo hábil, y se debita el hábil siguiente; cuenta feriados, días
+//     no laborables y feriados bancarios). Puede vencer hasta ese día.
 //     Es solo informativo, no carga el plazo fijo (entra con la planilla del
 //     banco). Para el CFO: "A rescatar del FCI" = transferencias + plazos
 //     fijos a constituir (sumasPagos), en la orden y en el resumen.
 import { BANCO_ECHEQ, cuentaBancoDe, cuentasCheques } from "./finanzasCheques";
 import { plata } from "./finanzasOperaciones";
+import { fechaDebito } from "./finanzasDiasHabiles";
 
 export const ORIGEN_ORDEN_PAGO = "orden_pago";
 /** El tipo de los pagos (la forma sale de la caja o el banco). */
@@ -72,7 +77,8 @@ export function cuentasParaPagar(tesoreria = []) {
  * @param {{ proveedores: object[], tesoreria: object[], cheques: object[] }} ctx
  * @returns {{ orden?: object, errores: string[] }}
  */
-export function validarOrden(f = {}, { proveedores = [], tesoreria = [], cheques = [] } = {}) {
+export function validarOrden(f = {}, { proveedores = [], tesoreria = [], cheques = [], feriados = [] } = {}) {
+  const sinBancos = new Set(feriados || []);
   const errores = [];
   const proveedor = proveedores.find((p) => Number(p.id) === Number(f.proveedor_id));
   if (!proveedor) errores.push("Elegí el proveedor");
@@ -109,7 +115,8 @@ export function validarOrden(f = {}, { proveedores = [], tesoreria = [], cheques
       if (!FECHA.test(String(x.fecha_pago || ""))) { errores.push(`${n}: falta la fecha de pago del e-cheq`); continue; }
       const pf = plazoDeForma(x.plazo_fijo);
       if (pf?.error) { errores.push(`${n}: ${pf.error}`); continue; }
-      if (pf && pf.vencimiento > x.fecha_pago) { errores.push(`${n}: el plazo fijo tiene que vencer antes o el mismo día que el e-cheq`); continue; }
+      const debito = venceElPlazo(x.fecha_pago, sinBancos);
+      if (pf && pf.vencimiento > debito) { errores.push(`${n}: el plazo fijo tiene que vencer a más tardar el ${fechaCorta(debito)}, el día que se debita el e-cheq`); continue; }
       formas.push({ forma, importe, fecha_pago: x.fecha_pago, numero: txt(x.numero, 40) || null, cuenta: cuentaBancoDe(BANCO_ECHEQ, tesoreria), ...(pf ? { plazo_fijo: pf } : {}) });
       continue;
     }
@@ -142,6 +149,15 @@ export function plazoDeForma(p) {
   if (!(importe > 0) || importe >= 1e13) return { error: "revisá el monto del plazo fijo" };
   if (!FECHA.test(String(p.vencimiento || ""))) return { error: "falta cuándo vence el plazo fijo" };
   return { importe, vencimiento: p.vencimiento };
+}
+
+/**
+ * 27/11: el día que tiene que vencer el plazo fijo que calza un e-cheq = el
+ * día que el banco lo debita (feriados: Set o lista de fechas sin bancos).
+ */
+export function venceElPlazo(fechaCheque, feriados = null) {
+  const f = feriados instanceof Set ? feriados : new Set(feriados || []);
+  return fechaDebito(fechaCheque, f) || fechaCheque;
 }
 
 /** "Plazo fijo a constituir · vence el 09/12/26" (o "" si el e-cheq no lleva). */
