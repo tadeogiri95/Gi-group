@@ -91,6 +91,7 @@ export const POLICY = {
   logistica_viajes:             { GET: "all" },   // Logística parte 2 (204): el chofer va a ver los suyos; se escribe por /api/logistica
   logistica_paradas:            { GET: "all" },   // Logística parte 2 (204): ídem
   necesidades_stock:            { GET: "all" },   // la copia la sincronización de la planilla MRP (Stock parte 16)
+  necesidades_cambios:          { GET: "all" },   // cambios de necesidad con quién y cuándo (213); se escribe por /api/stock/movimientos
   bultos_ot:                    { GET: "all" },   // se escribe por /api/carga (OP parte 10)
   cargas_ot:                    { GET: "all" },   // se escribe por /api/carga (OP parte 10)
   actas_ot:                     { GET: "all" },   // se escribe por /api/acta (OP parte 11)
