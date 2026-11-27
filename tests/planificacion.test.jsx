@@ -759,7 +759,7 @@ test("ficha del operario — elige el puesto y lo manda al guardar", () => {
 });
 
 // ─── Checkeo manual de OT (Tadeo, 27/10; migración 141) ─────────────────────
-const { normalizarAvanceManual, etapasDeOt, piezasConManual, tieneEscaneo } = await import("../app/lib/avanceManual.js");
+const { normalizarAvanceManual, etapasDeOt, esEtapaControl, piezasConManual, tieneEscaneo } = await import("../app/lib/avanceManual.js");
 const { default: AvanceManualOt } = await import("../app/components/AvanceManualOt.jsx");
 const { validarPatch } = await import("../app/lib/dataPolicy.js");
 const { leerAvanceYHoras } = await import("../app/lib/otEnCursoDatos.js");
@@ -791,6 +791,12 @@ test("piezasConManual — manda el escaneo; el % manual cuenta solo en los proce
   // Procesos de la OT: la ruta de su división
   assert.deepEqual(etapasDeOt({ division: "MUEBLES" }, ETAPAS, DIVISIONES).map((e) => e.codigo), [1, 2, 3, 4, 5]);
   assert.deepEqual(etapasDeOt({ division: "Herrería" }, ETAPAS, DIVISIONES).map((e) => e.codigo), [1, 2, 3, 4, 5], "sin ruta, todas las productivas");
+  // Control no se carga a mano (27/11), ni en la ruta ni sin ruta
+  const conControl = [...ETAPAS, { codigo: 9, nombre: "Control de calidad" }, { codigo: 10, nombre: "CONTROL" }];
+  const divControl = DIVISIONES.map((d) => (d.clave === "MUE" ? { ...d, ruta_etapas: [...d.ruta_etapas, 9] } : d));
+  assert.ok(!etapasDeOt({ division: "Herrería" }, conControl, DIVISIONES).some((e) => e.codigo >= 9));
+  assert.ok(!etapasDeOt({ division: "MUEBLES" }, conControl, divControl).some((e) => e.codigo === 9));
+  assert.ok(esEtapaControl({ nombre: "Control" }) && !esEtapaControl({ nombre: "Corte" }));
 });
 
 test("avance_manual — solo se guarda con la forma correcta; migración 141", () => {
