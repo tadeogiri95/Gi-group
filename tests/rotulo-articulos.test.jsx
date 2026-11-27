@@ -180,3 +180,57 @@ test("rótulo — en hoja A4 van de a ocho por hoja (2 × 4), con línea de cort
   const rollo = await htmlEtiquetasArticulos({ ...BASE, tamano: { ancho: 100, alto: 50 }, articulos });
   assert.ok(!rollo.includes('class="hoja"'), "en el rollo, uno por página como siempre");
 });
+
+// ─── Recortar la foto (27/11, pedido de Tadeo) ───
+
+const R = await import("../app/lib/recorte.js");
+
+test("recorte — arranca con el cuadrado del medio llenando la foto", () => {
+  assert.deepEqual(R.vistaInicial(1600, 1200), { zoom: 1, cx: 800, cy: 600 });
+  assert.deepEqual(R.areaRecorte(R.vistaInicial(1600, 1200), 1600, 1200), { x: 200, y: 0, lado: 1200 });
+  assert.deepEqual(R.medidasGiradas(1600, 1200, 90), { ancho: 1200, alto: 1600 });
+  assert.deepEqual(R.medidasGiradas(1600, 1200, 180), { ancho: 1600, alto: 1200 });
+});
+
+test("recorte — el cuadrado no se sale de la foto y el zoom tiene tope", () => {
+  // Arrastrar mucho a la derecha deja el cuadrado pegado al borde izquierdo
+  const v = R.moverVista(R.vistaInicial(1600, 1200), 5000, 0, 300, 1600, 1200);
+  assert.equal(R.areaRecorte(v, 1600, 1200).x, 0);
+  // Con zoom 2 el cuadrado es la mitad y se puede mover en los dos sentidos
+  const z = R.zoomVista(R.vistaInicial(1600, 1200), 2, 1600, 1200);
+  assert.equal(R.areaRecorte(z, 1600, 1200).lado, 600);
+  const m = R.moverVista(z, 0, -100, 300, 1600, 1200);
+  assert.equal(m.cy, 800, "100 px de pantalla = 200 px de foto");
+  assert.equal(R.zoomVista(z, 99, 1600, 1200).zoom, R.ZOOM_MAX);
+});
+
+test("recorte — alejando se ve la foto entera, centrada, con blanco al costado", () => {
+  assert.equal(R.zoomMinimo(1600, 1200), 0.75);
+  const v = R.zoomVista(R.vistaInicial(1600, 1200), 0.1, 1600, 1200);
+  assert.equal(v.zoom, 0.75);
+  assert.deepEqual(R.areaRecorte(R.moverVista(v, 400, 400, 300, 1600, 1200), 1600, 1200), { x: 0, y: -200, lado: 1600 });
+});
+
+test("ficha — el dueño puede recortar la foto que ya está; el operario no", () => {
+  render(<FichaArticulo sku="1.2.3" articulo={{ ...ART, foto_url: FOTO }} usuario={{ rol: "gerencial" }} onClose={() => {}} />);
+  assert.ok(screen.getByText("✂️ Recortar la foto"));
+  cleanup();
+  render(<FichaArticulo sku="1.2.3" articulo={ART} usuario={{ rol: "gerencial" }} onClose={() => {}} />);
+  assert.equal(screen.queryByText("✂️ Recortar la foto"), null, "sin foto no hay nada que recortar");
+  cleanup();
+  render(<FichaArticulo sku="1.2.3" articulo={{ ...ART, foto_url: FOTO }} usuario={{ rol: "operativo" }} onClose={() => {}} />);
+  assert.equal(screen.queryByText("✂️ Recortar la foto"), null);
+});
+
+test("recorte — la ventana abre con el marco, la barra de zoom y girar", async () => {
+  const { default: RecortarFoto } = await import("../app/components/RecortarFoto.jsx");
+  let cancelado = false;
+  render(<RecortarFoto fuente={new Blob(["x"], { type: "image/jpeg" })} onListo={() => {}} onCancelar={() => { cancelado = true; }} />);
+  assert.ok(screen.getByLabelText("Foto a recortar: arrastrá para moverla"));
+  assert.ok(screen.getByLabelText("Acercar o alejar"));
+  assert.ok(screen.getByLabelText("Girar la foto"));
+  // En las pruebas no hay imágenes de verdad: avisa que no la pudo leer
+  await waitFor(() => assert.ok(screen.getByRole("alert")));
+  fireEvent.click(screen.getByText("Cancelar"));
+  assert.equal(cancelado, true);
+});
