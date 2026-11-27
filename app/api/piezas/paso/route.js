@@ -14,6 +14,7 @@
 //              módulo de una vez (así se escanea el Armado).
 //              Si la OT está en pausa (151) se anota igual y la respuesta
 //              trae la pausa, para que el operario vea un aviso amarillo.
+//              Lo mismo si la OT está cerrada o terminada en la planilla (27/11).
 //   deshacer → saca el escaneo (el mismo operario hasta 30 minutos después,
 //              o gestión). No toca el avance de la etapa.
 //   deshacer_modulo → lo mismo para todas las piezas de un módulo.
@@ -121,6 +122,28 @@ async function pausaDe(sesion, ot, opts) {
   }
 }
 
+/**
+ * { otCerrada: "cerrada" | "terminada" } si la OT ya está cerrada en Gypi o
+ * figura terminada en la planilla (27/11, Tadeo: escaneos de una OT que no se
+ * trabaja); se anota igual, con aviso amarillo. {} si no o si no se pudo leer.
+ */
+async function cerradaDe(sesion, ot, opts) {
+  try {
+    const [p] = (await sbGet(`proyectos?empresa_id=eq.${sesion.empresa_id}&ot=eq.${encodeURIComponent(ot)}&select=estado,terminado_planilla&limit=1`, opts)) || [];
+    if (p?.estado === "cerrado") return { otCerrada: "cerrada" };
+    if (p?.terminado_planilla === true) return { otCerrada: "terminada" };
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+/** Avisos de la OT para el operario: en pausa y/o ya cerrada. */
+async function avisosOt(sesion, ot, opts) {
+  const [pausa, cerrada] = await Promise.all([pausaDe(sesion, ot, opts), cerradaDe(sesion, ot, opts)]);
+  return { ...pausa, ...cerrada };
+}
+
 /** La etapa elegida, si se escanea por pieza; si no, la respuesta de error. */
 async function etapaPorPieza(sesion, codigo, opts) {
   const [etapa] = (await sbGet(`etapas?empresa_id=eq.${sesion.empresa_id}&codigo=eq.${codigo}&select=codigo,nombre,activa,por_pieza,columna_pieza&limit=1`, opts)) || [];
@@ -180,7 +203,7 @@ async function escanearModulo(sesion, datos, lectura) {
   if (!r.ok) throw new Error(`POST pasos_pieza: ${await r.text()}`);
   broadcastRefresh(e, "pasos_pieza");
   const { progreso, etapaTerminada } = requeridas ? await progresoEtapa(sesion, ot, etapa, opts) : { progreso: null, etapaTerminada: null };
-  return NextResponse.json({ ok: true, ya: false, modulo, etapa: datos.etapa, etapaNombre: etapa.nombre, progreso, etapaTerminada, ...(await pausaDe(sesion, ot, opts)) });
+  return NextResponse.json({ ok: true, ya: false, modulo, etapa: datos.etapa, etapaNombre: etapa.nombre, progreso, etapaTerminada, ...(await avisosOt(sesion, ot, opts)) });
 }
 
 async function escanear(sesion, datos) {
@@ -333,7 +356,7 @@ async function anotarPieza(sesion, datos, pieza, renglon = null) {
       }, 0) + 1;
       lados = { lado: Math.min(lado, necesarios), de: necesarios, hechos: Math.min(sumados, total), total };
       if (lado < necesarios) {
-        return NextResponse.json({ ok: true, ya: false, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan, progreso: null, etapaTerminada: null, lados, ...conteo(false), ...(await pausaDe(sesion, pieza.ot, opts)) });
+        return NextResponse.json({ ok: true, ya: false, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan, progreso: null, etapaTerminada: null, lados, ...conteo(false), ...(await avisosOt(sesion, pieza.ot, opts)) });
       }
     }
   }
@@ -349,7 +372,7 @@ async function anotarPieza(sesion, datos, pieza, renglon = null) {
   broadcastRefresh(e, "pasos_pieza");
 
   const { progreso, etapaTerminada } = requerida ? await progresoEtapa(sesion, pieza.ot, etapa, opts) : { progreso: null, etapaTerminada: null };
-  return NextResponse.json({ ok: true, ya: false, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan, progreso, etapaTerminada, ...(lados ? { lados } : {}), ...conteo(true), ...(await pausaDe(sesion, pieza.ot, opts)) });
+  return NextResponse.json({ ok: true, ya: false, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan, progreso, etapaTerminada, ...(lados ? { lados } : {}), ...conteo(true), ...(await avisosOt(sesion, pieza.ot, opts)) });
 }
 
 async function deshacerModulo(sesion, datos) {

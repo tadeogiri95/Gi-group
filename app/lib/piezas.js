@@ -6,7 +6,7 @@
 import { filasTsv } from "./sueltos";
 import { svgQR } from "./tarjetasQR";
 import { textoDeQr, linkQr } from "./linkQr";
-import { leerBarrasPieza, svgBarras, textoBarrasPieza } from "./codigoBarras";
+import { leerBarrasPieza, leerBarrasPiezaNumero, svgBarras, textoBarrasPieza } from "./codigoBarras";
 import { textoMotivoPausa } from "./pausaOt";
 import { detalleOt, otCompleta, textoOt } from "./nombreOt";
 
@@ -675,11 +675,48 @@ export function clavesEscaneadas(filas = []) {
  */
 export function mensajeEscaneo(r, nombres = {}, porOt = null) {
   const m = mensajeBase(r, nombres, porOt);
-  // OT en pausa (151): se anota igual, con un aviso amarillo para el operario
-  if (m.tono === "rojo" || !r?.pausa) return m;
+  // OT en pausa (151) o ya cerrada/terminada (27/11): se anota igual, con un
+  // aviso amarillo para el operario
+  if (m.tono === "rojo" || (!r?.pausa && !r?.otCerrada)) return m;
   const ot = r.modulo?.ot || r.pieza?.ot || "";
-  const aviso = `⏸ La ${textoOt(otCompleta(ot, porOt)) || "OT"} está en pausa (${textoMotivoPausa(r.pausa)}). Quedó anotado; avisale a tu jefe.`;
+  const laOt = textoOt(otCompleta(ot, porOt)) || "OT";
+  const avisos = [];
+  if (r.otCerrada) avisos.push(`🔒 La ${laOt} ${r.otCerrada === "cerrada" ? "ya está cerrada" : "figura terminada en la planilla"}. Quedó anotado; si fue sin querer, tocá Deshacer.`);
+  if (r.pausa) avisos.push(`⏸ La ${laOt} está en pausa (${textoMotivoPausa(r.pausa)}). Quedó anotado; avisale a tu jefe.`);
+  const aviso = avisos.join(" ");
   return { tono: "amarillo", texto: m.texto, detalle: m.detalle ? `${aviso} ${m.detalle}` : aviso };
+}
+
+/** "M7819" / "m-7819" → "M-7819" (la OT escrita siempre igual, para comparar). */
+export function otCanonica(ot) {
+  return String(ot ?? "").trim().toUpperCase().replace(/^([A-Z]{1,3})-?(?=\d)/, "$1-");
+}
+
+/**
+ * Las OT que puede ser el código escaneado (27/11), sin preguntarle al
+ * servidor: etiqueta de pieza (QR o código de barras, con sub-OT puede ser
+ * dos), de módulo, o pieza que se llama con un número ("M7541-32"). [] si no
+ * se sabe (el N° escrito a mano, o un código que no es de pieza).
+ */
+export function otsDelCodigo(texto) {
+  const modulo = leerQrModulo(texto);
+  if (modulo) return [otCanonica(modulo.ot)];
+  const pieza = leerQrPieza(texto);
+  if (pieza?.ot) return [pieza, ...(pieza.otras || [])].map((l) => otCanonica(l.ot));
+  const numero = leerBarrasPiezaNumero(textoDeQr(texto));
+  return numero ? [otCanonica(numero.ot)] : [];
+}
+
+/**
+ * ¿El código es de otra OT que la que se está trabajando? Una sub-OT
+ * (M-7498-36) cuenta como de la misma OT (M-7498) y al revés. Sin OT en curso
+ * o sin saber de qué OT es el código, no se frena.
+ */
+export function esDeOtraOt(ots, enCurso) {
+  const actual = otCanonica(enCurso);
+  if (!actual || !ots?.length) return false;
+  const misma = (ot) => ot === actual || ot.startsWith(`${actual}-`) || actual.startsWith(`${ot}-`);
+  return !ots.some(misma);
 }
 
 function mensajeBase(r, nombres = {}, porOt = null) {
