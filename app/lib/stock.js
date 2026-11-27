@@ -195,7 +195,7 @@ export function stockNegativo(a) {
  * @param {{ texto?: string, division?: string, urgentes?: boolean, negativos?: boolean }} filtro
  *   texto: palabras que tienen que estar en el nombre, el SKU o la familia
  */
-export function filtrarArticulos(lista, { texto = "", division = "", urgentes = false, negativos = false } = {}) {
+export function filtrarArticulos(lista, { texto = "", division = "", urgentes = false, negativos = false, foto = "" } = {}) {
   const palabras = normalizarTitulo(texto).split(" ").filter(Boolean);
   return (Array.isArray(lista) ? lista : [])
     .filter((a) => a && a.activo !== false)
@@ -204,6 +204,8 @@ export function filtrarArticulos(lista, { texto = "", division = "", urgentes = 
     // en la planilla (falta un ingreso o sobra un consumo), no una compra (auditoría 01/11, PR 6)
     .filter((a) => !urgentes || (nivelSemaforo(a.semaforo) === "rojo" && !stockNegativo(a)))
     .filter((a) => !negativos || stockNegativo(a))
+    // Con o sin foto (27/11): para ir cargando la foto de cada artículo
+    .filter((a) => !foto || (foto === "con") === Boolean(a.foto_url))
     .filter((a) => {
       if (!palabras.length) return true;
       const donde = normalizarTitulo([a.nombre, a.sku, a.familia].filter(Boolean).join(" "));
@@ -281,12 +283,16 @@ const fotoValida = (u) => typeof u === "string" && /^https:\/\//i.test(u) && u.l
  * nombre normalizado, SKU, unidad y división, y el QR. Escaneando el QR se
  * abre la ficha para retirarlo del stock (parte 14).
  * En los rótulos altos (62 × 100, 100 × 150) va todo uno abajo del otro.
+ * En la hoja A4 (tamano.hoja, 27/11) van de a ocho por hoja (2 × 4), con
+ * línea de corte, para imprimir en una impresora común.
  * linkDe y titulo sirven para otras etiquetas con el mismo formato (las de
  * las máquinas, Mantenimiento parte 35: sku = código, ?maquina=).
  * @param {{ empresa: string, articulos: object[], origen: string, slug: string, tamano: { ancho: number, alto: number }, linkDe?: (a: object) => string, titulo?: string }} datos
  */
 export async function htmlEtiquetasArticulos({ empresa, articulos, origen, slug, tamano, linkDe = (a) => linkArticulo(origen, slug, a.sku), titulo = "Etiquetas de artículos" }) {
   const lista = articulos.slice(0, MAX_ETIQUETAS_ARTICULO);
+  const enHoja = tamano.hoja === "A4";
+  const porHoja = tamano.porHoja || 8;
   const qrs = await Promise.all(lista.map((a) => svgQR(linkDe(a))));
   const alto = tamano.alto >= tamano.ancho * 1.3;
   const conFoto = rotuloConFoto(tamano) && lista.some((a) => fotoValida(a.foto_url));
@@ -309,23 +315,33 @@ export async function htmlEtiquetasArticulos({ empresa, articulos, origen, slug,
     </div>
     <div class="qr">${qrs[i]}</div>
   </div>`;
-  }).join("");
+  });
+  // En hoja A4: de a ocho por hoja (2 columnas × 4 filas, vertical)
+  const cuerpo = enHoja
+    ? Array.from({ length: Math.ceil(items.length / porHoja) }, (_, i) => `<div class="hoja">${items.slice(i * porHoja, (i + 1) * porHoja).join("")}</div>`).join("")
+    : items.join("");
+  const columnas = Math.max(1, Math.round(210 / tamano.ancho));
+  const filas = Math.max(1, Math.ceil(porHoja / columnas));
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(titulo)}</title>
 <style>
-  @page { size: ${tamano.ancho}mm ${tamano.alto}mm; margin: 0; }
+  @page { size: ${enHoja ? "A4 portrait" : `${tamano.ancho}mm ${tamano.alto}mm`}; margin: 0; }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, sans-serif; color: #000; }
   .etiqueta { width: ${tamano.ancho}mm; height: ${tamano.alto}mm; padding: 3mm; display: flex; gap: 3mm; align-items: center; overflow: hidden; page-break-after: always; break-after: page;${alto ? " flex-direction: column; justify-content: center; text-align: center;" : ""} }
   .texto { ${alto ? "width: 100%;" : "flex: 1;"} min-width: 0; }
   .empresa { font-size: 7pt; text-transform: uppercase; letter-spacing: .04em; }
-  .nombre { font-size: 11pt; font-weight: 800; line-height: 1.15; max-height: 3.5em; overflow: hidden; }
+  .nombre { font-size: 11pt; font-weight: 800; line-height: 1.15; max-height: 3.5em; overflow: hidden; overflow-wrap: anywhere; }
   .sku { font-size: 10pt; font-family: ui-monospace, monospace; margin-top: 1mm; }
   .detalle { font-size: 8pt; margin-top: .5mm; }
   .foto { width: ${fotoMm}mm; height: ${fotoMm}mm; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
   .foto img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
   .qr { flex-shrink: 0; }
-  .qr svg { width: ${qrMm}mm; height: ${qrMm}mm; display: block; }
-</style></head><body>${items}</body></html>`;
+  .qr svg { width: ${qrMm}mm; height: ${qrMm}mm; display: block; }${enHoja ? `
+  .hoja { width: 210mm; height: 297mm; display: grid; grid-template-columns: repeat(${columnas}, ${tamano.ancho}mm); grid-template-rows: repeat(${filas}, ${tamano.alto}mm); overflow: hidden; }
+  .hoja:not(:last-child) { page-break-after: always; break-after: page; }
+  .hoja .etiqueta { padding: 5mm; outline: .2mm dashed #999; outline-offset: -.1mm; page-break-after: auto; break-after: auto; }
+  .hoja .nombre { font-size: 12pt; }` : ""}
+</style></head><body>${cuerpo}</body></html>`;
 }
 
 /** Espera que carguen las fotos del rótulo (como mucho 8 s) antes de imprimir. */

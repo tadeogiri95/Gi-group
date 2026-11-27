@@ -6,15 +6,19 @@
 // imprimen las etiquetas con QR para pegar en estantes y pilas. Los dueños y
 // administradores cargan acá los artículos que no están en la planilla
 // (➕ Artículo nuevo, 124); el script de la planilla los anota en ARTICULOS.
+// 27/11 (Tadeo): se ven todos los artículos (de a 100), la foto se pone desde
+// el renglón (📷) con filtros Sin foto / Con foto, y los rótulos se imprimen
+// también en hoja A4 de a ocho, eligiendo los que tienen foto, de a 300.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sb, sbGetAll, apiFetch } from "../lib/supabase";
 import { Chip } from "./ui";
 import { useToast } from "./ui/Toast";
-import { TAMANOS_ETIQUETA } from "../lib/carga";
+import { TAMANOS_ARTICULO } from "../lib/carga";
 import {
   AVISO_DEMORA_GOOGLE, CLAVE_STOCK_CSV, MAX_ETIQUETAS_ARTICULO, cantidadTexto, divisionesDe, filtrarArticulos, imprimirEtiquetasArticulos, syncAtrasada,
 } from "../lib/stock";
-import FichaArticulo, { Semaforo } from "./FichaArticulo";
+import FichaArticulo, { Semaforo, guardarFotoArticulo } from "./FichaArticulo";
+import { fotoBase64, subirImagen } from "../lib/foto";
 import { BotonesCargar } from "./MovimientosStock";
 import ArticuloNuevo from "./ArticuloNuevo";
 import { textoFechaPrecio, textoPrecio, ultimosPrecios, veePrecios } from "../lib/preciosArticulos";
@@ -26,7 +30,36 @@ const MOSTRAR = 100;
 const CLAVE_TAMANO = "gypi_tamano_etiqueta";
 
 function leerTamano() {
-  try { return localStorage.getItem(CLAVE_TAMANO) || TAMANOS_ETIQUETA[0].id; } catch { return TAMANOS_ETIQUETA[0].id; }
+  try { return localStorage.getItem(CLAVE_TAMANO) || TAMANOS_ARTICULO[0].id; } catch { return TAMANOS_ARTICULO[0].id; }
+}
+
+/** Botón 📷 del renglón: saca o elige la foto del artículo y la guarda (27/11). */
+function FotoRenglon({ articulo, onFoto }) {
+  const toast = useToast();
+  const [subiendo, setSubiendo] = useState(false);
+  const nombre = articulo.nombre || articulo.sku;
+  const elegir = async (file) => {
+    if (!file) return;
+    setSubiendo(true);
+    try {
+      const url = await subirImagen(await fotoBase64(file));
+      onFoto(articulo.sku, await guardarFotoArticulo(articulo.sku, url));
+      toast.show(`📷 Foto guardada: ${nombre}`, GREEN);
+    } catch (e) {
+      toast.show(e.message, RED);
+    }
+    setSubiendo(false);
+  };
+  const label = articulo.foto_url ? `Cambiar la foto de ${nombre}` : `Poner la foto de ${nombre}`;
+  return (
+    <label title={label}
+      className={`w-11 h-11 shrink-0 flex items-center justify-center rounded-[8px] border border-gypi-border cursor-pointer overflow-hidden ${articulo.foto_url ? "" : "border-dashed bg-gypi-surf-hi text-[20px]"}`}>
+      {subiendo ? <span className="text-[12px] text-gypi-dim">…</span>
+        : articulo.foto_url ? <img src={articulo.foto_url} alt="" loading="lazy" className="w-full h-full object-cover" /> : "📷"}
+      <input type="file" accept="image/*" capture="environment" className="hidden" aria-label={label} disabled={subiendo}
+        onChange={(e) => { elegir(e.target.files?.[0]); e.target.value = ""; }} />
+    </label>
+  );
 }
 
 export default function StockScreen({ empresa, empresaId, usuario = null, onPlanillas = null, onCargar = null }) {
@@ -42,6 +75,8 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
   const [division, setDivision] = useState("");
   const [urgentes, setUrgentes] = useState(false);
   const [negativos, setNegativos] = useState(false);
+  const [foto, setFoto] = useState("");
+  const [mostrar, setMostrar] = useState(MOSTRAR);
   const [elegidos, setElegidos] = useState(() => new Set());
   const [tamano, setTamano] = useState(leerTamano);
   const [ficha, setFicha] = useState(null);
@@ -87,7 +122,9 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
   const ultimos = useMemo(() => (conPrecios ? ultimosPrecios(precios, articulos) : new Map()), [conPrecios, precios, articulos]);
 
   const divisiones = useMemo(() => divisionesDe(articulos), [articulos]);
-  const filtrados = useMemo(() => filtrarArticulos(articulos, { texto, division, urgentes, negativos }), [articulos, texto, division, urgentes, negativos]);
+  const filtrados = useMemo(() => filtrarArticulos(articulos, { texto, division, urgentes, negativos, foto }), [articulos, texto, division, urgentes, negativos, foto]);
+  useEffect(() => { setMostrar(MOSTRAR); }, [texto, division, urgentes, negativos, foto]);
+  const conFotoTotal = useMemo(() => filtrarArticulos(articulos, { foto: "con" }).length, [articulos]);
   const urgentesTotal = useMemo(() => filtrarArticulos(articulos, { urgentes: true }).length, [articulos]);
   const negativosTotal = useMemo(() => filtrarArticulos(articulos, { negativos: true }).length, [articulos]);
 
@@ -116,9 +153,18 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
     return s;
   });
   const elegirFiltrados = () => setElegidos(new Set(filtrados.slice(0, MAX_ETIQUETAS_ARTICULO).map((a) => a.sku)));
+  // De a 300 (el tope de una impresión): los siguientes de la lista que todavía no se eligieron
+  const siguientes = useMemo(() => {
+    if (!elegidos.size) return [];
+    const ultimo = filtrados.reduce((m, a, i) => (elegidos.has(a.sku) ? i : m), -1);
+    return filtrados.slice(ultimo + 1, ultimo + 1 + MAX_ETIQUETAS_ARTICULO);
+  }, [filtrados, elegidos]);
+  const elegirSiguientes = () => setElegidos(new Set(siguientes.map((a) => a.sku)));
+  const elegirConFoto = () => setElegidos(new Set(filtrarArticulos(filtrados, { foto: "con" }).slice(0, MAX_ETIQUETAS_ARTICULO).map((a) => a.sku)));
+  const ponerFoto = (sku, foto_url) => setArticulos((lista) => lista.map((x) => (x.sku === sku ? { ...x, foto_url } : x)));
 
   const imprimir = async () => {
-    const t = TAMANOS_ETIQUETA.find((x) => x.id === tamano) || TAMANOS_ETIQUETA[0];
+    const t = TAMANOS_ARTICULO.find((x) => x.id === tamano) || TAMANOS_ARTICULO[0];
     try { localStorage.setItem(CLAVE_TAMANO, t.id); } catch { /* sin almacenamiento */ }
     try {
       await imprimirEtiquetasArticulos({
@@ -183,6 +229,12 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
         <Chip active={!division} onClick={() => setDivision("")}>Todas</Chip>
         {divisiones.map((d) => <Chip key={d} active={division === d} onClick={() => setDivision(division === d ? "" : d)}>{d}</Chip>)}
       </div>
+      {articulos.length > 0 && (
+        <div className="flex gap-1.5 flex-wrap mb-3" role="group" aria-label="Fotos">
+          <Chip active={foto === "sin"} onClick={() => setFoto(foto === "sin" ? "" : "sin")}>📷 Sin foto ({articulos.length - conFotoTotal})</Chip>
+          <Chip active={foto === "con"} onClick={() => setFoto(foto === "con" ? "" : "con")}>🖼 Con foto ({conFotoTotal})</Chip>
+        </div>
+      )}
 
       {negativos && (
         <p className="m-0 mb-3 text-[13px] text-gypi-amber-ink">
@@ -195,20 +247,37 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
       {elegidos.size > 0 && (
       <div className="p-3 mb-3 rounded-[10px] border border-gypi-amber bg-gypi-surface">
         <div className="flex items-center gap-2 mb-2">
-          <div className="flex-1 text-[14px] font-semibold">🏷 Etiquetas con QR {elegidos.size ? `· ${elegidos.size} elegidas` : ""}</div>
-          {elegidos.size > 0 && <button onClick={() => setElegidos(new Set())} className="min-h-[44px] px-2 bg-transparent border-none text-[13px] text-gypi-dim cursor-pointer">Ninguna</button>}
+          <div className="flex-1 text-[14px] font-semibold">🏷 Rótulos con QR {elegidos.size ? `· ${elegidos.size} elegidos` : ""}</div>
+          {elegidos.size > 0 && <button onClick={() => setElegidos(new Set())} className="min-h-[44px] px-2 bg-transparent border-none text-[13px] text-gypi-dim cursor-pointer">Ninguno</button>}
+        </div>
+        <div className="flex flex-wrap gap-x-3 mb-2">
           <button onClick={elegirFiltrados} disabled={!filtrados.length}
-            className="min-h-[44px] px-2 bg-transparent border-none text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">
-            Elegir {Math.min(filtrados.length, MAX_ETIQUETAS_ARTICULO)} de la lista
+            className="min-h-[40px] px-0 bg-transparent border-none text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">
+            Elegir los primeros {Math.min(filtrados.length, MAX_ETIQUETAS_ARTICULO)} de la lista
           </button>
+          {siguientes.length > 0 && (
+            <button onClick={elegirSiguientes}
+              className="min-h-[40px] px-0 bg-transparent border-none text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">
+              Elegir los {siguientes.length} siguientes
+            </button>
+          )}
+          {conFotoTotal > 0 && (
+            <button onClick={elegirConFoto}
+              className="min-h-[40px] px-0 bg-transparent border-none text-[13px] font-semibold text-gypi-amber-ink cursor-pointer">
+              Elegir los que tienen foto
+            </button>
+          )}
         </div>
         <div className="flex gap-2">
           <select aria-label="Tamaño de la etiqueta" className="g-input flex-1" value={tamano} onChange={(e) => setTamano(e.target.value)}>
-            {TAMANOS_ETIQUETA.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+            {TAMANOS_ARTICULO.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
           </select>
           <button onClick={imprimir} disabled={!elegidos.size} className="g-btn g-btn-primary flex-1">🖨 Imprimir</button>
         </div>
-        <div className="text-[12px] text-gypi-dim mt-2">El QR abre la ficha del artículo. El operario lo escanea para registrar lo que retira.</div>
+        <div className="text-[12px] text-gypi-dim mt-2">
+          El QR abre la ficha del artículo. El operario lo escanea para registrar lo que retira. Se imprimen hasta {MAX_ETIQUETAS_ARTICULO} por vez.
+          {(TAMANOS_ARTICULO.find((x) => x.id === tamano) || TAMANOS_ARTICULO[0]).hoja ? " En la hoja A4 imprimí en tamaño real (100 %), sin márgenes." : ""}
+        </div>
       </div>
       )}
 
@@ -220,7 +289,7 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
         <>
           <div className="text-[13px] text-gypi-dim mb-2" role="status">
             {filtrados.length === articulos.length ? `${articulos.length} artículos` : `${filtrados.length} de ${articulos.length} artículos`}
-            {filtrados.length > MOSTRAR ? `. Se muestran los primeros ${MOSTRAR}: buscá para ver otros.` : ""}
+            {filtrados.length > mostrar ? `. Se ven los primeros ${mostrar}.` : ""}
           </div>
           {!elegidos.size && (
             <div className="flex flex-wrap items-center gap-x-2 mb-2 text-[12px] text-gypi-dim">
@@ -229,14 +298,21 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
                 className="min-h-[32px] p-0 bg-transparent border-none text-[12px] font-semibold text-gypi-amber-ink cursor-pointer">
                 Elegir {Math.min(filtrados.length, MAX_ETIQUETAS_ARTICULO)} de la lista
               </button>
+              {conFotoTotal > 0 && (
+                <button onClick={elegirConFoto}
+                  className="min-h-[32px] p-0 bg-transparent border-none text-[12px] font-semibold text-gypi-amber-ink cursor-pointer">
+                  · Elegir los que tienen foto
+                </button>
+              )}
             </div>
           )}
           <ul className="list-none m-0 p-0 lista-ancha flex flex-col gap-1.5">
-            {filtrados.slice(0, MOSTRAR).map((a) => (
+            {filtrados.slice(0, mostrar).map((a) => (
               <li key={a.sku} className="flex items-center gap-2 p-2 rounded-[10px] border border-gypi-border bg-gypi-surface">
                 <input type="checkbox" checked={elegidos.has(a.sku)} onChange={() => alternar(a.sku)}
                   aria-label={`Etiqueta de ${a.nombre || a.sku}`} className="w-6 h-6 shrink-0 cursor-pointer" />
-                {a.foto_url && <img src={a.foto_url} alt="" loading="lazy" className="w-11 h-11 shrink-0 object-cover rounded-[8px] border border-gypi-border" />}
+                {conPrecios ? <FotoRenglon articulo={a} onFoto={ponerFoto} />
+                  : a.foto_url && <img src={a.foto_url} alt="" loading="lazy" className="w-11 h-11 shrink-0 object-cover rounded-[8px] border border-gypi-border" />}
                 <button onClick={() => setFicha(a)} className="flex-1 min-w-0 min-h-[44px] text-left bg-transparent border-none p-0 cursor-pointer text-gypi-text font-body">
                   <div className="text-[14px] font-semibold truncate">{a.nombre || a.sku}</div>
                   <div className="text-[12px] text-gypi-dim truncate">{a.origen === "gypi" ? "🆕 Nuevo, falta pasar a la planilla · " : ""}{a.sku}{a.division ? ` · ${a.division}` : ""}</div>
@@ -253,10 +329,15 @@ export default function StockScreen({ empresa, empresaId, usuario = null, onPlan
               </li>
             ))}
           </ul>
+          {filtrados.length > mostrar && (
+            <button onClick={() => setMostrar((m) => m + MOSTRAR)} className="g-btn g-btn-secondary w-full mt-3">
+              Mostrar {Math.min(MOSTRAR, filtrados.length - mostrar)} más ({filtrados.length - mostrar} sin ver)
+            </button>
+          )}
         </>
       )}
       {ficha && <FichaArticulo sku={ficha.sku} articulo={ficha} usuario={usuario} empresaId={empresaId} onClose={() => setFicha(null)}
-        onFoto={(sku, foto_url) => setArticulos((lista) => lista.map((x) => (x.sku === sku ? { ...x, foto_url } : x)))} />}
+        onFoto={ponerFoto} />}
     </div>
   );
 }

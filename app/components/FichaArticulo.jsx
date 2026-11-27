@@ -95,6 +95,14 @@ export function PreciosArticulo({ sku, ultimoPlanilla = null }) {
   );
 }
 
+/** Guarda (o saca, con null) la foto de un artículo (211). Devuelve la foto guardada. */
+export async function guardarFotoArticulo(sku, foto_url) {
+  const r = await apiFetch("/api/stock/articulos", { method: "PATCH", body: JSON.stringify({ sku, foto_url }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || "No se pudo guardar la foto");
+  return j.foto_url ?? null;
+}
+
 /** Foto del artículo (211): la ve cualquiera; dueños y administradores la ponen, cambian o sacan. */
 export function FotoArticulo({ sku, nombre, foto, puedeEditar, onCambio }) {
   const [guardando, setGuardando] = useState(false);
@@ -104,10 +112,7 @@ export function FotoArticulo({ sku, nombre, foto, puedeEditar, onCambio }) {
     setGuardando(true);
     setError(null);
     try {
-      const r = await apiFetch("/api/stock/articulos", { method: "PATCH", body: JSON.stringify({ sku, foto_url }) });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || "No se pudo guardar la foto");
-      onCambio(j.foto_url ?? null);
+      onCambio(await guardarFotoArticulo(sku, foto_url));
     } catch (e) {
       setError(e.message);
     }
