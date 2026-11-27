@@ -22,6 +22,10 @@
 // columnas los lados del panel (L1A, L1B, L2A, L2B) cada escaneo es un lado
 // con canto (lados_pieza). La pieza queda pegada (pasos_pieza) recién con el
 // último lado: 4 piezas de 3 lados = 12 escaneos. Deshacer saca el último lado.
+// Canto por espesor y color (27/11, migración 214): el escaneo trae el canto
+// que el operario tiene en la máquina ("2|GRAFITO") y anota el lado de ESE
+// canto en la primera unidad que lo tiene pendiente; si no hay, o si no se
+// eligió y la pieza lleva varios, responde elegirCanto para que pregunte.
 // Con RLS_RUTAS=on todo va con el pase del usuario ({ sesion }).
 import { NextResponse } from "next/server";
 import { validarToken, respuestaNoAutorizado } from "../../../lib/auth";
@@ -33,7 +37,8 @@ import { broadcastRefresh } from "../../../lib/broadcast";
 import { rechazarSiSinPlan } from "../../../lib/planEnforcement";
 import { requireModuloSesion } from "../../../lib/accesosServidor";
 import { leerQrPieza, leerQrModulo, etapasSalteadas, etapaPorLados, columnasDeTexto, escaneosPorPieza } from "../../../lib/piezas";
-import { falta209 } from "../../../lib/piezasServidor";
+import { falta209, falta210 } from "../../../lib/piezasServidor";
+import { usaCantos, ladoParaEscaneo, avanceTipo, tiposDe, falta214 } from "../../../lib/cantoLados";
 import { leerBarrasPiezaNumero } from "../../../lib/codigoBarras";
 import { normalizarOt } from "../../../lib/escaneoCarga";
 import { logger } from "../../../lib/logger";
@@ -50,8 +55,16 @@ const faltaLados = (err) => /lados_pieza/.test(String(err?.message)) && /does no
 
 const CAMPOS_PIEZA = "id,ot,nombre,unidad,de,etapas";
 
-/** Piezas con sus lados con canto; sin la migración 209, sin los lados (cuentan 1). */
+/**
+ * Piezas con sus lados con canto y el canto de cada lado; sin la migración
+ * 210, sin el canto de cada lado; sin la 209, tampoco los lados (cuentan 1).
+ */
 async function leerPiezasOt(filtro, opts) {
+  try {
+    return (await sbGet(`${filtro}&select=${CAMPOS_PIEZA},lados,cantos`, opts)) || [];
+  } catch (err) {
+    if (!falta210(err) && !falta209(err)) throw err;
+  }
   try {
     return (await sbGet(`${filtro}&select=${CAMPOS_PIEZA},lados`, opts)) || [];
   } catch (err) {
@@ -60,18 +73,59 @@ async function leerPiezasOt(filtro, opts) {
   }
 }
 
-/** Lados ya escaneados de cada pieza en la etapa: Map id → cantidad; null sin la migración 209. */
+/**
+ * Lados ya escaneados de cada pieza en la etapa: { cuenta: Map id → cuántos,
+ * filas: Map id → [{ lado }], con214 } (con214: los escaneos dicen qué lado
+ * se pegó). null sin la migración 209.
+ */
 async function ladosEscaneados(sesion, ids, etapa, opts) {
-  if (!ids.length) return new Map();
+  const vacio = { cuenta: new Map(), filas: new Map(), con214: true };
+  if (!ids.length) return vacio;
+  const leerLados = (campos) => sbGet(`lados_pieza?empresa_id=eq.${sesion.empresa_id}&etapa=eq.${etapa}&pieza_id=in.(${ids.join(",")})&select=${campos}&order=id.asc`, opts);
+  let lista;
+  let con214 = true;
   try {
-    const filas = (await sbGet(`lados_pieza?empresa_id=eq.${sesion.empresa_id}&etapa=eq.${etapa}&pieza_id=in.(${ids.join(",")})&select=pieza_id`, opts)) || [];
-    const m = new Map();
-    for (const f of filas) m.set(Number(f.pieza_id), (m.get(Number(f.pieza_id)) || 0) + 1);
-    return m;
+    try {
+      lista = (await leerLados("pieza_id,lado")) || [];
+    } catch (err) {
+      if (!falta214(err)) throw err;
+      con214 = false;
+      lista = (await leerLados("pieza_id")) || [];
+    }
   } catch (err) {
     if (faltaLados(err)) return null;
     throw err;
   }
+  const cuenta = new Map();
+  const filas = new Map();
+  for (const f of lista) {
+    const id = Number(f.pieza_id);
+    cuenta.set(id, (cuenta.get(id) || 0) + 1);
+    if (!filas.has(id)) filas.set(id, []);
+    filas.get(id).push({ lado: f.lado || null });
+  }
+  return { cuenta, filas, con214 };
+}
+
+/** Anota un escaneo de lado; con la 214, con el lado y el canto (sin ella, sin esos datos). */
+async function anotarLado(fila, lado, opts) {
+  if (!lado) return sbPost("lados_pieza", fila, opts);
+  try {
+    return await sbPost("lados_pieza", { ...fila, lado: lado.lado, canto: lado.tipo }, opts);
+  } catch (err) {
+    if (!falta214(err)) throw err;
+    return sbPost("lados_pieza", fila, opts);
+  }
+}
+
+/** Respuesta "¿qué canto pegaste?": la pantalla pregunta y vuelve a mandar el escaneo con el canto. */
+function respuestaElegirCanto(pieza, datos, etapa, eleccion) {
+  return NextResponse.json({
+    ok: false,
+    elegirCanto: { elegido: eleccion.distinto ? datos.canto || null : null, opciones: eleccion.distinto || eleccion.preguntar || [] },
+    pieza: { id: pieza.id, ot: pieza.ot, nombre: pieza.nombre, unidad: pieza.unidad, de: pieza.de },
+    etapa: datos.etapa, etapaNombre: etapa.nombre,
+  });
 }
 
 /** Cuántas filas cumplen el filtro (sin traerlas). */
@@ -292,6 +346,22 @@ async function escanearRenglon(sesion, datos, lectura, renglon = null) {
       faltan: [], progreso: null, etapaTerminada: null, conteo: { pasaron: piezas.length, de: piezas.length },
     });
   }
+  // Canto por espesor y color (214): va a la primera unidad que tiene
+  // pendiente un lado del canto elegido (10 escaneos de 2 mm en 5 piezas con
+  // dos lados de 2 mm = las 5 con esos lados pegados)
+  const conCantos = piezas.filter(usaCantos);
+  if (conCantos.length) {
+    const { etapa, response } = await etapaPorPieza(sesion, datos.etapa, opts);
+    if (response) return response;
+    if (etapa.porLados) {
+      const escaneos = await ladosEscaneados(sesion, ids, datos.etapa, opts);
+      if (escaneos?.con214) {
+        const eleccion = ladoParaEscaneo(conCantos, { filas: escaneos.filas, completas: hechos, tipo: datos.canto });
+        if (eleccion.preguntar || eleccion.distinto) return respuestaElegirCanto(siguiente, datos, etapa, eleccion);
+        if (eleccion.pieza) return anotarPieza(sesion, datos, eleccion.pieza, { piezas, hechos }, { etapa, escaneos, lado: eleccion });
+      }
+    }
+  }
   return anotarPieza(sesion, datos, siguiente, { piezas, hechos });
 }
 
@@ -317,11 +387,13 @@ async function escanearPiezaPlanilla(sesion, datos, lectura) {
  * renglon = { piezas, hechos } cuando se escaneó el código del renglón: la
  * respuesta dice cuántas de la cantidad van (conteo).
  * En la etapa de canto (por lados) anota un lado; la pieza pasa recién con el último.
+ * elegido = { etapa, escaneos, lado } cuando el renglón ya eligió la unidad y
+ * el lado por el canto de la máquina (214).
  */
-async function anotarPieza(sesion, datos, pieza, renglon = null) {
+async function anotarPieza(sesion, datos, pieza, renglon = null, elegido = null) {
   const e = sesion.empresa_id;
   const opts = { sesion };
-  const { etapa, response } = await etapaPorPieza(sesion, datos.etapa, opts);
+  const { etapa, response } = elegido?.etapa ? { etapa: elegido.etapa } : await etapaPorPieza(sesion, datos.etapa, opts);
   if (response) return response;
   const datosPieza = { id: pieza.id, ot: pieza.ot, nombre: pieza.nombre, unidad: pieza.unidad, de: pieza.de };
   const etapaNombre = etapa.nombre;
@@ -335,28 +407,46 @@ async function anotarPieza(sesion, datos, pieza, renglon = null) {
 
   const faltan = requerida ? etapasSalteadas(pieza, datos.etapa, pasos) : [];
   const momento = momentoValido(datos.momento, Date.now());
-  // Canto por lados (209): un escaneo por lado con canto
+  // Canto por lados (209): un escaneo por lado con canto. Con el canto de
+  // cada lado (210) y la 214, el escaneo es un lado del canto elegido
   let lados = null;
   const necesarios = escaneosPorPieza(pieza, etapa.porLados);
-  if (necesarios > 1) {
+  const conCantos = etapa.porLados && usaCantos(pieza);
+  if (necesarios > 1 || conCantos) {
     const unidades = renglon?.piezas || [pieza];
-    const hechos = await ladosEscaneados(sesion, unidades.map((u) => u.id), datos.etapa, opts);
-    if (hechos) {
-      await sbPost("lados_pieza", {
-        empresa_id: e, ot: pieza.ot, pieza_id: pieza.id, etapa: datos.etapa,
-        empleado_id: sesion.empleado_id || null, created_at: momento,
-      }, opts);
-      broadcastRefresh(e, "lados_pieza");
+    const escaneos = elegido?.escaneos || (await ladosEscaneados(sesion, unidades.map((u) => u.id), datos.etapa, opts));
+    if (escaneos) {
       const completas = renglon?.hechos || new Set();
-      const lado = (hechos.get(Number(pieza.id)) || 0) + 1;
-      const total = unidades.reduce((s, u) => s + escaneosPorPieza(u, true), 0);
-      const sumados = unidades.reduce((s, u) => {
-        const n = escaneosPorPieza(u, true);
-        return s + (completas.has(Number(u.id)) ? n : Math.min(n, hechos.get(Number(u.id)) || 0));
-      }, 0) + 1;
-      lados = { lado: Math.min(lado, necesarios), de: necesarios, hechos: Math.min(sumados, total), total };
-      if (lado < necesarios) {
-        return NextResponse.json({ ok: true, ya: false, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan, progreso: null, etapaTerminada: null, lados, ...conteo(false), ...(await avisosOt(sesion, pieza.ot, opts)) });
+      let lado = elegido?.lado || null;
+      if (!lado && conCantos && escaneos.con214) {
+        const eleccion = ladoParaEscaneo([pieza], { filas: escaneos.filas, completas, tipo: datos.canto });
+        if (eleccion.preguntar || eleccion.distinto) return respuestaElegirCanto(pieza, datos, etapa, eleccion);
+        if (eleccion.pieza) lado = eleccion;
+      }
+      if (necesarios > 1) {
+        await anotarLado({
+          empresa_id: e, ot: pieza.ot, pieza_id: pieza.id, etapa: datos.etapa,
+          empleado_id: sesion.empleado_id || null, created_at: momento,
+        }, lado, opts);
+        broadcastRefresh(e, "lados_pieza");
+        const hechos = escaneos.cuenta;
+        const n = (hechos.get(Number(pieza.id)) || 0) + 1;
+        const total = unidades.reduce((s, u) => s + escaneosPorPieza(u, true), 0);
+        const sumados = unidades.reduce((s, u) => {
+          const k = escaneosPorPieza(u, true);
+          return s + (completas.has(Number(u.id)) ? k : Math.min(k, hechos.get(Number(u.id)) || 0));
+        }, 0) + 1;
+        lados = { lado: Math.min(n, necesarios), de: necesarios, hechos: Math.min(sumados, total), total };
+        if (lado) {
+          // Cuántos lados de ese canto van en el renglón, contando este
+          const filas = new Map(escaneos.filas);
+          filas.set(Number(pieza.id), [...(filas.get(Number(pieza.id)) || []), { lado: lado.lado }]);
+          const avance = avanceTipo(unidades.filter(usaCantos), { filas, completas, tipo: lado.tipo });
+          lados = { ...lados, nombre: lado.lado, canto: { tipo: lado.tipo, ...avance }, tipos: tiposDe(pieza.cantos) };
+        }
+        if (n < necesarios) {
+          return NextResponse.json({ ok: true, ya: false, pieza: datosPieza, etapa: datos.etapa, etapaNombre, requerida, faltan, progreso: null, etapaTerminada: null, lados, ...conteo(false), ...(await avisosOt(sesion, pieza.ot, opts)) });
+        }
       }
     }
   }

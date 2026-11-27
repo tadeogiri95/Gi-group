@@ -4,9 +4,10 @@
 // La planilla técnica dice, por cada lado del panel (L1 A, L1 B, L2 A, L2 B),
 // el espesor (E: "0.45-", "2-") y el COLOR del canto. Gypi guarda en cada
 // pieza qué canto lleva cada lado y su largo (L1 para L1 A y L1 B, L2 para
-// L2 A y L2 B). Cada escaneo de un lado en la etapa de canto suma ese largo:
-// el escaneo no dice qué lado se pegó, así que se toman en el orden de la
-// planilla; con el último lado la pieza queda exacta.
+// L2 A y L2 B). Cada escaneo de un lado en la etapa de canto suma ese largo.
+// Desde el 27/11 (214) el escaneo dice qué lado y qué canto se pegó (el
+// operario elige el canto de la máquina, ver cantoLados.js); los escaneos
+// viejos se toman en el orden de la planilla.
 //
 // A los metros se les suma el desperdicio (Planificación → Parámetros, 5 % si
 // no se cargó). En Materiales → ✂️ Canto usado la oficina ve, por OT, el canto
@@ -19,6 +20,8 @@
 //   2. el que la oficina eligió antes para ese tipo (canto_articulos);
 //   3. el único del catálogo con ese espesor y color.
 // Si no hay uno solo, la oficina lo elige y Gypi lo recuerda.
+
+import { ladosHechos } from "./cantoLados";
 
 export const PCT_DESPERDICIO_DEFECTO = 5;
 /** Anchos de canto que se venden: el de la placa + 3 mm o más (placa 18 → 22). */
@@ -123,21 +126,24 @@ export function elegirArticuloCanto({ clave, articulos = [], necesidadesOt = new
 }
 
 /**
- * Los lados de una pieza que ya se pegaron: tantos como escaneos de lado
- * tenga (en el orden de la planilla), o todos si la pieza ya pasó la etapa
- * (por ejemplo, escaneada con la etiqueta del módulo).
+ * Los lados de una pieza que ya se pegaron. escaneos = los escaneos de lado
+ * de la pieza ([{ lado }], 214: cada uno dice qué lado; los viejos, sin lado,
+ * se toman en el orden de la planilla) o solo cuántos son. Todos si la pieza
+ * ya pasó la etapa (por ejemplo, escaneada con la etiqueta del módulo).
  */
 export function cantosPegados(pieza, escaneos = 0, completa = false) {
   const cantos = Array.isArray(pieza?.cantos) ? pieza.cantos : [];
   if (completa) return cantos;
-  return cantos.slice(0, Math.max(0, Math.min(cantos.length, Number(escaneos) || 0)));
+  const filas = Array.isArray(escaneos) ? escaneos : Array.from({ length: Math.max(0, Number(escaneos) || 0) }, () => ({}));
+  const hechos = ladosHechos(pieza, filas);
+  return cantos.filter((c) => hechos.has(c.l));
 }
 
 /**
  * Canto usado por OT y tipo, con el desperdicio.
  * @param {object} p
  * @param {object[]} p.piezas   piezas_ot con id, ot, material, cantos
- * @param {Map<number,number>} p.escaneos  pieza_id → lados escaneados
+ * @param {Map<number,number|object[]>} p.escaneos  pieza_id → escaneos de lado ([{ lado }]) o cuántos
  * @param {Set<number>} p.completas   piezas que ya pasaron la etapa de canto
  * @param {number} p.pct   desperdicio en %
  * @returns {Map<string, Map<string, { metros: number, lados: number }>>} ot → clave → uso
@@ -146,7 +152,7 @@ export function cantoUsado({ piezas = [], escaneos = new Map(), completas = new 
   const factor = 1 + (Number(pct) || 0) / 100;
   const out = new Map();
   for (const p of piezas) {
-    const pegados = cantosPegados(p, escaneos.get(Number(p.id)) || 0, completas.has(Number(p.id)));
+    const pegados = cantosPegados(p, escaneos.get(Number(p.id)) ?? 0, completas.has(Number(p.id)));
     if (!pegados.length) continue;
     const grosor = grosorMaterial(p.material);
     const delOt = out.get(p.ot) || new Map();

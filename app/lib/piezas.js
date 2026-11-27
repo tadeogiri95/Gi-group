@@ -3,6 +3,7 @@
 // técnica de la OT (hoja PLANILLA o CUT RITE) y Gypi arma una pieza por cada
 // unidad física: un renglón con CANT 4 son 4 piezas, "1 de 4" … "4 de 4",
 // cada una con su QR. En cada etapa (parte 18) se escanea la pieza.
+import { textoLado, textoTipoCanto } from "./cantoLados";
 import { filasTsv } from "./sueltos";
 import { svgQR } from "./tarjetasQR";
 import { textoDeQr, linkQr } from "./linkQr";
@@ -743,8 +744,11 @@ function mensajeBase(r, nombres = {}, porOt = null) {
   // Etapa que cuenta por lados (25/11): cada escaneo es un lado con canto
   if (r.lados && !r.ya) {
     const l = r.lados;
-    const cuenta = `${p.nombre}: ${p.de > 1 ? `pieza ${p.unidad} de ${p.de}, ` : ""}lado ${l.lado} de ${l.de} en ${etapa}`;
-    const van = l.total > l.de ? ` Van ${l.hechos} de ${l.total} lados${r.conteo ? ` (${r.conteo.pasaron} de ${r.conteo.de} piezas completas)` : ""}.` : "";
+    // Con el canto de la máquina (27/11, 214): qué lado y qué canto se pegó
+    const cual = l.nombre ? ` ${textoLado(l.nombre)}${l.canto ? ` (${textoTipoCanto(l.canto.tipo)})` : ""},` : "";
+    const cuenta = `${p.nombre}: ${p.de > 1 ? `pieza ${p.unidad} de ${p.de}, ` : ""}lado${cual} ${l.lado} de ${l.de} en ${etapa}`;
+    const deCanto = l.canto && l.canto.total ? ` Canto ${textoTipoCanto(l.canto.tipo)}: ${l.canto.hechos} de ${l.canto.total} lados.` : "";
+    const van = `${deCanto}${l.total > l.de ? ` Van ${l.hechos} de ${l.total} lados${r.conteo ? ` (${r.conteo.pasaron} de ${r.conteo.de} piezas completas)` : ""}.` : ""}`;
     const lista = l.lado >= l.de ? " ✔ Pieza completa." : "";
     const detalleLados = [`${lista}${van}`.trim(), detalle].filter(Boolean).join(" ") || null;
     if (!r.requerida) return { tono: "amarillo", texto: `${cuenta}, pero según la planilla no pasa por esa etapa.`, detalle: detalleLados };

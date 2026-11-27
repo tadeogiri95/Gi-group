@@ -129,6 +129,7 @@ export const MIGRACIONES = [
   { n: 211, archivo: "211_foto_articulos.sql", nombre: "Foto de los artículos (rótulo con QR)", tablas: { articulos_stock: ["foto_url"] } },
   { n: 212, archivo: "212_sesion_gracia.sql", nombre: "Sesión: no cerrar al renovar en dos pestañas", tablas: { sesiones: ["refresh_jti_anterior", "rotado_en"] } },
   { n: 213, archivo: "213_cambios_necesidad.sql", nombre: "Cambiar la necesidad de material de una OT", tablas: { necesidades_cambios: [] } },
+  { n: 214, archivo: "214_canto_lado_tipo.sql", nombre: "Canto: qué lado y qué canto se pegó", tablas: { lados_pieza: ["lado", "canto"] } },
 ];
 
 /** Lo que pide una migración, como lista de { tabla, columnas } y funciones. */
