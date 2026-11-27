@@ -437,6 +437,23 @@ export const movimientoStockBody = z.discriminatedUnion("accion", [
     // Cargar igual los ingresos cuyo comprobante ya entró
     forzar: z.boolean().optional(),
   }).strict(),
+  // 27/11 (213): consumir en tanda los herrajes y accesorios de una OT y, si
+  // hace falta, cambiar su necesidad (queda quién y cuándo)
+  z.object({
+    accion: z.literal("consumir_ot"),
+    ot: otSuelto,
+    renglones: z.array(z.object({
+      sku: skuMovimiento,
+      cantidad: cantidadMovimiento.refine((n) => n > 0, { message: "La cantidad tiene que ser mayor a cero" }),
+    }).strict()).max(MAX_RENGLONES_MOVIMIENTO, `Son muchos: cargá hasta ${MAX_RENGLONES_MOVIMIENTO} por vez`).default([]),
+    necesidades: z.array(z.object({
+      sku: skuMovimiento,
+      cantidad: z.number().finite().min(0, "La necesidad no puede ser negativa").max(1e10),
+    }).strict()).max(MAX_RENGLONES_MOVIMIENTO).default([]),
+    motivo: textoSuelto(300),
+    notas: textoSuelto(300),
+    fecha: fechaMovimiento,
+  }).strict().refine((m) => m.renglones.length > 0 || m.necesidades.length > 0, { message: "Marcá al menos un artículo", path: ["renglones"] }),
 ]);
 
 // ── /api/stock/articulos PATCH (211): la foto del artículo, para el rótulo ──
