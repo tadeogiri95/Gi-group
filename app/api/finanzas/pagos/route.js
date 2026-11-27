@@ -51,6 +51,8 @@ import { CLAVE_CFO, DIAS_UNIR, accionesOrden, sinRegistrar, cambioAlUnir, genera
 import { validarResumen } from "../../../lib/finanzasResumenPago";
 import { comprobanteValido } from "../../../lib/finanzasMiCaja";
 import { validarComprobantes } from "../../../lib/finanzasAdjuntos";
+import { feriadosFinanzas } from "../../../lib/finanzasDiasHabiles";
+import { CLAVE_PLANIFICACION } from "../../../lib/planificacion";
 
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 const FALTA_175 = "Para las órdenes de pago falta correr la migración 175 en Supabase.";
@@ -78,13 +80,15 @@ async function nombreEmpleado(sesion) {
 
 async function contexto(sesion) {
   const e = sesion.empresa_id;
-  const [cuentas, tesoreria, proveedores, cheques] = await Promise.all([
+  const [cuentas, tesoreria, proveedores, cheques, planificacion] = await Promise.all([
     leer(sesion, `fin_cuentas?empresa_id=eq.${e}&select=codigo,nombre,activa&order=codigo.asc`),
     leer(sesion, `fin_tesoreria?empresa_id=eq.${e}&select=cuenta,nombre,tipo,moneda,activa&order=nombre.asc`),
     leer(sesion, `proveedores?empresa_id=eq.${e}&select=id,nombre,activo,whatsapp&order=nombre.asc,id.asc`),
     leer(sesion, `fin_cheques?empresa_id=eq.${e}&clase=eq.tercero&estado=eq.en_cartera&select=*&order=fecha_pago.asc,id.asc`, 20000),
+    // 27/11: los días sin bancos, para saber qué día se debita cada e-cheq
+    sbGet(`config_sistema?empresa_id=eq.${e}&clave=eq.${CLAVE_PLANIFICACION}&select=valor&limit=1`, { silent: true, fallback: [] }).then((r) => r?.[0]?.valor || null).catch(() => null),
   ]);
-  return { cuentas, tesoreria, proveedores, cheques };
+  return { cuentas, tesoreria, proveedores, cheques, feriados: [...feriadosFinanzas(planificacion)].sort() };
 }
 
 async function leerOrden(sesion, id) {
