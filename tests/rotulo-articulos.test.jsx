@@ -10,7 +10,7 @@ import { createFetchMock, authPassHandlers } from "./helpers/mockFetch.js";
 import { htmlEtiquetasArticulos, rotuloConFoto } from "../app/lib/stock.js";
 import { fotoArticuloBody } from "../app/lib/schemas.ts";
 import { MIGRACIONES } from "../app/lib/esquemaMigraciones.js";
-import { OCTAVO_A4, TAMANOS_ARTICULO } from "../app/lib/carga.js";
+import { CUARTO_A4_ARTICULO, OCTAVO_A4, SEXTO_A4, TAMANOS_ARTICULO } from "../app/lib/carga.js";
 
 before(() => {
   if (!process.env.JWT_SECRET) process.env.JWT_SECRET = "test_secret_de_al_menos_32_caracteres_ok";
@@ -179,6 +179,23 @@ test("rótulo — en hoja A4 van de a ocho por hoja (2 × 4), con línea de cort
   assert.equal((html.match(/<img /g) || []).length, 1, "la foto entra en el octavo de A4");
   const rollo = await htmlEtiquetasArticulos({ ...BASE, tamano: { ancho: 100, alto: 50 }, articulos });
   assert.ok(!rollo.includes('class="hoja"'), "en el rollo, uno por página como siempre");
+});
+
+test("rótulo — también de a seis (2 × 3) y de a cuatro (2 × 2) por hoja A4, con letra más grande (27/11)", async () => {
+  assert.deepEqual(TAMANOS_ARTICULO.slice(0, 3), [OCTAVO_A4, SEXTO_A4, CUARTO_A4_ARTICULO]);
+  const articulos = Array.from({ length: 10 }, (_, i) => ({ sku: `1.${i}`, nombre: `ART ${i}`, foto_url: FOTO }));
+  const seis = await htmlEtiquetasArticulos({ ...BASE, tamano: SEXTO_A4, articulos });
+  assert.match(seis, /size: A4 portrait/);
+  assert.equal((seis.match(/class="hoja"/g) || []).length, 2, "10 rótulos de a 6 = 2 hojas");
+  assert.match(seis, /grid-template-columns: repeat\(2, 105mm\); grid-template-rows: repeat\(3, 99mm\)/);
+  assert.match(seis, /\.hoja \.nombre \{ font-size: 14pt/);
+  assert.match(seis, /grid-template-areas: "foto qr" "texto texto"/, "casi cuadrado: foto y QR arriba, texto abajo");
+  const cuatro = await htmlEtiquetasArticulos({ ...BASE, tamano: CUARTO_A4_ARTICULO, articulos });
+  assert.equal((cuatro.match(/class="hoja"/g) || []).length, 3, "10 rótulos de a 4 = 3 hojas");
+  assert.match(cuatro, /grid-template-columns: repeat\(2, 105mm\); grid-template-rows: repeat\(2, 148.5mm\)/);
+  assert.match(cuatro, /flex-direction: column/, "el de a cuatro es alto: foto, texto y QR uno abajo del otro");
+  assert.match(cuatro, /\.hoja \.nombre \{ font-size: 16pt/);
+  assert.equal((cuatro.match(/<img /g) || []).length, 10);
 });
 
 // ─── Recortar la foto (27/11, pedido de Tadeo) ───

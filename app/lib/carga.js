@@ -36,8 +36,13 @@ export const CUARTO_A4 = { id: "a4-cuarto", ancho: 148.5, alto: 105, hoja: "A4",
  */
 export const OCTAVO_A4 = { id: "a4-octavo", ancho: 105, alto: 74.25, hoja: "A4", porHoja: 8, nombre: "1/8 de hoja A4 (8 por hoja)" };
 
-/** Tamaños para los rótulos de artículos del stock: la hoja A4 de a ocho o el rollo. */
-export const TAMANOS_ARTICULO = [OCTAVO_A4, ...TAMANOS_ETIQUETA];
+/** Rótulo de artículo de un sexto de hoja A4 (105 × 99 mm): seis por hoja, 2 × 3 (27/11, Tadeo). */
+export const SEXTO_A4 = { id: "a4-sexto", ancho: 105, alto: 99, hoja: "A4", porHoja: 6, nombre: "1/6 de hoja A4 (6 por hoja)" };
+/** Rótulo de artículo de un cuarto de hoja A4, parado (105 × 148,5 mm): cuatro por hoja, 2 × 2 (27/11, Tadeo). */
+export const CUARTO_A4_ARTICULO = { id: "a4-cuarto-articulo", ancho: 105, alto: 148.5, hoja: "A4", porHoja: 4, nombre: "1/4 de hoja A4 (4 por hoja)" };
+
+/** Tamaños para los rótulos de artículos del stock: la hoja A4 de a ocho, seis o cuatro, o el rollo. */
+export const TAMANOS_ARTICULO = [OCTAVO_A4, SEXTO_A4, CUARTO_A4_ARTICULO, ...TAMANOS_ETIQUETA];
 
 /** Tamaños para rótulos de bulto y etiquetas de módulo: el rollo o un cuarto de A4. */
 export const TAMANOS_ROTULO = [CUARTO_A4, ...TAMANOS_ETIQUETA];
