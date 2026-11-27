@@ -18,9 +18,16 @@ export function normalizarAvanceManual(valor) {
   return { activo: !!v.activo, etapas, por: v.por || null, at: v.at || null };
 }
 
-/** Procesos de la OT para el checkeo: la ruta de su división (o todas las etapas productivas). */
+/**
+ * Control (o Control de calidad) no se carga en el checkeo manual (Tadeo,
+ * 27/11): se revisa al final y no es un proceso que avance por %.
+ */
+export const esEtapaControl = (etapa) =>
+  /\bcontrol\b/.test(String(etapa?.nombre ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase());
+
+/** Procesos de la OT para el checkeo: la ruta de su división (o todas las etapas productivas), sin Control. */
 export function etapasDeOt(proyecto, etapas = [], divisiones = []) {
-  const productivas = (etapas || []).filter((e) => Number(e.codigo) > 0);
+  const productivas = (etapas || []).filter((e) => Number(e.codigo) > 0 && !esEtapaControl(e));
   const ruta = rutaDe(buscarDivision(divisiones, proyecto?.division));
   if (!ruta.length) return productivas;
   return ruta.map((c) => productivas.find((e) => Number(e.codigo) === c)).filter(Boolean);
