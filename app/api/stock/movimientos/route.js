@@ -16,6 +16,10 @@
 //               comprobante ya entró, salvo forzar); hasta 200 renglones. Se
 //               revisa todo antes y se guardan todos o ninguno. Con OT, cada
 //               uno suma al costo de esa OT (costoMaterialesServidor).
+//   consumir_ot → (27/11, 213) { ot, renglones: [{ sku, cantidad }],
+//               necesidades: [{ sku, cantidad }], motivo?, fecha? }: los
+//               herrajes y accesorios de una OT en tanda; si cambió la
+//               necesidad, queda en necesidades_cambios con quién y cuándo.
 //   anular    → gestión, cualquiera; el resto, solo los suyos recién cargados.
 //   corregir  → (19/11, punto 12; migración 199) { id, cambios: { fecha,
 //               cantidad, ot, notas, precio_unitario } }, los mismos que anular.
@@ -200,6 +204,86 @@ async function registrarVarios(sesion, datos) {
   return NextResponse.json({ ok: true, cargados: filas.length });
 }
 
+/** Sin la migración 213 no está la tabla de cambios de necesidad. */
+const falta213 = (err) => String(err?.message).includes("necesidades_cambios");
+
+/**
+ * 27/11 (213): consumir en tanda los herrajes y accesorios de una OT. Primero
+ * se revisa todo; después se guardan los cambios de necesidad (con quién y
+ * cuándo) y al final los consumos, todos con la OT y la misma fecha.
+ */
+async function consumirOt(sesion, datos) {
+  const e = sesion.empresa_id;
+  const opts = { sesion };
+  if (!puedeCargar("consumo", sesion.rol)) return NextResponse.json({ error: "Ese movimiento lo carga la oficina" }, { status: 403 });
+  const dia = fechaDelMovimiento(datos.fecha);
+  if (dia.error) return NextResponse.json({ error: dia.error }, { status: 400 });
+  const [proyecto] = (await sbGet(`proyectos?empresa_id=eq.${e}&ot=eq.${encodeURIComponent(datos.ot)}&select=ot&limit=1`, opts)) || [];
+  if (!proyecto) return NextResponse.json({ error: `No encontré la OT ${datos.ot}` }, { status: 404 });
+  const ot = String(proyecto.ot);
+  const skus = [...datos.renglones, ...datos.necesidades].map((r) => r.sku);
+  const articulos = (await sbGet(`articulos_stock?empresa_id=eq.${e}&sku=${encodeURIComponent(enLista(skus))}&select=sku,nombre,activo`, opts)) || [];
+  const porSku = new Map(articulos.map((a) => [a.sku, a]));
+  const errores = [];
+  for (const r of [...datos.renglones, ...datos.necesidades]) {
+    const a = porSku.get(r.sku);
+    if (!a) errores.push(`El artículo ${r.sku} no está en el stock`);
+    else if (a.activo === false && datos.renglones.includes(r)) errores.push(`${a.nombre || r.sku} ya no está en la planilla MRP`);
+  }
+  if (errores.length) return NextResponse.json({ error: errores[0], errores }, { status: 400 });
+
+  let cambiadas = 0;
+  if (datos.necesidades.length) {
+    const lista = encodeURIComponent(enLista(datos.necesidades.map((n) => n.sku)));
+    const o = encodeURIComponent(ot);
+    let previos;
+    try {
+      previos = await Promise.all([
+        sbGet(`necesidades_stock?empresa_id=eq.${e}&ot=eq.${o}&sku=${lista}&select=sku,cantidad`, opts),
+        sbGet(`necesidades_cambios?empresa_id=eq.${e}&ot=eq.${o}&sku=${lista}&select=id,sku,cantidad,created_at&order=created_at.asc,id.asc`, opts),
+      ]);
+    } catch (err) {
+      if (falta213(err)) return NextResponse.json({ error: "Para cambiar la necesidad falta correr la migración 213 en Supabase. Podés consumir sin cambiarla.", falta_migracion: 213 }, { status: 409 });
+      throw err;
+    }
+    const antes = new Map();
+    for (const n of previos[0] || []) antes.set(n.sku, (antes.get(n.sku) || 0) + (Number(n.cantidad) || 0));
+    for (const c of previos[1] || []) antes.set(c.sku, Number(c.cantidad));
+    const [empleado] = sesion.empleado_id
+      ? (await sbGet(`empleados?id=eq.${sesion.empleado_id}&empresa_id=eq.${e}&select=nombre&limit=1`, { ...opts, silent: true, fallback: [] })) || []
+      : [];
+    const filas = datos.necesidades
+      .filter((n) => (antes.has(n.sku) ? Math.round(antes.get(n.sku) * 1000) / 1000 : null) !== n.cantidad)
+      .map((n) => ({
+        empresa_id: e, ot, sku: n.sku, nombre: porSku.get(n.sku)?.nombre ?? null,
+        cantidad_antes: antes.has(n.sku) ? Math.round(antes.get(n.sku) * 1000) / 1000 : null,
+        cantidad: n.cantidad,
+        motivo: datos.motivo,
+        empleado_id: sesion.empleado_id || null,
+        empleado_nombre: empleado?.nombre ? String(empleado.nombre).slice(0, 120) : null,
+      }));
+    if (filas.length) {
+      try {
+        await sbPost("necesidades_cambios", filas, opts);
+      } catch (err) {
+        if (falta213(err)) return NextResponse.json({ error: "Para cambiar la necesidad falta correr la migración 213 en Supabase. Podés consumir sin cambiarla.", falta_migracion: 213 }, { status: 409 });
+        throw err;
+      }
+      cambiadas = filas.length;
+      broadcastRefresh(e, "necesidades_cambios");
+    }
+  }
+
+  if (!datos.renglones.length) return NextResponse.json({ ok: true, cargados: 0, necesidades: cambiadas });
+  const res = await registrarVarios(sesion, {
+    tipo: "consumo", fecha: dia.fecha, notas: datos.notas,
+    renglones: datos.renglones.map((r) => ({ sku: r.sku, cantidad: r.cantidad, ot })),
+  });
+  if (!res.ok) return res;
+  const data = await res.json();
+  return NextResponse.json({ ...data, necesidades: cambiadas });
+}
+
 async function anular(sesion, id) {
   const e = sesion.empresa_id;
   const opts = { sesion };
@@ -283,6 +367,7 @@ export async function POST(request) {
       if (parsed.data.accion === "anular") return await anular(sesion, parsed.data.id);
       if (parsed.data.accion === "corregir") return await corregir(sesion, parsed.data.id, parsed.data.cambios);
       if (parsed.data.accion === "registrar_varios") return await registrarVarios(sesion, parsed.data);
+      if (parsed.data.accion === "consumir_ot") return await consumirOt(sesion, parsed.data);
       return await registrar(sesion, parsed.data);
     } catch (err) {
       if (faltaMigracion(err)) {

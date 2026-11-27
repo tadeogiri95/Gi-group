@@ -13,6 +13,7 @@ import Modal from "./ui/Modal";
 import EscanerCodigo, { escanerDisponible } from "./EscanerCodigo";
 import ElegirOtCarga from "./ElegirOtCarga";
 import PlacasCortadas from "./PlacasCortadas";
+import ConsumoOt from "./ConsumoOt";
 import { Semaforo } from "./FichaArticulo";
 import { filtrarArticulos, leerQrArticulo, cantidadTexto } from "../lib/stock";
 import { leerCantidadMovimiento, puedeAnular, textoMovimiento } from "../lib/movimientosStock";
@@ -37,6 +38,8 @@ export default function RetirarMaterial({ empresaId, usuario, skuInicial = null,
   const [escaneando, setEscaneando] = useState(escanerDisponible());
   const [aviso, setAviso] = useState(null);
   const [mios, setMios] = useState([]);
+  // 27/11: 📋 Traer lo que necesita una OT (sus herrajes y accesorios, en tanda)
+  const [deUnaOt, setDeUnaOt] = useState(false);
 
   const cargarMios = useCallback(async () => {
     if (!usuario?.id) return;
@@ -143,6 +146,13 @@ export default function RetirarMaterial({ empresaId, usuario, skuInicial = null,
     return <PlacasCortadas empresaId={empresaId} onClose={onClose} onVolver={() => setPaso("articulo")} />;
   }
 
+  if (deUnaOt) {
+    return (
+      <ConsumoOt empresaId={empresaId} usuario={usuario} otInicial={ot || null}
+        onGuardado={cargarMios} onClose={() => setDeUnaOt(false)} />
+    );
+  }
+
   if (paso === "ot") {
     return (
       <ElegirOtCarga empresaId={empresaId} titulo="¿Para qué OT es?" verbo="Retirar para"
@@ -163,6 +173,8 @@ export default function RetirarMaterial({ empresaId, usuario, skuInicial = null,
         {paso === "articulo" && (
           <>
             {ot !== null && <div className="text-[13px] text-gypi-dim mb-2">Para: <b className="text-gypi-text">{textoDeLaOt}</b></div>}
+            <button onClick={() => setDeUnaOt(true)} className="g-btn g-btn-secondary w-full mb-1">📋 Traer lo que necesita una OT</button>
+            <div className="text-[12px] text-gypi-dim mb-3">Para juntar todos los herrajes y accesorios de una OT y registrarlos de una vez.</div>
             <button onClick={() => { setEscaneando(false); setPaso("placas"); }} className="g-btn g-btn-secondary w-full mb-3">🪚 Placas cortadas (una o varias OT)</button>
             {escanerDisponible() && (
               <div className="mb-3">
